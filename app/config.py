@@ -5,6 +5,10 @@ All environment variables are loaded here with their default values.
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent

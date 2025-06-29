@@ -118,6 +118,7 @@ def init_database():
     """Initialize database schema and tables"""
     try:
         create_tables()
+        logger.info("Database URL: %s", DATABASE_URL)
     except Exception as e:
         logger.error(f"Failed to create database tables: {str(e)}", exc_info=True)
         raise
