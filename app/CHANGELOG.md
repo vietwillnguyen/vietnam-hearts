@@ -1,0 +1,25 @@
+CHANGELOG:
+
+## Version 1.1.1
+
+- Fix: Inefficient sync volunteers (use active field and better queries, reduce operation time ~60 seconds with batch operations)
+- Fix: When syncing, new volunteers in database or sheets will receive a confirmation email.
+- Add: Retry for operations with Google API to handle SSL retries due to cold container starts.
+- Add: admin set active/inactive volunteers.
+- Fix: pytest now works for all tests in ./test.
+- Remove: remove admin endpoints for production.
+- Add: Will use default credential account by default, then GOOGLE_APPLICATION_CREDENTIALS if specified.
+
+## Version 1.1.0
+
+- Add: unsubscribe system.
+- Add: admin api guarded by google auth
+- Add: scheduler api guarded by OIDC tokens
+- Add: DRY_RUN now blocks all email sending except to DRY_RUN_RECIPIENT
+- Refactor: Database is source of truth, Google sheets is used as data input only.
+
+## Version 1.0.0
+
+- Database now updates with Google Sheets confirmation status.
+- Moved links as environment variables.
+- Add log message for failed class build

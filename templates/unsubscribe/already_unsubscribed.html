@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Already Unsubscribed - Vietnam Hearts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .info-icon {
+            color: #17a2b8;
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #17a2b8;
+            margin-bottom: 20px;
+        }
+        .volunteer-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border: 1px solid #bee5eb;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="info-icon">ℹ️</div>
+        <h1>Already Unsubscribed</h1>
+        
+        <p>Hi <strong>{{ volunteer_name }}</strong>,</p>
+        
+        <p>You are already unsubscribed from <strong>{{ unsubscribe_type }}</strong>.</p>
+        
+        <div class="volunteer-info">
+            <strong>Email:</strong> {{ volunteer_email }}<br>
+            <strong>Status:</strong> Already unsubscribed from {{ unsubscribe_type }}
+        </div>
+        
+        {% if unsubscribe_type == "weekly reminders" %}
+        <p>You won't receive any more weekly reminder emails from us. However, you can still:</p>
+        <ul style="text-align: left; display: inline-block;">
+            <li>Continue volunteering and teaching</li>
+            <li>Access our volunteer schedule</li>
+            <li>Stay connected through our Discord and Facebook groups</li>
+            <li>Receive other important announcements and updates</li>
+        </ul>
+        {% else %}
+        <p>You won't receive any emails from us. However, you can still:</p>
+        <ul style="text-align: left; display: inline-block;">
+            <li>Continue volunteering and teaching</li>
+            <li>Access our volunteer schedule</li>
+            <li>Stay connected through our Discord and Facebook groups</li>
+        </ul>
+        {% endif %}
+                
+        <p><em>If you'd like to start receiving emails again, please contact us and we can resubscribe you.</em></p>
+        
+        <div class="footer">
+            <p>Thank you for being part of Vietnam Hearts! ❤️🇻🇳</p>
+            <p>We're always here to help - just reach out to us.</p>
+        </div>
+    </div>
+</body>
+</html> 

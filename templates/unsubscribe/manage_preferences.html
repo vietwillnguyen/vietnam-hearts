@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Email Preferences - Vietnam Hearts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .volunteer-info {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #007bff;
+        }
+        .preferences-form {
+            margin: 30px 0;
+        }
+        .preference-option {
+            background-color: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .preference-option:hover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+        .preference-option.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        .preference-option input[type="radio"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+        .preference-option label {
+            font-weight: bold;
+            cursor: pointer;
+            display: block;
+            margin-bottom: 8px;
+        }
+        .preference-description {
+            color: #666;
+            font-size: 14px;
+            margin-left: 25px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #dc3545;
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .btn:hover {
+            background-color: #c82333;
+        }
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            margin-top: 10px;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border: 1px solid #c3e6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📧 Manage Your Email Preferences</h1>
+            <p>Hi <strong>{{ volunteer_name }}</strong>, we'd love to keep you updated, but we understand if you need a break.</p>
+        </div>
+
+        {% if error_message %}
+        <div class="error-message">
+            <strong>Error:</strong> {{ error_message }}
+        </div>
+        {% endif %}
+
+        {% if success_message %}
+        <div class="success-message">
+            <strong>Success:</strong> {{ success_message }}
+        </div>
+        {% endif %}
+
+        <div class="volunteer-info">
+            <strong>Email:</strong> {{ volunteer_email }}<br>
+            <strong>Current Status:</strong> 
+            {% if volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}
+                Subscribed to all emails
+            {% elif volunteer.weekly_reminders_subscribed %}
+                Subscribed to weekly reminders only
+            {% else %}
+                Unsubscribed from all emails
+            {% endif %}
+        </div>
+
+        <form method="POST" action="/public/unsubscribe?token={{ token }}" class="preferences-form">
+            <div class="preference-option">
+                <input type="radio" id="weekly_reminders" name="unsubscribe_type" value="weekly_reminders" 
+                       {% if volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}checked{% endif %}>
+                <label for="weekly_reminders">I no longer want to receive weekly schedule reminders</label>
+                <div class="preference-description">
+                    You'll still receive important announcements, events, and other updates, but won't get weekly schedule reminders.
+                </div>
+            </div>
+
+            <div class="preference-option">
+                <input type="radio" id="all_emails" name="unsubscribe_type" value="all_emails"
+                       {% if not volunteer.all_emails_subscribed %}checked{% endif %}>
+                <label for="all_emails">I no longer want to receive any emails</label>
+                <div class="preference-description">
+                    You won't receive any emails from us, including announcements, events, fundraisers, and schedule reminders. 
+                    <strong>This will also deactivate your volunteer account.</strong> You can reactivate it anytime by choosing "I want to receive all emails again."
+                </div>
+            </div>
+
+            <div class="preference-option">
+                <input type="radio" id="resubscribe" name="unsubscribe_type" value="resubscribe"
+                       {% if not volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}checked{% endif %}>
+                <label for="resubscribe">I want to receive all emails again</label>
+                <div class="preference-description">
+                    Resubscribe to all emails including weekly reminders, announcements, events, and fundraisers. 
+                    <strong>This will also reactivate your volunteer account if it was previously deactivated.</strong>
+                </div>
+            </div>
+
+            <button type="submit" class="btn">Update My Preferences</button>
+        </form>
+
+        <div class="footer">
+            <p>Thank you for being part of Vietnam Hearts! ❤️🇻🇳</p>
+            <p>You can always change your preferences later by contacting us through Discord or Facebook.</p>
+        </div>
+    </div>
+
+    <script>
+        // Add visual feedback for selected options
+        document.querySelectorAll('.preference-option').forEach(option => {
+            const radio = option.querySelector('input[type="radio"]');
+            const label = option.querySelector('label');
+            
+            // Check if this option is currently selected
+            if (radio.checked) {
+                option.classList.add('selected');
+            }
+            
+            // Add click handlers
+            option.addEventListener('click', () => {
+                // Remove selected class from all options
+                document.querySelectorAll('.preference-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                
+                // Add selected class to clicked option
+                option.classList.add('selected');
+                
+                // Check the radio button
+                radio.checked = true;
+            });
+        });
+    </script>
+</body>
+</html> 
