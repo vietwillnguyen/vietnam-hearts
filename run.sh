@@ -178,14 +178,8 @@ validate_env_file() {
 # Function to run the application
 run_application() {
     print_status "Starting Vietnam Hearts Scheduler..."
-    print_status "Environment: $ENVIRONMENT"
-    print_status "Port: $PORT"
-    print_status "Host: $HOST"
-    print_status "Dry Run: $DRY_RUN"
-    print_status "Auto-reload: $RELOAD"
-    print_status "Workers: $WORKERS"
     
-    # Source the environment file if it exists
+    # Source the environment file if it exists FIRST, before printing status
     if [ -f "$ENV_FILE" ]; then
         print_status "Loading environment from '$ENV_FILE'..."
         set -a  # automatically export all variables
@@ -193,7 +187,15 @@ run_application() {
         set +a  # turn off automatic export
     fi
     
-    # Set environment variables (these will override .env file values)
+    # Now print status after loading environment variables
+    print_status "Environment: $ENVIRONMENT"
+    print_status "Port: $PORT"
+    print_status "Host: $HOST"
+    print_status "Dry Run: $DRY_RUN"
+    print_status "Auto-reload: $RELOAD"
+    print_status "Workers: $WORKERS"
+    
+    # Set environment variables (these will override .env file values if specified via command line)
     export ENV_FILE="$ENV_FILE"
     export PORT="$PORT"
     export ENVIRONMENT="$ENVIRONMENT"

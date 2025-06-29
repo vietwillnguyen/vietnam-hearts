@@ -193,6 +193,7 @@ class GoogleSheetsService:
             List[Dict[str, Any]]: List of form submissions with field mappings
         """
         try:
+            logger.info(f"Fetching signups from sheet {SIGNUPS_SHEET_ID} with range {range_name or SIGNUPS_DEFAULT_RANGE}")
             result = (
                 self.sheet.values()
                 .get(
