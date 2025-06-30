@@ -1,5 +1,10 @@
 CHANGELOG:
 
+## Version 1.1.2
+
+- Refactor: Project recovered from GCR, changed dockerfile
+- Fix: bug in email unsubscribe display message
+
 ## Version 1.1.1
 
 - Fix: Inefficient sync volunteers (use active field and better queries, reduce operation time ~60 seconds with batch operations)

@@ -144,8 +144,8 @@
             <strong>Current Status:</strong> 
             {% if volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}
                 Subscribed to all emails
-            {% elif volunteer.weekly_reminders_subscribed %}
-                Subscribed to weekly reminders only
+            {% elif volunteer.all_emails_subscribed %}
+                Subscribed to announcements and events only (no weekly reminders)
             {% else %}
                 Unsubscribed from all emails
             {% endif %}

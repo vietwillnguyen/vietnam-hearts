@@ -27,7 +27,7 @@ logger = get_app_logger()
 app = FastAPI(
     title="Vietnam Hearts Scheduler API",
     description="RESTful API for volunteer management and automated scheduling",
-    version="1.1.1",
+    version="1.1.2",
     docs_url=None if os.getenv("ENVIRONMENT") == "production" else "/docs",
     redoc_url=None if os.getenv("ENVIRONMENT") == "production" else "/redoc",
 )
