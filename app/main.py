@@ -19,6 +19,7 @@ from .routers.admin import admin_router  # Keep import but control usage
 from .routers.api import api_router
 from .routers.public import public_router
 from app.routers.oauth import oauth_router
+from agent.api import router as agent_router
 
 # Configure logging
 logger = get_app_logger()
@@ -42,6 +43,8 @@ if ENVIRONMENT == "development":
 
 app.include_router(api_router)
 app.include_router(public_router)
+app.include_router(agent_router)
+logger.info("Agent endpoints enabled")
 
 
 @app.on_event("startup")

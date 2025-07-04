@@ -1,197 +1,228 @@
-# Scheduler API Tests
+# Vietnam Hearts Agent Tests
 
-This directory contains test scripts for the Vietnam Hearts Scheduler API endpoints.
+This directory contains comprehensive tests for the Vietnam Hearts Agent, designed to work with both pytest and standalone execution.
 
-## Files
+## Test Structure
 
-- `test_scheduler_api.py` - Main test script for scheduler API endpoints
-- `test_db.py` - Database connection test script
-- `requirements.txt` - Python dependencies for tests
+### Files
 
-## Prerequisites
+- `test_agent_pytest.py` - Main pytest-compatible test suite
+- `test_agent_local.py` - Original standalone test script
+- `run_agent_tests.py` - Test runner that can use pytest or standalone mode
+- `pytest.ini` - Pytest configuration file
+- `logs/` - Directory containing test logs (created automatically)
 
-### 1. Google Cloud CLI Setup
+### Test Categories
 
-Make sure you have the Google Cloud CLI installed and configured:
+The tests are organized into several categories with pytest markers:
 
-```bash
-# Install gcloud CLI (if not already installed)
-# Follow instructions at: https://cloud.google.com/sdk/docs/install
+- **Unit Tests** (`@pytest.mark.unit`) - Fast, isolated tests
+- **Integration Tests** (`@pytest.mark.integration`) - Tests that involve multiple components
+- **Agent Tests** (`@pytest.mark.agent`) - Agent-specific functionality
+- **Knowledge Base Tests** (`@pytest.mark.knowledge_base`) - Knowledge base functionality
+- **Quick Reply Tests** (`@pytest.mark.quick_replies`) - Quick reply functionality
 
-# Authenticate with Google Cloud
-gcloud auth login
+## Running Tests
 
-# Set the correct project
-gcloud config set project refined-vector-457419
-
-# Verify your configuration
-gcloud config list
-```
-
-### 2. Python Dependencies
-
-Install the required Python packages:
+### Option 1: Using the Test Runner (Recommended)
 
 ```bash
-# From the tests directory
-pip install -r requirements.txt
+# Run all tests (auto-detects pytest or falls back to standalone)
+python tests/run_agent_tests.py
 
-# Or from the project root
-pip install -r tests/requirements.txt
+# Force pytest mode
+python tests/run_agent_tests.py --pytest
+
+# Force standalone mode
+python tests/run_agent_tests.py --standalone
+
+# Run only unit tests
+python tests/run_agent_tests.py --markers unit
+
+# Run only agent tests
+python tests/run_agent_tests.py --markers agent
+
+# Run integration tests with knowledge base
+python tests/run_agent_tests.py --markers integration knowledge_base
 ```
 
-### 3. Environment Variables
-
-Create a `.env` file in the project root with the following variables:
-
-```env
-# API Configuration
-API_BASE_URL=http://localhost:8080
-
-# Google OAuth Configuration (REQUIRED for scheduler tests)
-GOOGLE_OAUTH_CLIENT_ID=your-oauth-client-id-here
-
-# Database Configuration (if needed)
-DATABASE_URL=your_database_url_here
-
-# Other environment variables as needed
-```
-
-**Important**: The `GOOGLE_OAUTH_CLIENT_ID` is required for the scheduler API tests to work. This should be the same value that your API uses for OIDC token validation.
-
-## Usage
-
-### Test Individual Endpoints
+### Option 2: Using Pytest Directly
 
 ```bash
-# Test health check endpoint
-python tests/test_scheduler_api.py health
+# Install pytest if not already installed
+pip install pytest
 
-# Test send confirmation emails
-python tests/test_scheduler_api.py send-confirmation-emails
+# Run all tests
+pytest tests/test_agent_pytest.py -v
 
-# Test sync volunteers
-python tests/test_scheduler_api.py sync-volunteers
+# Run specific test categories
+pytest tests/test_agent_pytest.py -m "unit" -v
+pytest tests/test_agent_pytest.py -m "integration" -v
+pytest tests/test_agent_pytest.py -m "agent" -v
 
-# Test send weekly reminders
-python tests/test_scheduler_api.py send-weekly-reminders
+# Run tests with detailed output
+pytest tests/test_agent_pytest.py -v -s
 
-# Test rotate schedule
-python tests/test_scheduler_api.py rotate-schedule
+# Run tests and generate HTML report
+pytest tests/test_agent_pytest.py --html=tests/logs/report.html
 ```
 
-### Test All Endpoints
+### Option 3: Standalone Mode
 
 ```bash
-# Test all scheduler endpoints
-python tests/test_scheduler_api.py all
+# Run the original test script
+python tests/test_agent_local.py
 ```
 
-### Database Connection Test
+## Test Logging
 
-```bash
-# Test database connectivity
-python tests/test_db.py
+All tests generate detailed logs in the `tests/logs/` directory:
+
+### Log Files
+
+- `test_agent_[test_name]_[timestamp].log` - Individual test logs
+- `test_summary_[timestamp].log` - Test session summary
+- `pytest.log` - Pytest framework logs
+
+### Log Content
+
+Each test log includes:
+- Test execution details
+- Input/output data
+- Assertion results
+- Error messages and stack traces
+- Performance metrics
+
+### Example Log Structure
+
+```
+2024-01-15 10:30:45 - test_agent_volunteer_intent - INFO - Testing volunteer intent detection
+2024-01-15 10:30:45 - test_agent_volunteer_intent - INFO - Test case 1: Basic volunteer interest
+2024-01-15 10:30:45 - test_agent_volunteer_intent - INFO - Input: 'I want to volunteer'
+2024-01-15 10:30:45 - test_agent_volunteer_intent - INFO - Intent: volunteer (expected: volunteer)
+2024-01-15 10:30:45 - test_agent_volunteer_intent - INFO - Confidence: 0.95
+2024-01-15 10:30:45 - test_agent_volunteer_intent - INFO - Escalate: False
 ```
 
-## Available Endpoints
+## Test Coverage
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/scheduler/health` | GET | Health check and Google Sheets connectivity test |
-| `/api/scheduler/send-confirmation-emails` | POST | Process and send confirmation emails to new volunteers |
-| `/api/scheduler/sync-volunteers` | POST | Sync volunteers from Google Sheets signup form |
-| `/api/scheduler/send-weekly-reminders` | POST | Send weekly reminder emails to subscribed volunteers |
-| `/api/scheduler/rotate-schedule` | POST | Rotate schedule sheets to show next week |
+### Import Tests
+- Agent module imports
+- Model imports
+- Configuration imports
+- Knowledge base imports
 
-## Authentication
+### Functionality Tests
+- Volunteer intent detection
+- FAQ intent detection with knowledge base
+- Unknown intent detection
+- Response generation
+- Confidence scoring
 
-The test script uses Google Cloud authentication with the service account:
-`auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com`
+### Quick Reply Tests
+- Signup quick reply
+- Learn more quick reply
+- Contact quick reply
+- FAQ quick reply
 
-The script automatically:
-1. Uses `gcloud auth print-identity-token` to get an OIDC token
-2. Includes the token in the `Authorization: Bearer <token>` header
-3. Validates the token against your API's OAuth client ID
+### Knowledge Base Tests
+- Knowledge base initialization
+- Search functionality
+- Content retrieval
+- Source citations
+
+### Environment Tests
+- Required environment variables
+- Optional environment variables
+- Configuration validation
+
+## Configuration
+
+### Pytest Configuration (`pytest.ini`)
+
+```ini
+[tool:pytest]
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = 
+    -v
+    --tb=short
+    --strict-markers
+    --disable-warnings
+    --log-cli-level=INFO
+    --log-file=tests/logs/pytest.log
+    --log-file-level=INFO
+markers =
+    slow: marks tests as slow
+    integration: marks tests as integration tests
+    unit: marks tests as unit tests
+    agent: marks tests as agent-related tests
+    knowledge_base: marks tests as knowledge base tests
+    quick_replies: marks tests as quick reply tests
+```
+
+### Environment Variables
+
+Required for full functionality:
+- `GEMINI_API_KEY` - Google Gemini API key
+- `NEW_USER_SIGNUP_LINK` - Volunteer signup link
+
+Optional:
+- `GEMINI_MODEL` - Gemini model name
+- `FACEBOOK_MESSENGER_LINK` - Facebook Messenger link
+- `INSTAGRAM_LINK` - Instagram link
+- `FACEBOOK_PAGE_LINK` - Facebook page link
 
 ## Troubleshooting
 
-### Authentication Issues
+### Common Issues
 
-If you encounter authentication errors:
+1. **Import Errors**
+   - Ensure you're running from the project root
+   - Check that all dependencies are installed
+   - Verify Python path includes project root
 
-1. **Check gcloud configuration:**
-   ```bash
-   gcloud config list
-   gcloud auth list
-   ```
+2. **Pytest Not Found**
+   - Install pytest: `pip install pytest`
+   - Use standalone mode as fallback
 
-2. **Re-authenticate if needed:**
-   ```bash
-   gcloud auth login
-   gcloud auth application-default login
-   ```
+3. **API Key Issues**
+   - Set `GEMINI_API_KEY` in your environment
+   - Tests will run with reduced functionality without it
 
-3. **Verify project setting:**
-   ```bash
-   gcloud config set project refined-vector-457419
-   ```
+4. **Log Directory Issues**
+   - Logs directory is created automatically
+   - Check file permissions if creation fails
 
-### Connection Issues
+### Debug Mode
 
-If you can't connect to the API:
+For detailed debugging, run tests with verbose output:
 
-1. **Check if the API server is running:**
-   ```bash
-   curl http://localhost:8080/api/scheduler/health
-   ```
+```bash
+# Pytest with maximum verbosity
+pytest tests/test_agent_pytest.py -v -s --tb=long
 
-2. **Verify the API_BASE_URL in your .env file**
-
-3. **Check firewall/network settings**
-
-### Permission Issues
-
-If you get permission errors:
-
-1. **Verify service account permissions:**
-   - The service account should have the necessary IAM roles
-   - Check if the service account can access the required resources
-
-2. **Check API configuration:**
-   - Verify the `GOOGLE_OAUTH_CLIENT_ID` matches your API configuration
-   - Ensure the service account email is correctly configured
-
-## Example Output
-
-```
-🔧 Scheduler API Tester
-Base URL: http://localhost:8080
-Service Account: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
-API Prefix: /api/scheduler
-============================================================
-
-🔑 Getting authentication token...
-✅ Authentication token obtained successfully
-
-🏥 Testing Health Check Endpoint
-----------------------------------------
-
-🌐 Making GET request to: http://localhost:8080/api/scheduler/health
-📊 Response Status: 200
-📄 Response Data: {
-  "status": "healthy",
-  "google_sheets_connectivity": "ok",
-  "submissions_count": 5
-}
-✅ Health check passed!
-   Google Sheets connectivity: ok
-   Submissions count: 5
+# Standalone with debug logging
+python tests/test_agent_local.py
 ```
 
-## Notes
+## Continuous Integration
 
-- The test script includes delays between requests to avoid overwhelming the server
-- All responses are logged with detailed information for debugging
-- The script handles both successful and error responses gracefully
-- Make sure your API server is running before executing tests 
+The test suite is designed to work in CI/CD environments:
+
+- Logs are written to files for later analysis
+- Exit codes indicate success/failure
+- Tests can run without external dependencies (with reduced functionality)
+- Markers allow selective test execution
+
+## Contributing
+
+When adding new tests:
+
+1. Use appropriate pytest markers
+2. Include comprehensive logging
+3. Add descriptive test names and docstrings
+4. Ensure tests are isolated and repeatable
+5. Update this README if adding new test categories 
