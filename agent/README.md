@@ -189,7 +189,7 @@ VOLUNTEER_KEYWORDS = [
 
 FAQ_KEYWORDS = [
     "location", "where", "when", "time", "schedule", 
-    "hours", "address", "contact", "info"
+    "hours", "address", "info"
 ]
 ```
 
@@ -199,11 +199,11 @@ Customize responses in `agent/config.py`:
 
 ```python
 RESPONSE_TEMPLATES = {
-    "volunteer_interest": {
+    "user_signup_interest": {
         "message": "Thank you for your interest in volunteering! 🙌\n\nYou can sign up here: {signup_link}",
         "quick_replies": [
             {"text": "Sign Up Now", "payload": "SIGNUP"},
-            {"text": "Learn More", "payload": "LEARN_MORE"}
+            {"text": "Learn More", "payload": "LEARN MORE"}
         ]
     }
 }

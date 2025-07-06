@@ -31,6 +31,20 @@ MESSAGE_TIMEOUT = int(os.getenv("MESSAGE_TIMEOUT", "30"))  # seconds
 # Intent Detection Configuration
 INTENT_CONFIDENCE_THRESHOLD = float(os.getenv("INTENT_CONFIDENCE_THRESHOLD", "0.5"))
 
+# Intent Constants
+INTENT_VOLUNTEER = "volunteer"
+INTENT_FAQ = "faq"
+INTENT_UNKNOWN = "unknown"
+INTENT_CONTACT_TEAM = "contact_team"
+
+# Available intents list for validation
+AVAILABLE_INTENTS = [
+    INTENT_VOLUNTEER,
+    INTENT_FAQ,
+    INTENT_UNKNOWN,
+    INTENT_CONTACT_TEAM
+]
+
 # Confidence thresholds for different response types
 KB_CONFIDENCE_THRESHOLD = float(os.getenv("KB_CONFIDENCE_THRESHOLD", "0.9"))
 AI_CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.8"))
@@ -38,56 +52,15 @@ VOLUNTEER_CONFIDENCE_THRESHOLD = float(os.getenv("VOLUNTEER_CONFIDENCE_THRESHOLD
 FAQ_CONFIDENCE_THRESHOLD = float(os.getenv("FAQ_CONFIDENCE_THRESHOLD", "0.9"))
 
 VOLUNTEER_KEYWORDS = [
-    "volunteer", "volunteering", "help", "teach", "teaching", "assist", "join",
-    "sign up", "signup", "participate", "contribute", "get involved"
+    "volunteer", "volunteering", "teach", "teaching", "join", "helping out", "help", "assist", "assistant"
+    "sign up", "signup", "participate", "contribute", "get involved", "apply", "apply now"
 ]
 FAQ_KEYWORDS = [
-    "location", "where", "when", "time", "schedule", "hours", "address",
-    "contact", "phone", "email", "website", "info", "information",
-    "what", "how", "why", "cost", "price", "free", "donation"
+    "location", "where", "when", "time", "times","schedule", "hours", "address",
+    "cost", "price", "free", "donation", "donate", "when do", "weekend",
+    "vietnam hearts", "organization", "mission", "program",
+    "what is", "what are", "tell me about", "learn more", "want to learn", "details"
 ]
-
-# Keywords that should trigger FAQ even if they contain volunteer words
-FAQ_OVERRIDE_KEYWORDS = [
-    "how can i volunteer", "how to volunteer", "volunteer information", 
-    "volunteer details", "volunteer info", "volunteer help",
-    "what is", "what are", "tell me about"
-]
-
-# Response Templates
-RESPONSE_TEMPLATES = {
-    "volunteer_interest": {
-        "message": "Thank you for your interest in volunteering with Vietnam Hearts! We are always looking for volunteer teachers and assistants 🙌\n\nYou can sign up here: {signup_link}\n\nWe'd love to have you join our community of volunteers making a difference in Vietnam!",
-        "quick_replies": [
-            {"text": "Sign Up Now", "payload": "SIGNUP"},
-            {"text": "Learn More", "payload": "LEARN_MORE"},
-            {"text": "Contact Us", "payload": "CONTACT"}
-        ]
-    },
-    "faq_response": {
-        "message": "{response}\n\nIs there anything else I can help you with?",
-        "quick_replies": [
-            {"text": "Volunteer", "payload": "VOLUNTEER"},
-            {"text": "More Questions", "payload": "FAQ"},
-            {"text": "Contact Team", "payload": "CONTACT"}
-        ]
-    },
-    "fallback": {
-        "message": "I'm not sure how to help with that just yet, but someone from our team will get back to you soon! In the meantime, you can:\n\n• Sign up to volunteer: {signup_link}\n• Check our FAQ: {faq_link}\n• Contact us directly: {contact_link}",
-        "quick_replies": [
-            {"text": "Volunteer", "payload": "VOLUNTEER"},
-            {"text": "FAQ", "payload": "FAQ"},
-            {"text": "Contact Team", "payload": "CONTACT"}
-        ]
-    },
-    "escalation": {
-        "message": "I've forwarded your message to our team. They'll get back to you within 24 hours. Thank you for your patience! 🙏",
-        "quick_replies": [
-            {"text": "Sign Up to Volunteer", "payload": "SIGNUP"},
-            {"text": "Check FAQ", "payload": "FAQ"}
-        ]
-    }
-}
 
 # External Links (from main config)
 NEW_USER_SIGNUP_LINK = os.getenv("NEW_USER_SIGNUP_LINK")
@@ -114,6 +87,74 @@ RECENT_MESSAGES_LIMIT = int(os.getenv("RECENT_MESSAGES_LIMIT", "5"))
 MESSAGE_TEXT_TRUNCATE_LENGTH = int(os.getenv("MESSAGE_TEXT_TRUNCATE_LENGTH", "100"))
 ERROR_CONFIDENCE_THRESHOLD = float(os.getenv("ERROR_CONFIDENCE_THRESHOLD", "0.0"))
 
+# Response Formatting Configuration
+MAX_RESPONSE_LENGTH = int(os.getenv("MAX_RESPONSE_LENGTH", "2000"))
+FULL_FAQ_LINK = os.getenv("FULL_FAQ_LINK", "https://facebook.com/vietnamhearts")
+
+# Quick Reply Configuration
+CONTACT_ESCALATION_ENABLED = os.getenv("CONTACT_ESCALATION_ENABLED", "true").lower() == "true"
+
+# Centralized Quick Reply Definitions
+QUICK_REPLIES = {
+    "SIGNUP": {"text": "Sign Up Now", "payload": "SIGNUP"},
+    "LEARN MORE": {"text": "Learn More", "payload": "LEARN MORE"},
+    "CONTACT US": {"text": "Contact Us", "payload": "CONTACT US"},
+    "LOCATION": {"text": "Location Info", "payload": "LOCATION"},
+    "SCHEDULE": {"text": "Class Schedule", "payload": "SCHEDULE"},
+}
+
+# Quick Reply Sets
+QUICK_REPLY_SETS = {
+    "volunteer": [
+        QUICK_REPLIES["SIGNUP"],
+        QUICK_REPLIES["LEARN MORE"],
+        QUICK_REPLIES["CONTACT US"]
+    ],
+    "faq": [
+        QUICK_REPLIES["SIGNUP"],
+        QUICK_REPLIES["SCHEDULE"],
+        QUICK_REPLIES["LEARN MORE"],
+        QUICK_REPLIES["CONTACT US"]
+    ],
+    "fallback": [
+        QUICK_REPLIES["SIGNUP"],
+        QUICK_REPLIES["LEARN MORE"],
+        QUICK_REPLIES["CONTACT US"]
+    ],
+    "location": [
+        QUICK_REPLIES["SCHEDULE"],
+        QUICK_REPLIES["SIGNUP"],
+        QUICK_REPLIES["CONTACT US"]
+    ],
+    "schedule": [
+        QUICK_REPLIES["SIGNUP"],
+        QUICK_REPLIES["LOCATION"],
+        QUICK_REPLIES["CONTACT US"]
+    ],
+    "volunteer_info": [
+        QUICK_REPLIES["LOCATION"],
+        QUICK_REPLIES["SCHEDULE"],
+        QUICK_REPLIES["CONTACT US"]
+    ]
+}
+
+# Response Templates
+RESPONSE_TEMPLATES = {
+    "user_signup_interest": {
+        "message": "Thank you for your interest in volunteering with Vietnam Hearts! We are always looking for volunteer teachers and assistants 🙌\n\nYou can sign up here: {signup_link}\n\nWe'd love to have you join our community of volunteers making a difference in Vietnam!",
+        "quick_replies": QUICK_REPLY_SETS["volunteer"]
+    },
+    "contact_team": {
+        "message": "I've forwarded your message to our team. They'll get back to you within 24 hours. Thank you for your patience! 🙏\n\nIn the meantime, you can:\n• Sign up to volunteer: {signup_link}\n",
+        "quick_replies": QUICK_REPLY_SETS["fallback"]
+    }
+}
+
+# Escalation Configuration
+ESCALATION_CONFIDENCE_THRESHOLD = float(os.getenv("ESCALATION_CONFIDENCE_THRESHOLD", "0.5"))
+ESCALATION_UNKNOWN_CONFIDENCE_THRESHOLD = float(os.getenv("ESCALATION_UNKNOWN_CONFIDENCE_THRESHOLD", "0.3"))
+ESCALATION_MESSAGE_LENGTH_THRESHOLD = int(os.getenv("ESCALATION_MESSAGE_LENGTH_THRESHOLD", "500"))
+
 # Required Environment Variables
 REQUIRED_ENV_VARS = [
     "GEMINI_API_KEY",
@@ -138,4 +179,18 @@ def validate_agent_config():
             logger.warning("Agent will work with reduced functionality (keyword-only detection)")
 
 # Validate configuration on import
-validate_agent_config() 
+validate_agent_config()
+
+def validate_intent(intent: str) -> bool:
+    """Validate that an intent is one of the allowed values"""
+    return intent in AVAILABLE_INTENTS
+
+def get_intent_constant(intent_name: str) -> str:
+    """Get the intent constant for a given intent name"""
+    intent_mapping = {
+        "volunteer": INTENT_VOLUNTEER,
+        "faq": INTENT_FAQ,
+        "unknown": INTENT_UNKNOWN,
+        "contact_team": INTENT_CONTACT_TEAM,
+    }
+    return intent_mapping.get(intent_name, INTENT_UNKNOWN) 
