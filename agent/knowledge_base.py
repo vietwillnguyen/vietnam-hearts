@@ -56,7 +56,6 @@ class VietnamHeartsKnowledgeBase:
                 "name": "Vietnam Hearts",
                 "description": "Vietnam Hearts is a collective of volunteers that provides education and support to underprivileged children in Vietnam. We primarily focus in Saigon area but we also work with other communities when opportunities come.",
                 "mission": "Serve the community and help underprivileged children in Vietnam through education and support",
-                "new_user_signup_link": NEW_USER_SIGNUP_LINK
             },
             "locations": {
                 "primary": "Vietnam (Binh Thanh, Ho Chi Minh City)",
@@ -77,7 +76,7 @@ class VietnamHeartsKnowledgeBase:
             "donations" : {
                 "donations_supplies_description": "Donations like food and supplies are accepted, but this will require us to contact a team member to be involved, and we will get back to you shortly.",
                 "donations_cash_description": "Donations go to support our community in different ways. GoFundMe is for our international donations supporting directly for the school and students for food or school supplies, BuyMeACoffee is used for supporting our teachers and volunteers. If the donation is with VND person, We accept cash or bank transfer, this will require us to contact a team member to be involved, and we will get back to you shortly.",
-                "donation_usa_link": "https://www.gofundme.com/f/help-feed-and-provide-education-for-kids-in-saigon-vietnam?fbclid=PAZXh0bgNhZW0CMTEAAaexN53ysVnAbBtULcaQtqtcLDYD49R_eBSaU0pJgA7R8bItk_P_mjxI-b9sRg_aem_P7OLNodGP0DNkCtGLoml-Q",
+                "donation_international_link": "https://www.gofundme.com/f/help-feed-and-provide-education-for-kids-in-saigon-vietnam?fbclid=PAZXh0bgNhZW0CMTEAAaexN53ysVnAbBtULcaQtqtcLDYD49R_eBSaU0pJgA7R8bItk_P_mjxI-b9sRg_aem_P7OLNodGP0DNkCtGLoml-Q",
                 "donation_buymeacoffee_link": "https://www.buymeacoffee.com/vietnamhearts"
             }
         }
@@ -184,7 +183,7 @@ class VietnamHeartsKnowledgeBase:
         donation_text += f"• **Financial Support**: {donations['donations_cash_description']}\n\n"
         
         donation_text += "**Donation Links:**\n"
-        donation_text += f"• **International Donations (GoFundMe)**: {donations['donation_usa_link']}\n"
+        donation_text += f"• **International Donations (GoFundMe)**: {donations['donation_international_link']}\n"
         donation_text += f"• **Support Teachers & Volunteers (Buy Me a Coffee)**: {donations['donation_buymeacoffee_link']}\n\n"
         
         donation_text += "*Note: For VND donations (cash or bank transfer), we will contact a team member to get back to you shortly on this.*"

@@ -10,10 +10,6 @@ import pytest
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
-
-# Set test mode environment variable
-os.environ["TEST_MODE"] = "true"
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -27,8 +23,7 @@ logs_dir.mkdir(parents=True, exist_ok=True)
 # Set up logging
 def setup_logger(test_name: str) -> logging.Logger:
     """Set up a logger for a specific test"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = logs_dir / f"test_agent_{test_name}_{timestamp}.log"
+    log_file = logs_dir / f"test_agent_{test_name}.log"
     
     logger = logging.getLogger(f"test_agent_{test_name}")
     logger.setLevel(logging.INFO)
@@ -56,211 +51,54 @@ def setup_logger(test_name: str) -> logging.Logger:
     
     return logger
 
-class TestAgentImports:
-    """Test that all agent modules can be imported correctly"""
-    
-    @pytest.mark.unit
-    @pytest.mark.agent
-    def test_agent_imports(self):
-        """Test importing the main agent module"""
-        logger = setup_logger("imports")
-        logger.info("Testing agent imports")
-        
-        try:
-            from agent.agent import VietnamHeartsAgent
-            logger.info("✅ Successfully imported VietnamHeartsAgent")
-            assert True
-        except ImportError as e:
-            logger.error(f"❌ Failed to import VietnamHeartsAgent: {e}")
-            assert False
-    
-    @pytest.mark.unit
-    @pytest.mark.agent
-    def test_models_imports(self):
-        """Test importing agent models"""
-        logger = setup_logger("models_imports")
-        logger.info("Testing models imports")
-        
-        try:
-            from agent.models import MessageRequest, MessageResponse
-            logger.info("✅ Successfully imported MessageRequest, MessageResponse")
-            assert True
-        except ImportError as e:
-            logger.error(f"❌ Failed to import models: {e}")
-            assert False
-    
-    @pytest.mark.unit
-    @pytest.mark.agent
-    def test_config_imports(self):
-        """Test importing agent configuration"""
-        logger = setup_logger("config_imports")
-        logger.info("Testing config imports")
-        
-        try:
-            from agent.config import AGENT_NAME, AGENT_VERSION
-            logger.info(f"✅ Successfully imported config: {AGENT_NAME} v{AGENT_VERSION}")
-            assert AGENT_NAME is not None
-            assert AGENT_VERSION is not None
-        except ImportError as e:
-            logger.error(f"❌ Failed to import config: {e}")
-            assert False
-    
-    @pytest.mark.unit
-    @pytest.mark.knowledge_base
-    def test_knowledge_base_imports(self):
-        """Test importing knowledge base"""
-        logger = setup_logger("kb_imports")
-        logger.info("Testing knowledge base imports")
-        
-        try:
-            from agent.knowledge_base import VietnamHeartsKnowledgeBase
-            logger.info("✅ Successfully imported VietnamHeartsKnowledgeBase")
-            assert True
-        except ImportError as e:
-            logger.error(f"❌ Failed to import knowledge base: {e}")
-            assert False
 
-class TestAgentFunctionality:
-    """Test the agent's core functionality"""
+class TestAgentBasicFunctionality:
+    """Test the agent's basic functionality and escalation detection"""
     
     @pytest.fixture(autouse=True)
     def setup_agent(self):
         """Set up agent for testing"""
         from agent.agent import VietnamHeartsAgent
         self.agent = VietnamHeartsAgent()
-        self.logger = setup_logger("functionality")
+        self.logger = setup_logger("basic_functionality")
         self.logger.info("Agent initialized for testing")
     
-    @pytest.mark.integration
-    @pytest.mark.agent
     @pytest.mark.parametrize("test_case", [
         {
-            "message": "I want to volunteer",
-            "expected_intent": "volunteer",
-            "description": "Basic volunteer interest"
+            "message": "I'm interested in volunteering",
+            "description": "Basic volunteer interest",
+            "should_escalate": False,
+            "expected_keywords": ["sign up", "volunteer"]
         },
-        {
-            "message": "How can I help teach?",
-            "expected_intent": "volunteer",
-            "description": "Teaching interest"
-        },
-        {
-            "message": "I'd like to join as a volunteer",
-            "expected_intent": "volunteer",
-            "description": "Join volunteer"
-        }
-    ])
-    def test_volunteer_intent_detection(self, test_case):
-        """Test volunteer intent detection"""
-        logger = setup_logger("volunteer_intent")
-        logger.info(f"Testing volunteer intent detection: {test_case['description']}")
-        
-        logger.info(f"Input: '{test_case['message']}'")
-        
-        from agent.models import MessageRequest
-        request = MessageRequest(
-            user_id="test_user",
-            platform="test",
-            message_text=test_case['message']
-        )
-        
-        response = self.agent.process_message(request)
-        
-        logger.info(f"Intent: {response.intent} (expected: {test_case['expected_intent']})")
-        logger.info(f"Confidence: {response.confidence:.2f}")
-        logger.info(f"Escalate: {response.should_escalate}")
-        logger.info(f"Response preview: {response.response_text[:100]}...")
-        
-        # Assertions
-        assert response.intent == test_case['expected_intent'], \
-            f"Expected intent {test_case['expected_intent']}, got {response.intent}"
-        assert response.confidence > 0.5, \
-            f"Low confidence: {response.confidence}"
-        assert not response.should_escalate, \
-            "Should not escalate volunteer queries"
-    
-    @pytest.mark.integration
-    @pytest.mark.agent
-    @pytest.mark.knowledge_base
-    @pytest.mark.parametrize("test_case", [
         {
             "message": "Where are you located?",
-            "expected_intent": "faq",
             "description": "Location question",
-            "should_use_kb": True
+            "should_escalate": False,
+            "expected_keywords": ["Binh Thanh", "Ho Chi Minh"]
         },
         {
-            "message": "What are your hours?",
-            "expected_intent": "faq",
+            "message": "When do you teach?",
             "description": "Schedule question",
-            "should_use_kb": True
+            "should_escalate": False,
+            "expected_keywords": ["schedule", "time", "class"]
         },
         {
             "message": "What is Vietnam Hearts?",
-            "expected_intent": "faq",
             "description": "Organization question",
-            "should_use_kb": True
+            "should_escalate": False,
+            "expected_keywords": ["Vietnam Hearts", "organization", "volunteer"]
         },
         {
-            "message": "How can I volunteer?",
-            "expected_intent": "faq",
-            "description": "Volunteer info question",
-            "should_use_kb": True
+            "message": "How can I donate?",
+            "description": "Donation question",
+            "should_escalate": False,
+            "expected_keywords": ["donate", "support", "contribution"]
         }
     ])
-    def test_faq_intent_detection(self, test_case):
-        """Test FAQ intent detection with knowledge base"""
-        logger = setup_logger("faq_intent")
-        logger.info(f"Testing FAQ intent detection: {test_case['description']}")
-        
-        logger.info(f"Input: '{test_case['message']}'")
-        
-        from agent.models import MessageRequest
-        request = MessageRequest(
-            user_id="test_user",
-            platform="test",
-            message_text=test_case['message']
-        )
-        
-        response = self.agent.process_message(request)
-        
-        logger.info(f"Intent: {response.intent} (expected: {test_case['expected_intent']})")
-        logger.info(f"Confidence: {response.confidence:.2f}")
-        logger.info(f"Escalate: {response.should_escalate}")
-        logger.info(f"Response preview: {response.response_text[:100]}...")
-        
-        # Assertions
-        assert response.intent == test_case['expected_intent'], \
-            f"Expected intent {test_case['expected_intent']}, got {response.intent}"
-        
-        if test_case['should_use_kb']:
-            # Import config to get test thresholds
-            from agent.config import TEST_KB_CONFIDENCE_THRESHOLD
-            assert response.confidence >= TEST_KB_CONFIDENCE_THRESHOLD, \
-                f"Should have high confidence for KB queries: {response.confidence} (expected >= {TEST_KB_CONFIDENCE_THRESHOLD})"
-            assert "Source:" in response.response_text, \
-                "Should include source citation for KB responses"
-    
-    @pytest.mark.integration
-    @pytest.mark.agent
-    @pytest.mark.parametrize("test_case", [
-        {
-            "message": "Hello there!",
-            "description": "Generic greeting"
-        },
-        {
-            "message": "What's the weather like?",
-            "description": "Unrelated question"
-        },
-        {
-            "message": "Random text here",
-            "description": "Random text"
-        }
-    ])
-    def test_unknown_intent_detection(self, test_case):
-        """Test unknown intent detection"""
-        logger = setup_logger("unknown_intent")
-        logger.info(f"Testing unknown intent detection: {test_case['description']}")
+    def test_basic_responses(self, test_case):
+        """Test basic response scenarios"""
+        logger = setup_logger("basic_responses")
+        logger.info(f"Testing basic response: {test_case['description']}")
         
         logger.info(f"Input: '{test_case['message']}'")
         
@@ -278,52 +116,161 @@ class TestAgentFunctionality:
         logger.info(f"Escalate: {response.should_escalate}")
         logger.info(f"Response preview: {response.response_text[:100]}...")
         
-        # For unknown intents, we expect lower confidence
-        assert response.confidence < 0.7, \
-            f"Should have lower confidence for unknown queries: {response.confidence}"
+        # Assertions
+        assert response.intent == "ai_response", \
+            f"Expected intent 'ai_response', got {response.intent}"
+        assert response.confidence > 0.5, \
+            f"Low confidence: {response.confidence}"
+        assert response.should_escalate == test_case['should_escalate'], \
+            f"Expected escalation {test_case['should_escalate']}, got {response.should_escalate}"
+        
+        # Check for expected keywords in response
+        response_lower = response.response_text.lower()
+        for keyword in test_case['expected_keywords']:
+            assert keyword.lower() in response_lower, \
+                f"Expected keyword '{keyword}' not found in response"
+        
+        # Check that standard response format is present
+        assert "CONTACT TEAM" in response.response_text, \
+            "Response should include standard CONTACT TEAM instruction"
 
-class TestQuickReplies:
-    """Test quick reply functionality"""
+
+class TestEscalationDetection:
+    """Test escalation detection functionality"""
     
     @pytest.fixture(autouse=True)
     def setup_agent(self):
         """Set up agent for testing"""
         from agent.agent import VietnamHeartsAgent
         self.agent = VietnamHeartsAgent()
-        self.logger = setup_logger("quick_replies")
-        self.logger.info("Agent initialized for quick reply testing")
+        self.logger = setup_logger("escalation_detection")
+        self.logger.info("Agent initialized for escalation testing")
     
-    @pytest.mark.parametrize("quick_reply_type,expected_intent,expected_confidence,expected_keywords", [
-        ("SIGNUP", "volunteer", 1.0, ["sign up"]),
-        ("LEARN_MORE", "faq", 0.9, ["Vietnam Hearts"]),
-        ("CONTACT", "faq", 0.9, ["contact"])
+    @pytest.mark.parametrize("test_case", [
+        {
+            "message": "I have a complaint about the organization",
+            "description": "Complaint - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "This is an urgent matter",
+            "description": "Urgent matter - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "I need to speak to a team member",
+            "description": "Request to speak to team member - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "I want to talk to someone real",
+            "description": "Request for human contact - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "I have a legal question",
+            "description": "Legal question - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "I want to discuss a partnership",
+            "description": "Partnership inquiry - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "Tôi có khiếu nại về tổ chức",
+            "description": "Vietnamese complaint - should escalate",
+            "should_escalate": True
+        },
+        {
+            "message": "Tôi cần nói chuyện với thành viên nhóm",
+            "description": "Vietnamese request for team member - should escalate",
+            "should_escalate": True
+        }
     ])
-    def test_quick_replies(self, quick_reply_type, expected_intent, expected_confidence, expected_keywords):
-        """Test quick reply functionality"""
-        logger = setup_logger(f"quick_reply_{quick_reply_type.lower()}")
-        logger.info(f"Testing quick reply: {quick_reply_type}")
+    def test_escalation_triggers(self, test_case):
+        """Test that escalation is triggered for sensitive topics"""
+        logger = setup_logger("escalation_triggers")
+        logger.info(f"Testing escalation trigger: {test_case['description']}")
         
-        response = self.agent.process_quick_reply("test_user", "test", quick_reply_type)
+        logger.info(f"Input: '{test_case['message']}'")
+        
+        from agent.models import MessageRequest
+        request = MessageRequest(
+            user_id="test_user",
+            platform="test",
+            message_text=test_case['message']
+        )
+        
+        response = self.agent.process_message(request)
         
         logger.info(f"Intent: {response.intent}")
         logger.info(f"Confidence: {response.confidence:.2f}")
-        logger.info(f"Response: {response.response_text}")
-        logger.info(f"Quick replies: {[qr['text'] for qr in response.quick_replies]}")
+        logger.info(f"Escalate: {response.should_escalate}")
+        logger.info(f"Response preview: {response.response_text[:100]}...")
         
         # Assertions
-        assert response.intent == expected_intent, \
-            f"Expected intent {expected_intent}, got {response.intent}"
-        assert response.confidence >= expected_confidence, \
-            f"Expected confidence >= {expected_confidence}, got {response.confidence}"
+        assert response.intent == "ai_response", \
+            f"Expected intent 'ai_response', got {response.intent}"
+        assert response.should_escalate == test_case['should_escalate'], \
+            f"Expected escalation {test_case['should_escalate']}, got {response.should_escalate}"
         
-        # Check for expected keywords in response
-        response_lower = response.response_text.lower()
-        for keyword in expected_keywords:
-            assert keyword.lower() in response_lower, \
-                f"Expected keyword '{keyword}' not found in response"
+        if test_case['should_escalate']:
+            # Check that escalation message is present
+            assert "requires escalation" in response.response_text.lower() or \
+                   "team member will get back to you" in response.response_text.lower(), \
+                "Escalation response should contain escalation message"
+    
+    @pytest.mark.parametrize("test_case", [
+        {
+            "message": "I'm interested in volunteering",
+            "description": "Normal volunteer interest - should NOT escalate",
+            "should_escalate": False
+        },
+        {
+            "message": "Where are you located?",
+            "description": "Normal location question - should NOT escalate",
+            "should_escalate": False
+        },
+        {
+            "message": "What times do you teach?",
+            "description": "Normal schedule question - should NOT escalate",
+            "should_escalate": False
+        }
+    ])
+    def test_no_escalation_triggers(self, test_case):
+        """Test that normal queries do NOT trigger escalation"""
+        logger = setup_logger("no_escalation_triggers")
+        logger.info(f"Testing no escalation: {test_case['description']}")
         
-        assert len(response.quick_replies) > 0, \
-            "Should have quick replies"
+        logger.info(f"Input: '{test_case['message']}'")
+        
+        from agent.models import MessageRequest
+        request = MessageRequest(
+            user_id="test_user",
+            platform="test",
+            message_text=test_case['message']
+        )
+        
+        response = self.agent.process_message(request)
+        
+        logger.info(f"Intent: {response.intent}")
+        logger.info(f"Confidence: {response.confidence:.2f}")
+        logger.info(f"Escalate: {response.should_escalate}")
+        logger.info(f"Response preview: {response.response_text[:100]}...")
+        
+        # Assertions
+        assert response.intent == "ai_response", \
+            f"Expected intent 'ai_response', got {response.intent}"
+        assert response.should_escalate == test_case['should_escalate'], \
+            f"Expected escalation {test_case['should_escalate']}, got {response.should_escalate}"
+        
+        # Check that standard response format is present (not escalation message)
+        assert "CONTACT TEAM" in response.response_text, \
+            "Response should include standard CONTACT TEAM instruction"
+        assert "requires escalation" not in response.response_text.lower(), \
+            "Normal response should not contain escalation message"
+
 
 class TestKnowledgeBase:
     """Test knowledge base functionality"""
@@ -332,7 +279,8 @@ class TestKnowledgeBase:
         ("Where are you located?", "location"),
         ("What are your hours?", "schedule"),
         ("How can I volunteer?", "volunteer"),
-        ("What is Vietnam Hearts?", "organization")
+        ("What is Vietnam Hearts?", "organization"),
+        ("How can I donate?", "donation")
     ])
     def test_knowledge_base_search(self, query, expected_type):
         """Test knowledge base search functionality"""
@@ -351,9 +299,9 @@ class TestKnowledgeBase:
             logger.info(f"Content preview: {result['content'][:100]}...")
             
             # Import config to get test thresholds
-            from agent.config import TEST_KB_CONFIDENCE_THRESHOLD
-            assert result['confidence'] >= TEST_KB_CONFIDENCE_THRESHOLD, \
-                f"Expected high confidence >= {TEST_KB_CONFIDENCE_THRESHOLD}, got {result['confidence']}"
+            from agent.config import KB_CONFIDENCE_THRESHOLD
+            assert result['confidence'] >= KB_CONFIDENCE_THRESHOLD, \
+                f"Expected high confidence >= {KB_CONFIDENCE_THRESHOLD}, got {result['confidence']}"
             assert result['type'] == expected_type, \
                 f"Expected type {expected_type}, got {result['type']}"
             assert len(result['content']) > 0, \
@@ -375,20 +323,24 @@ class TestKnowledgeBase:
             
             # Test basic methods
             location_info = kb.get_location_info()
-            hours_info = kb.get_hours_info()
             volunteer_info = kb.get_volunteer_info()
+            schedule_info = kb.get_class_schedule()
+            donation_info = kb.get_donation_info()
             
             logger.info(f"Location info length: {len(location_info)}")
-            logger.info(f"Hours info length: {len(hours_info)}")
             logger.info(f"Volunteer info length: {len(volunteer_info)}")
+            logger.info(f"Schedule info length: {len(schedule_info)}")
+            logger.info(f"Donation info length: {len(donation_info)}")
             
             assert len(location_info) > 0, "Location info should not be empty"
-            assert len(hours_info) > 0, "Hours info should not be empty"
             assert len(volunteer_info) > 0, "Volunteer info should not be empty"
+            assert len(schedule_info) > 0, "Schedule info should not be empty"
+            assert len(donation_info) > 0, "Donation info should not be empty"
             
         except Exception as e:
             logger.error(f"❌ Knowledge base initialization failed: {e}")
             assert False
+
 
 class TestEnvironment:
     """Test environment configuration"""
@@ -421,6 +373,7 @@ class TestEnvironment:
                 # but we log them for awareness
             else:
                 logger.info(f"⚠️  {var_name}: Not set (optional)")
+
 
 # Pytest configuration
 def pytest_configure(config):
