@@ -341,6 +341,11 @@ def get_signup_form_submissions(
         submissions = sheets_service.get_signup_form_submissions()
         logger.info(f"Found {len(submissions)} form submissions from Google Sheets")
 
+        # Initialize variables for both process_new=True and process_new=False cases
+        new_submissions = []
+        new_volunteers = []
+        failed_submissions = []
+
         if process_new:
             # Get all existing emails in one query
             existing_emails = set(
@@ -357,9 +362,6 @@ def get_signup_form_submissions(
             logger.info(f"Found {len(new_submissions)} new submissions to process...")
             
             # Batch create new volunteers with error handling
-            new_volunteers = []
-            failed_submissions = []
-            
             for submission in new_submissions:
                 try:
                     volunteer = create_new_volunteer_object(submission)
@@ -401,7 +403,6 @@ def get_signup_form_submissions(
             except Exception as e:
                 logger.error(f"Failed to send confirmation emails: {str(e)}")
 
-
         # Determine response status based on results
         if failed_submissions:
             return {
@@ -410,8 +411,8 @@ def get_signup_form_submissions(
                 "data": submissions,
                 "details": {
                     "submissions_retrieved": len(submissions),
-                    "new_submissions_found": len(new_submissions) if process_new else 0,
-                    "volunteers_created": len(new_volunteers) if process_new else 0,
+                    "new_submissions_found": len(new_submissions),
+                    "volunteers_created": len(new_volunteers),
                     "failed_submissions": failed_submissions
                 }
             }
