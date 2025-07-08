@@ -8,7 +8,7 @@ SQLAlchemy ORM converts these Python classes into database tables.
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import DeclarativeBase, relationship
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import ConfigDict
 
 
 # Base class for all our models
@@ -78,8 +78,7 @@ class Volunteer(Base):
         "EmailCommunication", back_populates="volunteer"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmailCommunication(Base):
@@ -127,5 +126,4 @@ class EmailCommunication(Base):
         onupdate=datetime.now(timezone.utc),
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

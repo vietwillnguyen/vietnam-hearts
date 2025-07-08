@@ -1,5 +1,12 @@
 CHANGELOG:
 
+
+## Version 1.1.3
+
+- Fix: Bug where when syncing, it took all ACTIVE emails vs just all emails, this caused sync with old database data to add this person again
+- Refactor: logs get written to a single log in logs directory
+- Add: tests for pytest now work.
+
 ## Version 1.1.2
 
 - Refactor: Project recovered from GCR, changed dockerfile

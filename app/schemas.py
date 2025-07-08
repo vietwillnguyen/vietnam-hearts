@@ -5,7 +5,7 @@ These schemas define the structure of data that can be sent to and received from
 They provide automatic validation and serialization of data.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
@@ -48,8 +48,7 @@ class Volunteer(VolunteerBase):
     weekly_reminders_subscribed: bool = True
     all_emails_subscribed: bool = True
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmailCommunicationBase(BaseModel):
@@ -79,5 +78,4 @@ class EmailCommunication(EmailCommunicationBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

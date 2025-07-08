@@ -14,7 +14,7 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).parent.parent
 
 # Database Configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./scheduler.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 
 # API Configuration
 PORT = os.getenv("PORT", "8080")

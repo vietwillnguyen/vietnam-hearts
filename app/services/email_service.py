@@ -121,7 +121,19 @@ class EmailService:
 
             # DRY_RUN logic
             if DRY_RUN and to_email != DRY_RUN_EMAIL_RECIPIENT:
-                logger.info(f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject})")
+                logger.info(f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database")
+                # Log the email communication in database
+                email_comm = EmailCommunicationModel(
+                    volunteer_id=volunteer.id,
+                    recipient_email=to_email,
+                    email_type="volunteer_confirmation",
+                    subject=subject,
+                    template_name="confirmation-email.html",
+                    status="sent",
+                    sent_at=datetime.now(),
+                )
+                db.add(email_comm)
+                db.commit()
                 return True
 
             # Create message
@@ -137,6 +149,7 @@ class EmailService:
                 server.login(self.smtp_username, self.smtp_password)
                 server.send_message(message)
 
+            logger.info(f"Confirmation email sent to {to_email}")
             # Log the email communication in database
             email_comm = EmailCommunicationModel(
                 volunteer_id=volunteer.id,
@@ -149,8 +162,6 @@ class EmailService:
             )
             db.add(email_comm)
             db.commit()
-
-            logger.info(f"Confirmation email sent to {to_email}")
             # Database is now the source of truth; no write-back to Sheets.
             return True
 
@@ -209,7 +220,19 @@ class EmailService:
         try:
             # DRY_RUN logic
             if DRY_RUN and to_email != DRY_RUN_EMAIL_RECIPIENT:
-                logger.info(f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject})")
+                logger.info(f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database")
+                email_comm = EmailCommunicationModel(
+                    volunteer_id=volunteer_id,
+                    recipient_email=to_email,
+                    email_type=email_type,
+                    subject=subject,
+                    template_name=None,
+                    status="sent",
+                    sent_at=datetime.now(),
+                )
+                if db is not None:
+                    db.add(email_comm)
+                    db.commit()
                 return True
 
             message = MIMEMultipart()

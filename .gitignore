@@ -6,6 +6,9 @@ __pycache__/
 # Poetry
 poetry.lock
 
+# Database
+*.db
+
 # Virtual environments
 .env
 .venv

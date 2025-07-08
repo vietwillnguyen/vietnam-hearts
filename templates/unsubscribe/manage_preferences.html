@@ -141,20 +141,13 @@
 
         <div class="volunteer-info">
             <strong>Email:</strong> {{ volunteer_email }}<br>
-            <strong>Current Status:</strong> 
-            {% if volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}
-                Subscribed to all emails
-            {% elif volunteer.all_emails_subscribed %}
-                Subscribed to announcements and events only (no weekly reminders)
-            {% else %}
-                Unsubscribed from all emails
-            {% endif %}
+            <strong>Current Status:</strong> {{ subscribed_status }}
         </div>
 
         <form method="POST" action="/public/unsubscribe?token={{ token }}" class="preferences-form">
             <div class="preference-option">
                 <input type="radio" id="weekly_reminders" name="unsubscribe_type" value="weekly_reminders" 
-                       {% if volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}checked{% endif %}>
+                       {% if unsubscribe_type == "weekly_reminders" %}checked{% endif %}>
                 <label for="weekly_reminders">I no longer want to receive weekly schedule reminders</label>
                 <div class="preference-description">
                     You'll still receive important announcements, events, and other updates, but won't get weekly schedule reminders.
@@ -163,7 +156,7 @@
 
             <div class="preference-option">
                 <input type="radio" id="all_emails" name="unsubscribe_type" value="all_emails"
-                       {% if not volunteer.all_emails_subscribed %}checked{% endif %}>
+                       {% if unsubscribe_type == "all_emails" %}checked{% endif %}>
                 <label for="all_emails">I no longer want to receive any emails</label>
                 <div class="preference-description">
                     You won't receive any emails from us, including announcements, events, fundraisers, and schedule reminders. 
@@ -173,7 +166,7 @@
 
             <div class="preference-option">
                 <input type="radio" id="resubscribe" name="unsubscribe_type" value="resubscribe"
-                       {% if not volunteer.weekly_reminders_subscribed and volunteer.all_emails_subscribed %}checked{% endif %}>
+                       {% if unsubscribe_type == "resubscribe" %}checked{% endif %}>
                 <label for="resubscribe">I want to receive all emails again</label>
                 <div class="preference-description">
                     Resubscribe to all emails including weekly reminders, announcements, events, and fundraisers. 
@@ -194,27 +187,17 @@
         // Add visual feedback for selected options
         document.querySelectorAll('.preference-option').forEach(option => {
             const radio = option.querySelector('input[type="radio"]');
-            const label = option.querySelector('label');
-            
-            // Check if this option is currently selected
             if (radio.checked) {
                 option.classList.add('selected');
             }
-            
-            // Add click handlers
             option.addEventListener('click', () => {
-                // Remove selected class from all options
                 document.querySelectorAll('.preference-option').forEach(opt => {
                     opt.classList.remove('selected');
                 });
-                
-                // Add selected class to clicked option
                 option.classList.add('selected');
-                
-                // Check the radio button
                 radio.checked = true;
             });
         });
     </script>
 </body>
-</html> 
+</html>

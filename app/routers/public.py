@@ -52,18 +52,18 @@ def unsubscribe_volunteer_page(
         if not volunteer:
             logger.warning(f"Invalid unsubscribe token attempted: {token}")
             return templates.TemplateResponse(
+                request,
                 "unsubscribe/error.html",
                 {
-                    "request": request,
                     "error_message": "Invalid or expired unsubscribe link. Please contact us if you need assistance.",
                 },
+                status_code=400,
             )
 
         return templates.TemplateResponse(
+            request,
             "unsubscribe/manage_preferences.html",
             {
-                "request": request,
-                "volunteer": volunteer,
                 "volunteer_name": volunteer.name,
                 "volunteer_email": volunteer.email,
                 "token": token,
@@ -73,9 +73,9 @@ def unsubscribe_volunteer_page(
     except Exception as e:
         logger.error(f"Error showing unsubscribe page: {str(e)}", exc_info=True)
         return templates.TemplateResponse(
+            request,
             "unsubscribe/error.html",
             {
-                "request": request,
                 "error_message": "An error occurred while loading your preferences. Please try again or contact us for assistance.",
             },
         )
@@ -99,18 +99,7 @@ def update_email_preferences(
         db: Database session
     """
     try:
-        # Validate unsubscribe type
-        if unsubscribe_type not in ["weekly_reminders", "all_emails", "resubscribe"]:
-            return templates.TemplateResponse(
-                "unsubscribe/manage_preferences.html",
-                {
-                    "request": request,
-                    "error_message": "Invalid preference selection. Please try again.",
-                    "token": token,
-                },
-            )
-
-        # Find volunteer by unsubscribe token
+        # Find volunteer by unsubscribe token first
         volunteer = (
             db.query(VolunteerModel)
             .filter(VolunteerModel.email_unsubscribe_token == token)
@@ -120,11 +109,23 @@ def update_email_preferences(
         if not volunteer:
             logger.warning(f"Invalid unsubscribe token attempted: {token}")
             return templates.TemplateResponse(
+                request,
                 "unsubscribe/error.html",
                 {
-                    "request": request,
                     "error_message": "Invalid or expired unsubscribe link. Please contact us if you need assistance.",
                 },
+                status_code=400,
+            )
+
+        if unsubscribe_type not in ["weekly_reminders", "all_emails", "resubscribe"]:
+            return templates.TemplateResponse(
+                request,
+                "unsubscribe/manage_preferences.html",
+                {
+                    "error_message": "Invalid preference selection. Please try again.",
+                    "token": token,
+                },
+                status_code=422,
             )
 
         # Handle preference update based on type
@@ -172,10 +173,9 @@ def update_email_preferences(
             pass
 
         return templates.TemplateResponse(
+            request,
             "unsubscribe/manage_preferences.html",
             {
-                "request": request,
-                "volunteer": volunteer,
                 "volunteer_name": volunteer.name,
                 "volunteer_email": volunteer.email,
                 "token": token,
@@ -187,9 +187,9 @@ def update_email_preferences(
         logger.error(f"Error updating email preferences: {str(e)}", exc_info=True)
         db.rollback()
         return templates.TemplateResponse(
+            request,
             "unsubscribe/manage_preferences.html",
             {
-                "request": request,
                 "error_message": "An error occurred while updating your preferences. Please try again or contact us for assistance.",
                 "token": token,
             },

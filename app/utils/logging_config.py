@@ -3,79 +3,101 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# Create logs directory if it doesn't exist
-LOGS_DIR = Path("logs")
+# Environment toggle
+SEPARATE_LOG_FILES = os.getenv("SEPARATE_LOG_FILES", "false").lower() == "true"
+
+# Log directory and format
+LOGS_DIR = Path("logs")  # Logs are written to: ./logs/ (relative to project root)
 LOGS_DIR.mkdir(exist_ok=True)
 
-# Log format
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-# File sizes and backup counts
 MAX_BYTES = 10 * 1024 * 1024  # 10MB
 BACKUP_COUNT = 5
 
+# Shared formatter
+formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
-def setup_logger(name: str, log_file: str, level=logging.INFO):
+
+def setup_logger(name: str, log_file: str | None = None, level=logging.INFO):
     """
-    Set up a logger with the specified name and log file.
-
-    Args:
-        name (str): Name of the logger
-        log_file (str): Name of the log file
-        level (int): Logging level
-
-    Returns:
-        logging.Logger: Configured logger instance
+    Set up a logger with optional file output.
+    If log_file is None, only outputs to stdout (used for unified logging).
     """
-    # Create logger
     logger = logging.getLogger(name)
 
-    # If logger already has handlers, return it
-    if logger.handlers:
-        return logger
-
+    # Clear existing handlers to avoid duplicates
+    logger.handlers.clear()
+    
     logger.setLevel(level)
+    logger.propagate = False  # Prevent duplicate logs from parent loggers
 
-    # Create formatter
-    formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+    # Add rotating file handler only if a log file is specified
+    if log_file:
+        file_handler = RotatingFileHandler(
+            LOGS_DIR / log_file, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
-    # Create rotating file handler
-    file_handler = RotatingFileHandler(
-        LOGS_DIR / log_file, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT
-    )
-    file_handler.setFormatter(formatter)
-
-    # Create console handler
+    # Always add console handler for stdout output
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-
-    # Add handlers to logger
-    logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
     return logger
 
 
-# Create specific loggers for different components
-def get_app_logger():
-    """Get the main application logger"""
-    return setup_logger("app", "app.log")
+# === Logger Factories ===
+
+def get_logger(component: str):
+    """
+    Get a logger for a specific component.
+    Uses shared file if SEPARATE_LOG_FILES is False.
+    """
+    if SEPARATE_LOG_FILES:
+        return setup_logger(component, f"{component}.log")
+    else:
+        # Use the component name for the logger, but write to app.log
+        return setup_logger(component, "app.log")
 
 
-def get_database_logger():
-    """Get the database operations logger"""
-    return setup_logger("database", "database.log")
+# === Shorthand Getters ===
+
+get_app_logger = lambda: get_logger("app")
+get_api_logger = lambda: get_logger("api")
+get_database_logger = lambda: get_logger("database")
+get_scheduler_logger = lambda: get_logger("scheduler")
 
 
-def get_api_logger():
-    """Get the API endpoints logger"""
-    return setup_logger("api", "api.log")
+def get_log_file_path(component: str = "app") -> str:
+    """
+    Get the absolute file path where logs for a component are written.
+    
+    Args:
+        component: The component name (e.g., 'app', 'api', 'database')
+        
+    Returns:
+        Absolute path to the log file
+    """
+    if SEPARATE_LOG_FILES:
+        log_file = f"{component}.log"
+    else:
+        log_file = "app.log"
+    
+    return str(LOGS_DIR.absolute() / log_file)
 
 
-def get_scheduler_logger():
-    """Get the scheduler operations logger"""
-    return setup_logger("scheduler", "scheduler.log")
+def print_log_paths():
+    """Print the paths where logs are being written."""
+    print(f"Logs directory: {LOGS_DIR.absolute()}")
+    if SEPARATE_LOG_FILES:
+        print("Separate log files enabled:")
+        for component in ["app", "api", "database", "scheduler"]:
+            print(f"  {component}: {get_log_file_path(component)}")
+    else:
+        print("Unified logging enabled:")
+        print(f"  All logs: {get_log_file_path()}")
 
 
 # Example usage:

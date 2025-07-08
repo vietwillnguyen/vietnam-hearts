@@ -2,7 +2,7 @@
 """
 Scheduler API Test Script for Vietnam Hearts
 
-This script tests the scheduler API endpoints using Google Cloud authentication.
+This is an integration test script that tests the scheduler API endpoints using Google Cloud authentication.
 It uses the service account: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
 
 Usage:

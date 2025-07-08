@@ -1,0 +1,109 @@
+# Vietnam Hearts Project - Cursor Rules
+
+## Project Overview
+Vietnam Hearts is a volunteer organization focused on teaching English to underprivileged children in Vietnam. The project includes:
+- A web application for volunteer management
+- A chatbot for handling inquiries and volunteer registration
+- Google Sheets integration for class scheduling
+- Knowledge base for FAQ responses
+
+## Tech Stack
+- **Backend**: FastAPI/Flask (Python)
+- **Frontend**: TBD
+- **Database**: Supabase with PostgreSQL/SQLite
+- **APIs**: Google Sheets API
+- **Deployment**: Docker, Google Cloud RUn
+
+## Code Style & Standards
+
+### Python
+- Use type hints for all functions
+- Follow PEP 8 conventions
+- Use descriptive variable names (e.g., `volunteer_info` not `vi`)
+- Always include docstrings for classes and functions
+- Use logging instead of print statements
+- Handle exceptions gracefully with try/except blocks
+
+### API Development
+- Use RESTful conventions for endpoints
+- Always validate input data
+- Return consistent JSON response formats
+- Include proper HTTP status codes
+- Add rate limiting for public endpoints
+
+### Database
+- Use SQLAlchemy ORM when possible
+- Always use parameterized queries to prevent SQL injection
+- Include database migrations for schema changes
+- Use meaningful table and column names
+
+## Project-Specific Guidelines
+
+### Chatbot Development
+- Always provide fallback responses for unhandled queries
+- Log all user interactions for improvement
+- Include confidence scores when using AI responses
+- Include source of information in responses
+- Provide clear escalation paths to human support
+- Support both English and Vietnamese where appropriate
+
+### Google Sheets Integration
+- Provide offline fallbacks when sheets are unavailable
+- Use batch operations when possible
+
+### Security
+- Never expose API keys in code
+- Use environment variables for sensitive data
+- Implement proper authentication for admin endpoints
+- Validate and sanitize all user inputs
+
+## Response Formatting
+- Use clear, helpful error messages
+- Include relevant context in log messages
+- Format responses consistently (especially for the chatbot)
+- Use proper HTTP status codes
+- Include request IDs for debugging
+
+## Testing
+- This project uses poetry, use poetry run before commands with dependencies
+- Include integration tests for API endpoints
+- Test scenarios in pytest that can be parameterized in pytest should be
+- Test general behavior and some edge cases when writing tests
+- tests for python should be written for pytest in mind and written in the ./tests directory
+
+## Documentation
+- Update README.md with setup instructions
+- Document all API endpoints
+- Include examples for complex functions
+- Keep inline comments focused on "why" not "what"
+- Update this .cursorrules file as the project evolves
+
+## AI Assistant Guidelines
+- When generating code, always include error handling
+- Suggest appropriate logging for debugging
+- Consider performance implications for database queries
+- Recommend security best practices
+- Provide examples of proper usage
+- Always include type hints and docstrings
+- Consider scalability when suggesting solutions
+
+## Common Patterns
+- Use dependency injection for services
+- Implement proper separation of concerns
+- Use factories for complex object creation
+- Implement proper logging throughout the application
+- Use configuration classes for settings management
+
+## Vietnam Hearts Specific Context
+- Classes are held in Binh Thanh, Ho Chi Minh City
+- Volunteer roles include Teachers, Teaching Assistants, and Non-Teaching roles
+- No formal teaching certificate required
+- Focus on English education for underprivileged children
+- Safety and privacy are priorities (don't expose exact locations publicly)
+
+## When suggesting improvements:
+- Consider cost implications (API usage, hosting)
+- Think about non-technical team members who need to use admin features
+- Prioritize user experience for volunteers
+- Consider the Vietnamese context and cultural sensitivity
+- Always suggest sustainable, maintainable solutions

@@ -9,15 +9,13 @@ These endpoints provide schedule-related functionality:
 All endpoints require Google OAuth authentication.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 import traceback
-from app.database import SessionLocal
+from app.database import get_db, get_db_session
 from app.services.email_service import email_service
 from app.utils.logging_config import get_api_logger
 from app.services.google_sheets import sheets_service
-from contextlib import contextmanager
-from google.oauth2 import id_token
-from google.auth.transport import requests
 from jinja2 import Template
 from datetime import datetime
 from app.models import (
@@ -33,32 +31,18 @@ from app.config import (
     ONBOARDING_GUIDE_LINK,
     INSTAGRAM_LINK,
     FACEBOOK_PAGE_LINK,
-    GOOGLE_OAUTH_CLIENT_ID,
-    SERVICE_ACCOUNT_EMAIL,
 )
 
 logger = get_api_logger()
+
+# Create API router
+api_router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
 # Constants for sheet data structure
 HEADER_ROW = 0
 TEACHER_ROW = 1
 ASSISTANT_ROW = 2
 MIN_REQUIRED_ROWS = 3
-
-
-@contextmanager
-def get_db_session():
-    """Context manager for database sessions"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-logger = get_api_logger()
-
-logger.info(f"GOOGLE_OAUTH_CLIENT_ID: {GOOGLE_OAUTH_CLIENT_ID}")
 
 
 def handle_scheduler_error(context: str, error: Exception):
@@ -76,60 +60,6 @@ def handle_scheduler_error(context: str, error: Exception):
     )
 
 
-class SchedulerAuthError(HTTPException):
-    def __init__(self, detail: str):
-        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
-
-
-async def require_scheduler_auth(request: Request):
-    """
-    Authenticate Google Cloud Scheduler using OIDC tokens.
-    This validates that the request comes from your authorized service account.
-    """
-
-    # Get authorization header
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        logger.warning("Scheduler auth failed: Missing or invalid Authorization header")
-        raise SchedulerAuthError("Missing or invalid Authorization header")
-
-    token = auth_header.split(" ", 1)[1]
-
-    try:
-        # Verify the OIDC token
-        # audience should be your API's URL (where scheduler calls)
-        idinfo = id_token.verify_oauth2_token(
-            token,
-            requests.Request(),
-            audience=GOOGLE_OAUTH_CLIENT_ID,  # or your API's URL
-        )
-
-        # Verify it's from your expected service account
-        token_email = idinfo.get("email")
-        logger.info(f"Token email: {token_email}")
-        if not token_email:
-            raise SchedulerAuthError("Token missing email claim")
-
-        # # Check if it's your service account (optional but recommended)
-        if SERVICE_ACCOUNT_EMAIL and token_email != SERVICE_ACCOUNT_EMAIL:
-            logger.warning(f"Scheduler auth failed: Unexpected service account {token_email}")
-            raise SchedulerAuthError("Invalid service account")
-
-        # Log successful auth
-        logger.info(f"Scheduler authenticated successfully: {token_email}")
-
-        # Store service info in request state for logging
-        request.state.service_email = token_email
-        request.state.auth_type = "scheduler"
-
-    except ValueError as e:
-        logger.error(f"Scheduler auth failed: Invalid token - {str(e)}")
-        raise SchedulerAuthError("Invalid OIDC token")
-    except Exception as e:
-        logger.error(f"Scheduler auth failed: {str(e)}")
-        raise SchedulerAuthError("Authentication failed")
-
-
 def get_scheduler_context(request: Request) -> dict:
     """Get scheduler context info for logging"""
     return {
@@ -138,16 +68,11 @@ def get_scheduler_context(request: Request) -> dict:
     }
 
 
-# Create API router with scheduler authentication
-api_router = APIRouter(
-    prefix="/api/scheduler",
-    dependencies=[Depends(require_scheduler_auth)],
-    tags=["scheduler"],
-)
-
-
 @api_router.post("/send-confirmation-emails")
-def send_confirmation_emails(request: Request):
+def send_confirmation_emails(
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Process emails for new volunteers"""
     scheduler_info = get_scheduler_context(request)
     logger.info(
@@ -155,8 +80,7 @@ def send_confirmation_emails(request: Request):
     )
 
     try:
-        with get_db_session() as db:
-            email_service.send_confirmation_emails(db)
+        email_service.send_confirmation_emails(db)
         return {"status": "success", "message": "Confirmation emails sent successfully"}
     except HTTPException:
         raise
@@ -165,7 +89,10 @@ def send_confirmation_emails(request: Request):
 
 
 @api_router.post("/sync-volunteers")
-def sync_volunteers(request: Request):
+def sync_volunteers(
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Sync volunteers from Google Sheets and process new signups with graceful degradation"""
     scheduler_info = get_scheduler_context(request)
     logger.info(
@@ -173,29 +100,28 @@ def sync_volunteers(request: Request):
     )
 
     try:
-        with get_db_session() as db:
-            from app.routers.admin import get_signup_form_submissions
+        from app.routers.admin import get_signup_form_submissions
 
-            # Try to sync volunteers with graceful degradation
-            result = get_signup_form_submissions(db=db, process_new=True)
+        # Try to sync volunteers with graceful degradation
+        result = get_signup_form_submissions(db=db, process_new=True)
+        
+        # Check if the sync was successful or had partial failures
+        if result.get("status") == "success":
+            return {"status": "success", "message": "Volunteers synced successfully"}
+        elif result.get("status") == "partial_failure":
+            return {
+                "status": "partial_success", 
+                "message": "Volunteers synced with some issues",
+                "details": result.get("details", {})
+            }
+        else:
+            # If there was a complete failure, return error but don't raise HTTPException
+            return {
+                "status": "error",
+                "message": "Failed to sync volunteers",
+                "details": result.get("details", {})
+            }
             
-            # Check if the sync was successful or had partial failures
-            if result.get("status") == "success":
-                return {"status": "success", "message": "Volunteers synced successfully"}
-            elif result.get("status") == "partial_failure":
-                return {
-                    "status": "partial_success", 
-                    "message": "Volunteers synced with some issues",
-                    "details": result.get("details", {})
-                }
-            else:
-                # If there was a complete failure, return error but don't raise HTTPException
-                return {
-                    "status": "error",
-                    "message": "Failed to sync volunteers",
-                    "details": result.get("details", {})
-                }
-                
     except HTTPException:
         raise
     except Exception as e:
@@ -210,7 +136,12 @@ def sync_volunteers(request: Request):
 
 @api_router.post("/send-weekly-reminders")
 def send_weekly_reminder_emails():
-    """Send weekly reminder emails to volunteers"""
+    """
+    Send weekly reminder emails to volunteers
+    
+    This endpoint uses manual database session management because it performs
+    complex operations with multiple commits and rollbacks that need fine-grained control.
+    """
     try:
         with get_db_session() as db:
             if DRY_RUN:
@@ -289,7 +220,7 @@ def send_weekly_reminder_emails():
 
                 html_body = Template(email_service.reminder_template).render(
                     first_name=first_name,
-                    class_tables=[ct['table_html'] for ct in class_tables],  # <-- FIXED
+                    class_tables=[ct['table_html'] for ct in class_tables],
                     SCHEDULE_SIGNUP_LINK=email_service.schedule_signup_link,
                     EMAIL_PREFERENCES_LINK=email_service.get_volunteer_unsubscribe_link(
                         db_volunteer

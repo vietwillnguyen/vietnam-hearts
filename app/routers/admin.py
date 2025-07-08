@@ -199,9 +199,9 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         email_data = get_email_summary(communications)
 
         return templates.TemplateResponse(
+            request,
             "admin/dashboard.html",
             {
-                "request": request,
                 "total_volunteers": len(volunteer_data),
                 "volunteers": volunteer_data,
                 "total_emails": len(email_data),
@@ -342,9 +342,9 @@ def get_signup_form_submissions(
         logger.info(f"Found {len(submissions)} form submissions from Google Sheets")
 
         if process_new:
-            # Get all existing emails in one query - ONLY ACTIVE VOLUNTEERS
+            # Get all existing emails in one query
             existing_emails = set(
-                email[0] for email in db.query(VolunteerModel.email).filter(VolunteerModel.is_active == True).all()
+                email[0] for email in db.query(VolunteerModel.email).all()
             )
             logger.info(f"Found {len(existing_emails)} existing emails in database")
             
