@@ -2,16 +2,16 @@
 """
 Scheduler API Test Script for Vietnam Hearts
 
-This is an integration test script that tests the scheduler API endpoints using Google Cloud authentication.
+This script tests the scheduler API endpoints using Google Cloud authentication.
 It uses the service account: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
 
 Usage:
-    python tests/test_scheduler_api.py [endpoint_name]
+    python tests/test_api.py [endpoint_name]
     
 Examples:
-    python tests/test_scheduler_api.py health
-    python tests/test_scheduler_api.py all
-    python tests/test_scheduler_api.py send-confirmation-emails
+    python tests/test_api.py health
+    python tests/test_api.py all
+    python tests/test_api.py send-confirmation-emails
 """
 
 import os
@@ -36,7 +36,7 @@ class SchedulerAPITester:
     def __init__(self):
         self.base_url = os.getenv("API_BASE_URL", "http://localhost:8080")
         self.service_account = "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com"
-        self.api_prefix = "/api/scheduler"
+        self.api_prefix = "/api"
         self.session = requests.Session()
         
         # Configure session headers
@@ -315,7 +315,7 @@ class SchedulerAPITester:
 def main():
     """Main function to run tests"""
     if len(sys.argv) < 2:
-        print("Usage: python test_scheduler_api.py [endpoint_name]")
+        print("Usage: python test_api.py [endpoint_name]")
         print("\nAvailable endpoints:")
         print("  health                    - Health check")
         print("  send-confirmation-emails  - Send confirmation emails")

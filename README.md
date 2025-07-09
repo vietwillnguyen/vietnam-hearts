@@ -1,5 +1,7 @@
 # Vietnam Hearts Scheduler
 
+[![Tests](https://github.com/vietwillnguyen/vietnam-hearts/actions/workflows/test.yml/badge.svg)](https://github.com/vietwillnguyen/vietnam-hearts/actions/workflows/test.yml)
+
 A comprehensive scheduling and communication system for Vietnam Hearts volunteer management, built with FastAPI and integrated with Google Sheets.
 
 ## Features
@@ -195,6 +197,62 @@ vietnam-hearts/
 ├── setup.sh               # Setup script
 └── pyproject.toml         # Poetry configuration
 ```
+
+## Testing & CI/CD
+
+### Running Tests Locally
+
+```bash
+# Run all tests
+poetry run pytest tests/ -v
+
+# Run specific test file
+poetry run pytest tests/test_form_submissions.py -v
+
+# Run with coverage
+poetry run pytest tests/ --cov=app --cov-report=html
+```
+
+### GitHub Actions
+
+This project includes GitHub Actions for automated testing. The workflow will:
+
+- **Run on every push** to main/master/develop branches
+- **Run on pull requests** to main/master/develop branches
+- **Test against Python 3.10 and 3.11** for compatibility
+- **Use Poetry** for dependency management
+- **Cache dependencies** for faster builds
+- **Upload test results** as artifacts
+
+#### GitHub Actions Costs
+
+**GitHub Actions is completely FREE for:**
+
+- **Public repositories**: Unlimited minutes
+- **Private repositories**: 2,000 minutes/month free
+- **Team/Enterprise**: 3,000 minutes/month free
+
+**For this project:**
+- Each test run takes ~1-2 minutes
+- You get 2,000 free minutes per month
+- That's ~1,000 test runs per month for free!
+- Only costs money if you exceed the free tier
+
+#### Workflow Details
+
+The workflow (`.github/workflows/test.yml`) includes:
+
+1. **Setup**: Python environment with Poetry
+2. **Caching**: Dependencies are cached between runs
+3. **Testing**: Runs pytest with proper environment variables
+4. **Artifacts**: Saves test results for 7 days
+
+#### Viewing Results
+
+- Go to your GitHub repository
+- Click the "Actions" tab
+- See all test runs and their results
+- Download test artifacts if needed
 
 ## Troubleshooting
 

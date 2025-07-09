@@ -43,6 +43,35 @@
             padding: 4px 8px;
             margin: 1px;
         }
+        .settings-form {
+            max-width: 800px;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .form-text {
+            font-size: 0.875em;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+        .dry-run-setting {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+            margin-bottom: 1.5rem;
+        }
+        .dry-run-setting .form-label {
+            color: #856404;
+        }
+        .badge {
+            font-size: 0.75em;
+            margin-left: 0.5rem;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -58,6 +87,11 @@
             <li class="nav-item">
                 <a class="nav-link" id="emails-tab" data-bs-toggle="tab" href="#emails" role="tab">
                     Email Logs
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="settings-tab" data-bs-toggle="tab" href="#settings" role="tab">
+                    Settings
                 </a>
             </li>
         </ul>
@@ -140,7 +174,7 @@
                                                 data-action="resend-confirmation"
                                                 data-volunteer-id="{{ volunteer.id }}"
                                                 data-email="{{ volunteer.email }}">
-                                            Resend
+                                            Resend Confirmation
                                         </button>
                                         {% endif %}
                                         
@@ -157,6 +191,25 @@
                                                 data-volunteer-id="{{ volunteer.id }}"
                                                 data-email="{{ volunteer.email }}">
                                             Reactivate
+                                        </button>
+                                        {% endif %}
+
+                                        <!-- Weekly Reminder Button -->
+                                        {% if volunteer.weekly_reminders_subscribed %}
+                                        <button class="btn btn-sm btn-info action-btn" 
+                                                data-action="send-weekly-reminder"
+                                                data-volunteer-id="{{ volunteer.id }}"
+                                                data-email="{{ volunteer.email }}">
+                                            Send Weekly Reminder
+                                        </button>
+                                        {% else %}
+                                        <button class="btn btn-sm btn-secondary action-btn" 
+                                                data-action="send-weekly-reminder"
+                                                data-volunteer-id="{{ volunteer.id }}"
+                                                data-email="{{ volunteer.email }}"
+                                                disabled
+                                                title="Volunteer is not subscribed to weekly reminders">
+                                            Send Weekly Reminder
                                         </button>
                                         {% endif %}
                                     </div>
@@ -206,6 +259,62 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-pane fade" id="settings" role="tabpanel">
+                <div class="table-container">
+                    <h2>Configuration Settings</h2>
+                    
+                    <!-- Dry Run Settings Section -->
+                    <div class="alert alert-warning mb-4">
+                        <h4>⚠️ Dry Run Settings</h4>
+                        <p class="mb-0">These settings control whether the system operates in dry run mode for testing purposes.</p>
+                    </div>
+                    
+                    <form id="settings-form" class="settings-form">
+                        {% for setting in settings %}
+                        <div class="form-group {% if setting.key in ['DRY_RUN', 'DRY_RUN_EMAIL_RECIPIENT'] %}dry-run-setting{% endif %}">
+                            <label for="{{ setting.key }}" class="form-label">
+                                {{ setting.key }}
+                                {% if setting.key == 'DRY_RUN' %}
+                                <span class="badge bg-warning text-dark">DRY RUN</span>
+                                {% elif setting.key == 'DRY_RUN_EMAIL_RECIPIENT' %}
+                                <span class="badge bg-warning text-dark">DRY RUN</span>
+                                {% endif %}
+                            </label>
+                            
+                            {% if setting.key == 'DRY_RUN' %}
+                            <select class="form-control" id="{{ setting.key }}" name="{{ setting.key }}">
+                                <option value="true" {% if setting.value == 'true' %}selected{% endif %}>True (Dry Run Mode)</option>
+                                <option value="false" {% if setting.value == 'false' %}selected{% endif %}>False (Production Mode)</option>
+                            </select>
+                            {% elif setting.key == 'WEEKLY_REMINDERS_ENABLED' %}
+                            <select class="form-control" id="{{ setting.key }}" name="{{ setting.key }}">
+                                <option value="true" {% if setting.value == 'true' %}selected{% endif %}>True (Weekly Reminders Enabled)</option>
+                                <option value="false" {% if setting.value == 'false' %}selected{% endif %}>False (Weekly Reminders Disabled)</option>
+                            </select>
+                            {% else %}
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="{{ setting.key }}" 
+                                   name="{{ setting.key }}" 
+                                   value="{{ setting.value }}"
+                                   placeholder="Enter value for {{ setting.key }}">
+                            {% endif %}
+                            
+                            {% if setting.description %}
+                            <div class="form-text">{{ setting.description }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary">Save All Settings</button>
+                            <button type="button" class="btn btn-secondary ms-2" onclick="resetToDefaults()">Reset to Defaults</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -239,6 +348,9 @@
                     break;
                 case 'reactivate':
                     await reactivateVolunteer(volunteerId, email);
+                    break;
+                case 'send-weekly-reminder':
+                    await sendWeeklyReminder(volunteerId, email);
                     break;
             }
         }
@@ -361,6 +473,122 @@
             } catch (error) {
                 alert(`Error: ${error.message}`);
             }
+        }
+
+        async function sendWeeklyReminder(volunteerId, email) {
+            if (!confirm(`Send weekly reminder email to ${email}?`)) return;
+
+            try {
+                const response = await fetch(`/admin/volunteers/${volunteerId}/send-weekly-reminder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(`Success: ${result.message}`);
+                    location.reload(); // Refresh to show updated status
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to send weekly reminder email'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Settings form handling
+        document.getElementById('settings-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const data = {};
+            
+            // Collect form data
+            for (const el of form.elements) {
+                if (el.name && el.type !== 'submit') {
+                    data[el.name] = el.value;
+                }
+            }
+            
+            // Show loading state
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = 'Saving...';
+            submitBtn.disabled = true;
+            
+            try {
+                let success = true;
+                let errors = [];
+                
+                // Update each setting individually
+                for (const [key, value] of Object.entries(data)) {
+                    try {
+                        const response = await fetch(`/settings/${key}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ value: value })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            errors.push(`${key}: ${errorData.detail || 'Failed to update'}`);
+                            success = false;
+                        }
+                    } catch (error) {
+                        errors.push(`${key}: ${error.message}`);
+                        success = false;
+                    }
+                }
+                
+                if (success) {
+                    alert('Settings updated successfully!');
+                    location.reload();
+                } else {
+                    alert('Failed to update some settings:\n' + errors.join('\n'));
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Restore button state
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Reset to defaults function
+        function resetToDefaults() {
+            if (!confirm('Are you sure you want to reset all settings to their default values? This will overwrite all current settings.')) {
+                return;
+            }
+            
+            const defaults = {
+                'DRY_RUN': 'false',
+                'DRY_RUN_EMAIL_RECIPIENT': '',
+                'WEEKLY_REMINDERS_ENABLED': 'true',
+                'SCHEDULE_SIGNUP_LINK': '',
+                'FACEBOOK_MESSENGER_LINK': '',
+                'DISCORD_INVITE_LINK': '',
+                'ONBOARDING_GUIDE_LINK': '',
+                'INSTAGRAM_LINK': '',
+                'FACEBOOK_PAGE_LINK': '',
+                'SCHEDULE_SHEET_ID': '',
+                'NEW_SIGNUPS_SHEET_ID': '',
+                'GOOGLE_SCHEDULE_RANGE': 'B7:G11',
+                'GOOGLE_SIGNUPS_RANGE': 'A2:R',
+                'SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT': '4'
+            };
+            
+            // Set form values to defaults
+            for (const [key, value] of Object.entries(defaults)) {
+                const element = document.getElementById(key);
+                if (element) {
+                    element.value = value;
+                }
+            }
+            
+            alert('Settings have been reset to defaults. Click "Save All Settings" to apply the changes.');
         }
     </script>
 </body>

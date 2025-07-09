@@ -5,16 +5,16 @@ This file handles:
 1. Creating the database connection
 2. Managing database sessions (transactions)
 3. Creating tables when the app starts
+4. Initializing default settings
 """
 
-import os
 from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from .models import Base
 from .utils.logging_config import get_database_logger
-from .config import DATABASE_URL
-
+from .services.settings_service import initialize_default_settings
+from app.config import DATABASE_URL
 # Initialize logger
 logger = get_database_logger()
 
@@ -36,6 +36,8 @@ def _handle_session_error(db, error, context=""):
 def init_database():
     """Initialize database"""
     Base.metadata.create_all(bind=engine)
+    # Initialize default settings after creating tables
+    initialize_settings()
 
 @contextmanager
 def get_db_session():
@@ -52,6 +54,21 @@ def get_db_session():
     finally:
         db.close()
         logger.debug("Database session closed (manual)")
+
+def initialize_settings():
+    """
+    Initialize default settings in the database
+    This runs after tables are created
+    """
+    try:
+        db = SessionLocal()
+        initialize_default_settings(db)
+        db.close()
+        logger.info("Default settings initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize default settings: {str(e)}", exc_info=True)
+        raise
+
 
 def get_db():
     """
@@ -77,5 +94,17 @@ def test_connection():
         logger.info("Database connection test successful")
         return True
     except Exception as e:
-        logger.error(f"Database connection test failed: {str(e)}")
-        return False
+        logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
+        raise
+
+
+"""
+Core Concept: HTTP Status Codes
+- 200: Success
+- 404: Not Found (HTTPException with 404)
+- 422: Validation Error (FastAPI handles this automatically)
+- 500: Server Error (unhandled exceptions)
+
+FastAPI automatically returns appropriate status codes
+"""
+

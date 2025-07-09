@@ -16,17 +16,15 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 from pathlib import Path
 from app.utils.logging_config import get_api_logger
-from app.utils.retry_utils import retry_google_sheets_api, log_ssl_error
+from app.utils.retry_utils import safe_api_call, log_ssl_error
 from app.services.classes_config import CLASS_CONFIG
 from app.config import (
-    SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT,
     GOOGLE_APPLICATION_CREDENTIALS,
-    GOOGLE_SHEETS_MAX_RETRIES,
-    GOOGLE_SHEETS_BASE_WAIT,
-    GOOGLE_SHEETS_MAX_WAIT,
 )
+from app.utils.config_helper import ConfigHelper
 from google.auth import default
 from google.auth.exceptions import DefaultCredentialsError
+from sqlalchemy.orm import Session
 
 logger = get_api_logger()
 
@@ -36,13 +34,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.file",
 ]
-from app.config import (
-    SCHEDULE_SHEET_ID as SCHEDULE_SHEET_ID,
-    NEW_SIGNUPS_SHEET_ID as SIGNUPS_SHEET_ID,
-    GOOGLE_SCHEDULE_RANGE as SCHEDULE_DEFAULT_RANGE,
-    GOOGLE_SIGNUPS_RANGE as SIGNUPS_DEFAULT_RANGE,
-)
-
 
 class GoogleSheetsService:
     def __init__(self):
@@ -52,16 +43,21 @@ class GoogleSheetsService:
         self._initialized = False
         logger.info("Google Sheets service created")
 
-    def _validate_config(self):
+    def _validate_config(self, db: Optional[Session] = None):
         """Validate Google Sheets configuration"""
         errors = []
         
         # Check required environment variables
-        if not SCHEDULE_SHEET_ID:
-            errors.append("SCHEDULE_SHEET_ID environment variable is required")
-        
-        if not SIGNUPS_SHEET_ID:
-            errors.append("NEW_SIGNUPS_SHEET_ID environment variable is required")
+        if db:
+            # Use database settings if available
+            if not ConfigHelper.get_schedule_sheet_id(db):
+                errors.append("SCHEDULE_SHEET_ID setting is required")
+            
+            if not ConfigHelper.get_new_signups_sheet_id(db):
+                errors.append("NEW_SIGNUPS_SHEET_ID setting is required")
+        else:
+            # Fallback to environment variables or skip validation
+            logger.warning("No database session provided for config validation, skipping dynamic settings check")
         
         # Check for credentials (either ADC or file-based)
         try:
@@ -84,10 +80,10 @@ class GoogleSheetsService:
             logger.error(f"Google Sheets configuration validation failed:\n{error_msg}")
             raise ValueError(f"Google Sheets configuration validation failed:\n{error_msg}")
 
-    def _initialize_service(self):
+    def _initialize_service(self, db: Optional[Session] = None):
         """Initialize the Google Sheets service"""
         try:
-            self._validate_config()
+            self._validate_config(db)
             
             # Try Application Default Credentials first (works in cloud and local with gcloud auth)
             try:
@@ -111,10 +107,10 @@ class GoogleSheetsService:
             logger.error(f"Failed to initialize Google Sheets service: {str(e)}", exc_info=True)
             raise
 
-    def _ensure_initialized(self):
+    def _ensure_initialized(self, db: Optional[Session] = None):
         """Ensure the service is initialized"""
         if not self._initialized:
-            self._initialize_service()
+            self._initialize_service(db)
 
     @property
     def service(self):
@@ -128,21 +124,20 @@ class GoogleSheetsService:
         self._ensure_initialized()
         return self._sheet
 
-    @retry_google_sheets_api(
-        max_attempts=GOOGLE_SHEETS_MAX_RETRIES,
-        base_wait=GOOGLE_SHEETS_BASE_WAIT,
-        max_wait=GOOGLE_SHEETS_MAX_WAIT
-    )
-    def get_range_from_sheet(self, sheet_id: str, range_name: str) -> List[List[str]]:
+    def get_range_from_sheet(self, db: Session, sheet_id: str, range_name: str) -> List[List[str]]:
         """
         Fetch a specific range from a given sheet (raw values) with retry logic
         Args:
+            db: Database session for configuration
             sheet_id (str): The Google Sheet ID
             range_name (str): The A1 notation range to fetch (e.g., 'B7:G11')
         Returns:
             List[List[str]]: 2D list of cell values
         """
-        try:
+        # Get retry configuration from database
+        max_attempts = ConfigHelper.get_google_sheets_max_retries(db)
+        
+        def _fetch_range():
             result = (
                 self.sheet.values()
                 .get(spreadsheetId=sheet_id, range=range_name)
@@ -154,6 +149,13 @@ class GoogleSheetsService:
             )
             logger.info(f"Values: {values}")
             return values
+        
+        try:
+            return safe_api_call(
+                _fetch_range,
+                max_attempts=max_attempts,
+                context=f"fetch range {range_name} from sheet {sheet_id}"
+            )
         except ssl.SSLEOFError as e:
             log_ssl_error(e, f"get_range_from_sheet({sheet_id}, {range_name})")
             logger.error(
@@ -167,38 +169,45 @@ class GoogleSheetsService:
             )
             return []
 
-    def get_schedule_range(self, range_name: str = None) -> List[List[str]]:
+    def get_schedule_range(self, db: Session, range_name: str = None) -> List[List[str]]:
         """
         Fetch a specific range from the schedule sheet (raw values)
         Args:
+            db: Database session for configuration
             range_name (str): The A1 notation range to fetch (e.g., 'B7:G11')
         Returns:
             List[List[str]]: 2D list of cell values
         """
-        return self.get_range_from_sheet(
-            SCHEDULE_SHEET_ID, range_name or SCHEDULE_DEFAULT_RANGE
-        )
+        sheet_id = ConfigHelper.get_schedule_sheet_id(db)
+        default_range = ConfigHelper.get_google_schedule_range(db)
+        return self.get_range_from_sheet(db, sheet_id, range_name or default_range)
 
-    @retry_google_sheets_api(
-        max_attempts=GOOGLE_SHEETS_MAX_RETRIES,
-        base_wait=GOOGLE_SHEETS_BASE_WAIT,
-        max_wait=GOOGLE_SHEETS_MAX_WAIT
-    )
     def get_signup_form_submissions(
-        self, range_name: str = None
+        self, db: Session, range_name: str = None
     ) -> List[Dict[str, Any]]:
         """
         Fetch all form submissions from the signups sheet with retry logic
+        Args:
+            db: Database session for configuration
+            range_name (str): The A1 notation range to fetch
         Returns:
             List[Dict[str, Any]]: List of form submissions with field mappings
         """
-        try:
-            logger.info(f"Fetching signups from sheet {SIGNUPS_SHEET_ID} with range {range_name or SIGNUPS_DEFAULT_RANGE}")
+        # Get retry configuration from database
+        max_attempts = ConfigHelper.get_google_sheets_max_retries(db)
+        
+        def _fetch_submissions():
+            sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
+            if not sheet_id:
+                raise ValueError("NEW_SIGNUPS_SHEET_ID is not configured. Please set it in the admin settings.")
+            
+            default_range = ConfigHelper.get_google_signups_range(db)
+            logger.info(f"Fetching signups from sheet {sheet_id} with range {range_name or default_range}")
             result = (
                 self.sheet.values()
                 .get(
-                    spreadsheetId=SIGNUPS_SHEET_ID,
-                    range=range_name or SIGNUPS_DEFAULT_RANGE,
+                    spreadsheetId=sheet_id,
+                    range=range_name or default_range,
                 )
                 .execute()
             )
@@ -247,7 +256,13 @@ class GoogleSheetsService:
                 submissions.append(submission)
 
             return submissions
-
+        
+        try:
+            return safe_api_call(
+                _fetch_submissions,
+                max_attempts=max_attempts,
+                context="fetch signup form submissions"
+            )
         except ssl.SSLEOFError as e:
             log_ssl_error(e, "get_signup_form_submissions")
             logger.error(f"SSL EOF error while fetching form submissions: {str(e)}")
@@ -474,13 +489,14 @@ class GoogleSheetsService:
             logger.error(f"Failed to hide sheet: {str(e)}", exc_info=True)
             raise
 
-    def update_sheet_dates(self, sheet_date: datetime):
+    def update_sheet_dates(self, sheet_date: datetime, db: Session):
         """
         Update the blue header and table header dates in the new sheet.
         """
         try:
             sheet_title = f"Schedule {sheet_date.strftime('%m/%d')}"
-            sheet_metadata = self.sheet.get(spreadsheetId=SCHEDULE_SHEET_ID).execute()
+            sheet_id = ConfigHelper.get_schedule_sheet_id(db)
+            sheet_metadata = self.sheet.get(spreadsheetId=sheet_id).execute()
             sheet_id = next(
                 (
                     s["properties"]["sheetId"]
@@ -495,14 +511,14 @@ class GoogleSheetsService:
             # Update blue header (assuming it's cell C1)
             blue_header_range = f"{sheet_title}!C1"
             self.sheet.values().update(
-                spreadsheetId=SCHEDULE_SHEET_ID,
+                spreadsheetId=sheet_id,
                 range=blue_header_range,
                 valueInputOption="USER_ENTERED",
                 body={"values": [[sheet_title]]},
             ).execute()
 
             self.sheet.values().update(
-                spreadsheetId=SCHEDULE_SHEET_ID,
+                spreadsheetId=sheet_id,
                 range=f"{sheet_title}!B1",
                 valueInputOption="USER_ENTERED",
                 body={
@@ -521,12 +537,12 @@ class GoogleSheetsService:
                     f"{sheet_title}!{start_cell}:G{start_cell[1:]}"  # e.g., B7:G7
                 )
                 # Fetch the current values to preserve the first column
-                values = self.get_range_from_sheet(SCHEDULE_SHEET_ID, header_range)
+                values = self.get_range_from_sheet(db, sheet_id, header_range)
                 if values and len(values) > 0:
                     header_row = values[0]
                     new_header = [header_row[0]] + dates
                     self.sheet.values().update(
-                        spreadsheetId=SCHEDULE_SHEET_ID,
+                        spreadsheetId=sheet_id,
                         range=header_range,
                         valueInputOption="USER_ENTERED",
                         body={"values": [new_header]},
@@ -682,7 +698,7 @@ class GoogleSheetsService:
             logger.error(f"Failed to move sheet: {str(e)}", exc_info=True)
             raise
 
-    def rotate_schedule_sheets(self) -> Dict[str, Any]:
+    def rotate_schedule_sheets(self, db: Session) -> Dict[str, Any]:
         """
         Rotate schedule sheets.
 
@@ -714,7 +730,7 @@ class GoogleSheetsService:
             next_monday = current_monday + timedelta(days=7)
             display_dates = [
                 next_monday + timedelta(days=7 * i)
-                for i in range(SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT)
+                for i in range(ConfigHelper.get_schedule_sheets_display_weeks_count(db))
             ]
 
             # Create a set of sheet names that should be visible
@@ -762,7 +778,7 @@ class GoogleSheetsService:
                     new_sheet_id = self.create_sheet_from_template(
                         "Schedule Template", date
                     )
-                    self.update_sheet_dates(date)
+                    self.update_sheet_dates(date, db)
                     self.set_sheet_visibility(new_sheet_id, False)  # False = visible
                     self.move_sheet(new_sheet_id, i + 1)  # Move to correct position
                     sheets_created.append(sheet_name)

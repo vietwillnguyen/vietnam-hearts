@@ -79,3 +79,37 @@ class EmailCommunication(EmailCommunicationBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Settings schemas
+class SettingBase(BaseModel):
+    """Base schema for setting data"""
+    key: str
+    value: str
+    description: Optional[str] = None
+
+
+class SettingCreate(SettingBase):
+    """Schema for creating a new setting"""
+    pass
+
+
+class SettingUpdate(BaseModel):
+    """Schema for updating a setting"""
+    value: str
+    description: Optional[str] = None
+
+
+class Setting(SettingBase):
+    """Schema for setting responses"""
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SettingsList(BaseModel):
+    """Schema for listing all settings"""
+    settings: List[Setting]
+    total: int

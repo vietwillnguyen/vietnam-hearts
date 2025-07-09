@@ -12,7 +12,6 @@ from functools import wraps
 from tenacity import (
     retry,
     stop_after_attempt,
-    wait_exponential,
     retry_if_exception_type,
     before_sleep_log,
     after_log,
@@ -126,6 +125,53 @@ def safe_api_call(
     
     try:
         logger.info(f"Executing {context} with retry logic")
+        return _execute_with_retry()
+    except RetryError as e:
+        logger.error(f"All retry attempts failed for {context}: {str(e)}")
+        raise e.last_attempt._exception
+    except Exception as e:
+        logger.error(f"Unexpected error in {context}: {str(e)}")
+        raise
+
+
+def safe_api_call_with_config(
+    func: Callable,
+    config_func: Callable,
+    *args,
+    context: str = "API call",
+    **kwargs
+) -> Any:
+    """
+    Safely execute an API call with dynamic retry configuration.
+    
+    Args:
+        func: Function to execute
+        config_func: Function that returns retry configuration (max_attempts, base_wait, max_wait)
+        *args: Arguments for the function
+        context: Context string for logging
+        **kwargs: Keyword arguments for the function
+    
+    Returns:
+        Function result or None if all attempts fail
+    
+    Raises:
+        Exception: If the function fails after all retry attempts
+    """
+    # Get configuration from the config function
+    max_attempts, base_wait, max_wait = config_func()
+    
+    retry_decorator = retry_google_sheets_api(
+        max_attempts=max_attempts,
+        base_wait=base_wait,
+        max_wait=max_wait
+    )
+    
+    @retry_decorator
+    def _execute_with_retry():
+        return func(*args, **kwargs)
+    
+    try:
+        logger.info(f"Executing {context} with retry logic (max_attempts={max_attempts})")
         return _execute_with_retry()
     except RetryError as e:
         logger.error(f"All retry attempts failed for {context}: {str(e)}")

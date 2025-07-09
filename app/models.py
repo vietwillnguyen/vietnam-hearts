@@ -126,4 +126,27 @@ class EmailCommunication(Base):
         onupdate=datetime.now(timezone.utc),
     )
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        from_attributes = True
+
+
+class Setting(Base):
+    """
+    Stores dynamic configuration settings that can be updated by admins
+    
+    This allows runtime configuration changes without requiring code deployments
+    """
+    __tablename__ = "settings"
+
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String, nullable=False)
+    description = Column(String, nullable=True)  # Human-readable description of the setting
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=datetime.now(timezone.utc),
+        onupdate=datetime.now(timezone.utc),
+    )
+
+    class Config:
+        from_attributes = True

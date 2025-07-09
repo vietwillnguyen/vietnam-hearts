@@ -4,7 +4,7 @@ This directory contains test scripts for the Vietnam Hearts Scheduler API endpoi
 
 ## Files
 
-- `test_scheduler_api.py` - Main test script for scheduler API endpoints
+- `test_api.py` - Main test script for scheduler API endpoints
 - `test_db.py` - Database connection test script
 - `requirements.txt` - Python dependencies for tests
 
@@ -65,26 +65,26 @@ DATABASE_URL=your_database_url_here
 
 ```bash
 # Test health check endpoint
-python tests/test_scheduler_api.py health
+python tests/test_api.py health
 
 # Test send confirmation emails
-python tests/test_scheduler_api.py send-confirmation-emails
+python tests/test_api.py send-confirmation-emails
 
 # Test sync volunteers
-python tests/test_scheduler_api.py sync-volunteers
+python tests/test_api.py sync-volunteers
 
 # Test send weekly reminders
-python tests/test_scheduler_api.py send-weekly-reminders
+python tests/test_api.py send-weekly-reminders
 
 # Test rotate schedule
-python tests/test_scheduler_api.py rotate-schedule
+python tests/test_api.py rotate-schedule
 ```
 
 ### Test All Endpoints
 
 ```bash
 # Test all scheduler endpoints
-python tests/test_scheduler_api.py all
+python tests/test_api.py all
 ```
 
 ### Database Connection Test

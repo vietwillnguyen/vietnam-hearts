@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional, Dict, Any
 
 from app.database import get_db
 from app.models import (
@@ -24,8 +24,9 @@ from app.services.google_sheets import sheets_service
 from app.services.email_service import email_service
 from app.utils.logging_config import get_api_logger
 from app.utils.auth import get_user_info
-from app.config import SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT, ENVIRONMENT
-from app.utils.retry_utils import log_ssl_error
+from app.config import ENVIRONMENT
+from app.utils.config_helper import ConfigHelper
+from app.utils.retry_utils import log_ssl_error, safe_api_call
 
 logger = get_api_logger()
 admin_router = APIRouter(
@@ -198,6 +199,10 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         communications = db.query(EmailCommunicationModel).all()
         email_data = get_email_summary(communications)
 
+        # Get settings data
+        from app.services.settings_service import get_all_settings
+        settings = get_all_settings(db)
+
         return templates.TemplateResponse(
             request,
             "admin/dashboard.html",
@@ -206,6 +211,7 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
                 "volunteers": volunteer_data,
                 "total_emails": len(email_data),
                 "emails": email_data,
+                "settings": settings,
             },
         )
 
@@ -302,7 +308,7 @@ def get_schedule_status(db: Session = Depends(get_db)):
         return {
             "status": "success",
             "details": {
-                "display_weeks_count": SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT,
+                "display_weeks_count": ConfigHelper.get_schedule_sheets_display_weeks_count(db),
                 "total_sheets": len(sheet_info),
                 "visible_sheets": len([s for s in sheet_info if not s["hidden"]]),
                 "hidden_sheets": len([s for s in sheet_info if s["hidden"]]),
@@ -338,7 +344,7 @@ def get_signup_form_submissions(
     
     try:
         logger.info("Fetching form submissions from Google Sheets...")
-        submissions = sheets_service.get_signup_form_submissions()
+        submissions = sheets_service.get_signup_form_submissions(db)
         logger.info(f"Found {len(submissions)} form submissions from Google Sheets")
 
         # Initialize variables for both process_new=True and process_new=False cases
@@ -778,4 +784,102 @@ def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to reactivate volunteer: {str(e)}"
+        )
+
+
+@admin_router.post("/volunteers/{volunteer_id}/send-weekly-reminder")
+def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
+    """Send a weekly reminder email to a specific volunteer (admin only)"""
+    try:
+        # Check if weekly reminders are globally enabled
+        if not ConfigHelper.get_weekly_reminders_enabled(db):
+            raise HTTPException(
+                status_code=400, 
+                detail="Weekly reminders are currently disabled globally. Enable them in the Settings tab to send weekly reminders."
+            )
+
+        # Get the volunteer
+        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        if not volunteer:
+            raise HTTPException(status_code=404, detail="Volunteer not found")
+
+        if not volunteer.is_active:
+            raise HTTPException(
+                status_code=400, detail=f"Volunteer {volunteer.email} is not active"
+            )
+
+        if not volunteer.weekly_reminders_subscribed:
+            raise HTTPException(
+                status_code=400, detail=f"Volunteer {volunteer.email} is not subscribed to weekly reminders"
+            )
+
+        # Build email content using email service
+        html_body, subject = email_service.build_weekly_reminder_content(volunteer, db)
+
+        # Send the email
+        success = email_service.send_custom_email(
+            to_email=volunteer.email,
+            subject=subject,
+            html_body=html_body,
+            db=db,
+            volunteer_id=volunteer.id,
+            email_type="weekly_reminder"
+        )
+
+        if success:
+            logger.info(f"✅ Weekly reminder email sent to {volunteer.email}")
+            return {
+                "status": "success",
+                "message": f"Weekly reminder email sent to {volunteer.email}",
+                "volunteer_id": volunteer_id,
+                "email": volunteer.email
+            }
+        else:
+            raise HTTPException(
+                status_code=500, detail=f"Failed to send weekly reminder email to {volunteer.email}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send weekly reminder to volunteer {volunteer_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send weekly reminder email: {str(e)}"
+        )
+
+
+@admin_router.get("/config/validate")
+def validate_configuration(db: Session = Depends(get_db)):
+    """Validate that all required configuration is set"""
+    try:
+        missing_settings = []
+        
+        # Check required Google Sheets settings
+        schedule_sheet_id = ConfigHelper.get_schedule_sheet_id(db)
+        if not schedule_sheet_id:
+            missing_settings.append("SCHEDULE_SHEET_ID")
+        
+        new_signups_sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
+        if not new_signups_sheet_id:
+            missing_settings.append("NEW_SIGNUPS_SHEET_ID")
+        
+        if missing_settings:
+            return {
+                "status": "error",
+                "message": f"Missing required settings: {', '.join(missing_settings)}",
+                "missing_settings": missing_settings,
+                "instructions": "Please configure these settings via the /settings/ endpoint"
+            }
+        
+        return {
+            "status": "success",
+            "message": "All required configuration is set",
+            "schedule_sheet_id": schedule_sheet_id,
+            "new_signups_sheet_id": new_signups_sheet_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Configuration validation failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Configuration validation failed: {str(e)}"
         )

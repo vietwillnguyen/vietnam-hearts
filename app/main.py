@@ -8,18 +8,20 @@ API documentation available at /docs and /redoc
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from .utils.logging_config import get_logger, get_log_file_path, print_log_paths
-from .database import init_database
+from .database import init_database, get_db
 from .config import (
     API_URL,
-    DRY_RUN,
     ENVIRONMENT,
     DATABASE_URL,
 )
+from app.utils.config_helper import ConfigHelper
 import os
 from .routers.admin import admin_router  # Keep import but control usage
 from .routers.api import api_router
 from .routers.public import public_router
 from app.routers.oauth import oauth_router
+from app.routers.settings import router as settings_router
+
 # Configure logging
 logger = get_logger("main")
 
@@ -33,7 +35,6 @@ async def lifespan(app: FastAPI):
         logger.info("-" * 50)
         logger.info(f"- ENVIRONMENT={ENVIRONMENT}")
         logger.info(f"- TESTING={os.getenv('TESTING')}")
-        logger.info(f"- DRY_RUN={DRY_RUN}")
         logger.info(f"- API_URL={API_URL}")
         logger.info(f"- DATABASE_URL={DATABASE_URL}")
         logger.info(f"- LOGS_DIR={get_log_file_path()}")
@@ -67,6 +68,18 @@ async def lifespan(app: FastAPI):
         # Initialize database
         init_database()
         logger.info("✅ Database initialized")
+
+        # Now we can safely access database settings
+        try:
+            db = next(get_db())
+            dry_run = ConfigHelper.get_dry_run(db)
+            dry_run_email = ConfigHelper.get_dry_run_email_recipient(db)
+            logger.info(f"- DRY_RUN={dry_run}")
+            if dry_run:
+                logger.info(f"- DRY_RUN_EMAIL_RECIPIENT={dry_run_email}")
+        except Exception as e:
+            logger.warning(f"Could not read dry run settings from database: {e}")
+            logger.info("- DRY_RUN=Unknown (database not accessible)")
 
         # Start API server
         logger.info("✅ API server started successfully")
@@ -102,3 +115,4 @@ if ENVIRONMENT == "development":
 
 app.include_router(api_router)
 app.include_router(public_router)
+app.include_router(settings_router)

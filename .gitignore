@@ -8,6 +8,7 @@ poetry.lock
 
 # Database
 *.db
+file::memory:*
 
 # Virtual environments
 .env

@@ -10,13 +10,10 @@ from app.models import (
 from app.services.google_sheets import sheets_service
 from app.utils.auth import rate_limit
 from app.utils.logging_config import get_api_logger
-from app.config import (
-    DRY_RUN,
-    ENVIRONMENT,
-    NEW_SIGNUPS_SHEET_ID,
-)
 from datetime import datetime
 import os
+from app.config import ENVIRONMENT
+from app.utils.config_helper import ConfigHelper
 
 logger = get_api_logger()
 
@@ -35,7 +32,7 @@ def unsubscribe_volunteer_page(
     request: Request, token: str, db: Session = Depends(get_db)
 ):
     """
-    Show email preferences management page
+    Show unsubscribe page for volunteer
 
     Args:
         token: Secure unsubscribe token for the volunteer
@@ -60,6 +57,17 @@ def unsubscribe_volunteer_page(
                 status_code=400,
             )
 
+        # Determine current subscription status
+        if not volunteer.all_emails_subscribed:
+            subscribed_status = "Unsubscribed from all emails (Account deactivated)"
+            unsubscribe_type = "all_emails"
+        elif not volunteer.weekly_reminders_subscribed:
+            subscribed_status = "Subscribed to announcements only (No weekly reminders)"
+            unsubscribe_type = "weekly_reminders"
+        else:
+            subscribed_status = "Subscribed to all emails including weekly reminders"
+            unsubscribe_type = "resubscribe"
+
         return templates.TemplateResponse(
             request,
             "unsubscribe/manage_preferences.html",
@@ -67,6 +75,8 @@ def unsubscribe_volunteer_page(
                 "volunteer_name": volunteer.name,
                 "volunteer_email": volunteer.email,
                 "token": token,
+                "subscribed_status": subscribed_status,
+                "unsubscribe_type": unsubscribe_type,
             },
         )
 
@@ -118,12 +128,38 @@ def update_email_preferences(
             )
 
         if unsubscribe_type not in ["weekly_reminders", "all_emails", "resubscribe"]:
+            # Get volunteer info for error display
+            volunteer = (
+                db.query(VolunteerModel)
+                .filter(VolunteerModel.email_unsubscribe_token == token)
+                .first()
+            )
+            
+            if volunteer:
+                # Determine current subscription status
+                if not volunteer.all_emails_subscribed:
+                    subscribed_status = "Unsubscribed from all emails (Account deactivated)"
+                    current_unsubscribe_type = "all_emails"
+                elif not volunteer.weekly_reminders_subscribed:
+                    subscribed_status = "Subscribed to announcements only (No weekly reminders)"
+                    current_unsubscribe_type = "weekly_reminders"
+                else:
+                    subscribed_status = "Subscribed to all emails including weekly reminders"
+                    current_unsubscribe_type = "resubscribe"
+            else:
+                subscribed_status = "Unknown"
+                current_unsubscribe_type = "resubscribe"
+
             return templates.TemplateResponse(
                 request,
                 "unsubscribe/manage_preferences.html",
                 {
+                    "volunteer_name": volunteer.name if volunteer else "Unknown",
+                    "volunteer_email": volunteer.email if volunteer else "Unknown",
                     "error_message": "Invalid preference selection. Please try again.",
                     "token": token,
+                    "subscribed_status": subscribed_status,
+                    "unsubscribe_type": current_unsubscribe_type,
                 },
                 status_code=422,
             )
@@ -172,6 +208,17 @@ def update_email_preferences(
             # Note: Volunteer is now auto-deactivated, so they won't be synced from Sheets
             pass
 
+        # Determine current subscription status after update
+        if not volunteer.all_emails_subscribed:
+            subscribed_status = "Unsubscribed from all emails (Account deactivated)"
+            unsubscribe_type = "all_emails"
+        elif not volunteer.weekly_reminders_subscribed:
+            subscribed_status = "Subscribed to announcements only (No weekly reminders)"
+            unsubscribe_type = "weekly_reminders"
+        else:
+            subscribed_status = "Subscribed to all emails including weekly reminders"
+            unsubscribe_type = "resubscribe"
+
         return templates.TemplateResponse(
             request,
             "unsubscribe/manage_preferences.html",
@@ -179,6 +226,8 @@ def update_email_preferences(
                 "volunteer_name": volunteer.name,
                 "volunteer_email": volunteer.email,
                 "token": token,
+                "subscribed_status": subscribed_status,
+                "unsubscribe_type": unsubscribe_type,
                 "success_message": success_message,
             },
         )
@@ -208,7 +257,9 @@ def get_health(db: Session = Depends(get_db)):
         sheets_error = None
         try:
             test_range = sheets_service.get_range_from_sheet(
-                NEW_SIGNUPS_SHEET_ID, "A1:A1"
+                db,
+                ConfigHelper.get_schedule_sheet_id(db) or "",
+                "A1:A1"
             )
             sheets_status = "healthy"
         except Exception as e:
@@ -230,9 +281,9 @@ def get_health(db: Session = Depends(get_db)):
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "version": "1.0.0",
+            "version": "1.1.4",
             "environment": ENVIRONMENT,
-            "dry_run": DRY_RUN,
+            "dry_run": ConfigHelper.get_dry_run(db),
             "services": {
                 "database": {
                     "status": db_status,
@@ -250,4 +301,27 @@ def get_health(db: Session = Depends(get_db)):
             "status": "unhealthy",
             "timestamp": datetime.now().isoformat(),
             "error": str(e),
+        }
+
+@public_router.get("/test-sheets")
+def test_sheets_connection(db: Session = Depends(get_db)):
+    """Test Google Sheets connection and configuration"""
+    try:
+        # Test fetching a small range from the schedule sheet
+        test_range = sheets_service.get_range_from_sheet(
+            db,
+            ConfigHelper.get_schedule_sheet_id(db),
+            "A1:B2"
+        )
+        
+        return {
+            "status": "success",
+            "message": "Google Sheets connection successful",
+            "test_data": test_range
+        }
+    except Exception as e:
+        logger.error(f"Google Sheets test failed: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Google Sheets test failed: {str(e)}"
         }
