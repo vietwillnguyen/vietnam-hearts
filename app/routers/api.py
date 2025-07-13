@@ -265,11 +265,11 @@ def rotate_schedule_sheets(request: Request):
 
 
 @api_router.get("/health")
-def health_check():
+def health_check(db: Session = Depends(get_db)):
     """Health check endpoint to verify service status and Google Sheets connectivity"""
     try:
         # Quick test of Google Sheets API connectivity
-        test_result = sheets_service.get_signup_form_submissions()
+        test_result = sheets_service.get_signup_form_submissions(db)
         return {
             "status": "healthy",
             "google_sheets_connectivity": "ok",

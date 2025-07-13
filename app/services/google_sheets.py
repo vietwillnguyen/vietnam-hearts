@@ -55,6 +55,7 @@ class GoogleSheetsService:
             
             if not ConfigHelper.get_new_signups_sheet_id(db):
                 errors.append("NEW_SIGNUPS_SHEET_ID setting is required")
+
         else:
             # Fallback to environment variables or skip validation
             logger.warning("No database session provided for config validation, skipping dynamic settings check")
@@ -200,14 +201,15 @@ class GoogleSheetsService:
             sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
             if not sheet_id:
                 raise ValueError("NEW_SIGNUPS_SHEET_ID is not configured. Please set it in the admin settings.")
-            
             default_range = ConfigHelper.get_google_signups_range(db)
-            logger.info(f"Fetching signups from sheet {sheet_id} with range {range_name or default_range}")
+            # Use only the range, do not prefix with sheet name
+            full_range = range_name or default_range
+            logger.info(f"Fetching signups from sheet {sheet_id} with range {full_range}")
             result = (
                 self.sheet.values()
                 .get(
                     spreadsheetId=sheet_id,
-                    range=range_name or default_range,
+                    range=full_range,
                 )
                 .execute()
             )
@@ -233,6 +235,7 @@ class GoogleSheetsService:
                 "referral_source",
                 "guidelines_acknowledged",
                 "confirmation_email_sent",
+                "status",
             ]
 
             # Process each row into a dictionary
@@ -271,22 +274,35 @@ class GoogleSheetsService:
             logger.error(f"Failed to fetch form submissions: {str(e)}", exc_info=True)
             raise
 
-    def update_confirmation_status(self, email: str, status: bool = True) -> bool:
+    def update_confirmation_status(self, email: str, status: bool = True, db: Optional[Session] = None) -> bool:
         """
         Update the confirmation email status for a volunteer in the Google Sheet
 
         Args:
             email (str): The email address of the volunteer
             status (bool): Whether the confirmation email was sent (True) or not (False)
+            db (Session): Database session for configuration
 
         Returns:
             bool: True if update was successful, False otherwise
         """
         try:
+            if not db:
+                logger.error("Database session required for update_confirmation_status")
+                return False
+                
+            # Get sheet configuration
+            sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
+            default_range = ConfigHelper.get_google_signups_range(db)
+            if not sheet_id:
+                logger.error("NEW_SIGNUPS_SHEET_ID is not configured")
+                return False
+            # Use only the range, do not prefix with sheet name
+            full_range = default_range
             # First, find the row with the matching email
             result = (
                 self.sheet.values()
-                .get(spreadsheetId=SIGNUPS_SHEET_ID, range=SIGNUPS_DEFAULT_RANGE)
+                .get(spreadsheetId=sheet_id, range=full_range)
                 .execute()
             )
             values = result.get("values", [])
@@ -315,7 +331,7 @@ class GoogleSheetsService:
             result = (
                 self.sheet.values()
                 .update(
-                    spreadsheetId=SIGNUPS_SHEET_ID,
+                    spreadsheetId=sheet_id,
                     range=cell_range,
                     valueInputOption="RAW",
                     body=body,
@@ -333,61 +349,14 @@ class GoogleSheetsService:
             )
             return False
 
-    def update_unsubscribe_status(self, email: str, unsubscribed: bool = True) -> bool:
-        """
-        Update the unsubscribe status for a volunteer in the Google Sheet
-        This is optional and can be used to keep Google Sheets in sync
-
-        Args:
-            email (str): The email address of the volunteer
-            unsubscribed (bool): Whether the volunteer has unsubscribed (True) or not (False)
-
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        try:
-            # First, find the row with the matching email
-            result = (
-                self.sheet.values()
-                .get(spreadsheetId=SIGNUPS_SHEET_ID, range=SIGNUPS_DEFAULT_RANGE)
-                .execute()
-            )
-            values = result.get("values", [])
-
-            # Find the row index (1-based) for the email
-            email_column_index = 1  # Email is in column B (index 1)
-            row_index = None
-            for i, row in enumerate(values):
-                if len(row) > email_column_index and row[email_column_index] == email:
-                    row_index = i + 1  # Convert to 1-based index
-                    break
-
-            if row_index is None:
-                logger.warning(f"Email {email} not found in signups sheet")
-                return False
-
-            # You could add a new column for unsubscribe status
-            # For now, we'll just log the action
-            logger.info(
-                f"Would update unsubscribe status for {email} to {unsubscribed} in Google Sheets, not implemented for now"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(
-                f"Failed to update unsubscribe status for {email}: {str(e)}",
-                exc_info=True,
-            )
-            return False
-
     def create_sheet_from_template(
-        self, template_sheet_name: str, new_sheet_date: datetime
+        self, template_sheet_name: str, new_sheet_date: datetime, db: Session
     ) -> str:
         """
         Create a new sheet from a template, named 'Schedule MM/DD', and insert it after the last schedule sheet.
         """
         try:
-            sheet_metadata = self.sheet.get(spreadsheetId=SCHEDULE_SHEET_ID).execute()
+            sheet_metadata = self.sheet.get(spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)).execute()
             template_sheet_id = next(
                 (
                     s["properties"]["sheetId"]
@@ -432,7 +401,7 @@ class GoogleSheetsService:
                 ]
             }
             response = self.sheet.batchUpdate(
-                spreadsheetId=SCHEDULE_SHEET_ID, body=copy_request
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=copy_request
             ).execute()
             new_sheet_id = response["replies"][0]["duplicateSheet"]["properties"][
                 "sheetId"
@@ -447,14 +416,14 @@ class GoogleSheetsService:
             )
             raise
 
-    def hide_sheet(self, sheet_name: str):
+    def hide_sheet(self, sheet_name: str, db: Session):
         """
         Hide a sheet by name
         Args:
             sheet_name: Name of the sheet to hide (in format Schedule MM/DD/YYYY)
         """
         try:
-            sheet_metadata = self.sheet.get(spreadsheetId=SCHEDULE_SHEET_ID).execute()
+            sheet_metadata = self.sheet.get(spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)).execute()
             available_sheets = [
                 sheet["properties"]["title"] for sheet in sheet_metadata["sheets"]
             ]
@@ -482,7 +451,7 @@ class GoogleSheetsService:
                 ]
             }
             self.sheet.batchUpdate(
-                spreadsheetId=SCHEDULE_SHEET_ID, body=request
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
             ).execute()
             logger.info(f"Successfully hidden sheet: {sheet_name}")
         except Exception as e:
@@ -553,30 +522,30 @@ class GoogleSheetsService:
             logger.error(f"Failed to update sheet dates: {str(e)}", exc_info=True)
             raise
 
-    def get_sheet_metadata(self) -> Dict:
+    def get_sheet_metadata(self, db: Session) -> Dict:
         """Get metadata for all sheets in the spreadsheet"""
         try:
-            return self.sheet.get(spreadsheetId=SCHEDULE_SHEET_ID).execute()
+            return self.sheet.get(spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)).execute()
         except Exception as e:
             logger.error(f"Failed to get sheet metadata: {str(e)}", exc_info=True)
             raise
 
-    def get_schedule_sheets(self) -> List[Dict]:
+    def get_schedule_sheets(self, db: Session) -> List[Dict]:
         """Get all schedule sheets and their metadata"""
-        metadata = self.get_sheet_metadata()
+        metadata = self.get_sheet_metadata(db)
         return [
             sheet
             for sheet in metadata["sheets"]
             if sheet["properties"]["title"].startswith("Schedule ")
         ]
 
-    def get_sheet_by_date(self, date: datetime) -> Optional[Dict]:
+    def get_sheet_by_date(self, date: datetime, db: Session) -> Optional[Dict]:
         """Get sheet metadata for a specific date"""
         sheet_name = f"Schedule {date.strftime('%m/%d')}"
-        sheets = self.get_schedule_sheets()
+        sheets = self.get_schedule_sheets(db)
         return next((s for s in sheets if s["properties"]["title"] == sheet_name), None)
 
-    def get_current_schedule_dates(self) -> tuple[datetime, datetime]:
+    def get_current_schedule_dates(self, db: Session) -> tuple[datetime, datetime]:
         """
         Get the Monday and Friday dates from the current visible schedule sheet.
 
@@ -585,7 +554,7 @@ class GoogleSheetsService:
         """
         try:
             # Get all schedule sheets
-            schedule_sheets = self.get_schedule_sheets()
+            schedule_sheets = self.get_schedule_sheets(db)
 
             # Find the first visible schedule sheet (they should be ordered by date)
             visible_sheet = None
@@ -648,7 +617,7 @@ class GoogleSheetsService:
             current_friday = current_monday + timedelta(days=4)
             return current_monday, current_friday
 
-    def set_sheet_visibility(self, sheet_id: int, hidden: bool):
+    def set_sheet_visibility(self, sheet_id: int, hidden: bool, db: Session):
         """Set the visibility of a sheet"""
         try:
             request = {
@@ -662,7 +631,7 @@ class GoogleSheetsService:
                 ]
             }
             self.sheet.batchUpdate(
-                spreadsheetId=SCHEDULE_SHEET_ID, body=request
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
             ).execute()
             logger.info(
                 f"Set sheet {sheet_id} visibility to {'hidden' if hidden else 'visible'}"
@@ -671,7 +640,7 @@ class GoogleSheetsService:
             logger.error(f"Failed to set sheet visibility: {str(e)}", exc_info=True)
             raise
 
-    def move_sheet(self, sheet_id: int, new_index: int):
+    def move_sheet(self, sheet_id: int, new_index: int, db: Session):
         """
         Move a sheet to a new position in the spreadsheet.
 
@@ -691,7 +660,7 @@ class GoogleSheetsService:
                 ]
             }
             self.sheet.batchUpdate(
-                spreadsheetId=SCHEDULE_SHEET_ID, body=request
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
             ).execute()
             logger.info(f"Moved sheet {sheet_id} to index {new_index}")
         except Exception as e:
@@ -744,6 +713,19 @@ class GoogleSheetsService:
             sheets_made_hidden = []
             sheets_reordered = []
 
+            # Hide the 'Schedule Template' sheet if it exists
+            template_sheet = next(
+                (s for s in existing_sheets if s["properties"]["title"] == "Schedule Template"),
+                None,
+            )
+            if template_sheet and not template_sheet["properties"].get("hidden", False):
+                try:
+                    self.set_sheet_visibility(template_sheet["properties"]["sheetId"], True, db)
+                    sheets_made_hidden.append("Schedule Template")
+                    logger.info("Set 'Schedule Template' sheet to hidden")
+                except Exception as e:
+                    logger.error(f"Failed to hide 'Schedule Template' sheet: {str(e)}", exc_info=True)
+
             # Process each date in the display range
             for i, date in enumerate(display_dates):
                 sheet_name = f"Schedule {date.strftime('%m/%d')}"
@@ -762,10 +744,10 @@ class GoogleSheetsService:
                     old_index = existing_sheet["properties"].get("index", 0)
 
                     self.set_sheet_visibility(
-                        existing_sheet["properties"]["sheetId"], False
+                        existing_sheet["properties"]["sheetId"], False, db
                     )  # False = visible
                     self.move_sheet(
-                        existing_sheet["properties"]["sheetId"], i + 1
+                        existing_sheet["properties"]["sheetId"], i + 1, db
                     )  # +1 to account for template sheet
 
                     # Track changes
@@ -776,18 +758,18 @@ class GoogleSheetsService:
                 else:
                     # Create new sheet and ensure it's visible
                     new_sheet_id = self.create_sheet_from_template(
-                        "Schedule Template", date
+                        "Schedule Template", date, db
                     )
                     self.update_sheet_dates(date, db)
-                    self.set_sheet_visibility(new_sheet_id, False)  # False = visible
-                    self.move_sheet(new_sheet_id, i + 1)  # Move to correct position
+                    self.set_sheet_visibility(new_sheet_id, False, db)  # False = visible
+                    self.move_sheet(new_sheet_id, i + 1, db)  # Move to correct position
                     sheets_created.append(sheet_name)
 
-            # Handle visibility for all sheets
+            # Handle visibility for all sheets except 'Schedule Template'
             for sheet in existing_sheets:
                 title = sheet["properties"]["title"]
-                # Skip template sheet and any other non-date sheets
-                if not title.startswith("Schedule ") or title == "Schedule Template":
+                # Only process sheets with names 'Schedule MM/DD'
+                if not (title.startswith("Schedule ") and title != "Schedule Template"):
                     continue
 
                 try:
@@ -800,7 +782,7 @@ class GoogleSheetsService:
                     # Only update if visibility needs to change
                     if current_visibility != should_be_visible:
                         self.set_sheet_visibility(
-                            sheet["properties"]["sheetId"], not should_be_visible
+                            sheet["properties"]["sheetId"], not should_be_visible, db   
                         )  # True = hidden
 
                         # Track the change
@@ -867,11 +849,11 @@ class GoogleSheetsService:
                     ],
                 },
                 "display_dates": [date.strftime("%m/%d") for date in display_dates],
-                "display_weeks_count": SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT,
+                "display_weeks_count": ConfigHelper.get_schedule_sheets_display_weeks_count(db),
             }
 
             logger.info(
-                f"Successfully rotated schedule sheets for {SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT} weeks"
+                f"Successfully rotated schedule sheets for {ConfigHelper.get_schedule_sheets_display_weeks_count(db)} weeks"
             )
             return result
 

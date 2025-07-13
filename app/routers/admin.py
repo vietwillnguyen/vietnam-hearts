@@ -351,6 +351,11 @@ def get_signup_form_submissions(
         new_submissions = []
         new_volunteers = []
         failed_submissions = []
+        
+        # Calculate status statistics for all cases
+        total_submissions = len(submissions)
+        accepted_submissions = len([sub for sub in submissions if sub.get("status", "").upper() == "ACCEPTED"])
+        non_accepted_submissions = total_submissions - accepted_submissions
 
         if process_new:
             # Get all existing emails in one query
@@ -359,11 +364,23 @@ def get_signup_form_submissions(
             )
             logger.info(f"Found {len(existing_emails)} existing emails in database")
             
-            # Filter new submissions
+            # Filter new submissions - only process those with STATUS = 'ACCEPTED'
             new_submissions = [
                 sub for sub in submissions 
-                if sub["email"] not in existing_emails
+                if sub["email"] not in existing_emails and sub.get("status", "").upper() == "ACCEPTED"
             ]
+            
+            # Log statistics about status filtering
+            logger.info(f"Status filtering: {total_submissions} total submissions, {accepted_submissions} accepted, {non_accepted_submissions} non-accepted")
+            
+            # Log details about non-accepted submissions for transparency
+            if non_accepted_submissions > 0:
+                non_accepted_details = [
+                    {"email": sub.get("email", "unknown"), "status": sub.get("status", "missing")}
+                    for sub in submissions 
+                    if sub.get("status", "").upper() != "ACCEPTED"
+                ]
+                logger.info(f"Skipped non-accepted submissions: {non_accepted_details}")
             
             logger.info(f"Found {len(new_submissions)} new submissions to process...")
             
@@ -396,6 +413,8 @@ def get_signup_form_submissions(
                         "data": submissions,
                         "details": {
                             "submissions_retrieved": len(submissions),
+                            "accepted_submissions": accepted_submissions,
+                            "non_accepted_submissions": non_accepted_submissions,
                             "new_submissions_found": len(new_submissions),
                             "volunteers_created": len(new_volunteers),
                             "failed_submissions": failed_submissions,
@@ -417,6 +436,8 @@ def get_signup_form_submissions(
                 "data": submissions,
                 "details": {
                     "submissions_retrieved": len(submissions),
+                    "accepted_submissions": accepted_submissions,
+                    "non_accepted_submissions": non_accepted_submissions,
                     "new_submissions_found": len(new_submissions),
                     "volunteers_created": len(new_volunteers),
                     "failed_submissions": failed_submissions
@@ -425,8 +446,15 @@ def get_signup_form_submissions(
         else:
             return {
                 "status": "success",
-                "message": f"Retrieved {len(submissions)} form submissions",
+                "message": f"Retrieved {len(submissions)} form submissions ({accepted_submissions} accepted, {non_accepted_submissions} non-accepted)",
                 "data": submissions,
+                "details": {
+                    "submissions_retrieved": len(submissions),
+                    "accepted_submissions": accepted_submissions,
+                    "non_accepted_submissions": non_accepted_submissions,
+                    "new_submissions_found": len(new_submissions),
+                    "volunteers_created": len(new_volunteers)
+                }
             }
             
     except ssl.SSLEOFError as e:
@@ -440,6 +468,8 @@ def get_signup_form_submissions(
                 "error_type": "ssl_eof_error",
                 "error_message": str(e),
                 "submissions_retrieved": 0,
+                "accepted_submissions": 0,
+                "non_accepted_submissions": 0,
                 "new_submissions_found": 0,
                 "volunteers_created": 0
             }
@@ -454,6 +484,8 @@ def get_signup_form_submissions(
                 "error_type": type(e).__name__,
                 "error_message": str(e),
                 "submissions_retrieved": 0,
+                "accepted_submissions": 0,
+                "non_accepted_submissions": 0,
                 "new_submissions_found": 0,
                 "volunteers_created": 0
             }

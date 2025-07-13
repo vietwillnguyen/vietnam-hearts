@@ -56,7 +56,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "additional_info": "",
+                "status": "ACCEPTED"
             },
             {
                 "full_name": "Duplicate Volunteer",
@@ -72,7 +73,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Fluent",
                 "other_support": "",
-                "additional_info": ""
+                "additional_info": "",
+                "status": "ACCEPTED"
             },
             {
                 "full_name": "New Volunteer 2",
@@ -88,7 +90,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "None",
                 "other_support": "Transportation",
-                "additional_info": "Excited to help!"
+                "additional_info": "Excited to help!",
+                "status": "ACCEPTED"
             }
         ]
 
@@ -175,7 +178,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "additional_info": "",
+                "status": "ACCEPTED"
             }
         ]
 
@@ -306,7 +310,8 @@ class TestFormSubmissionProcessing:
             "teaching_certificate": "No",
             "vietnamese_speaking": "Basic",
             "other_support": "",
-            "additional_info": ""
+            "additional_info": "",
+            "status": "ACCEPTED"
         }
         
         volunteer = create_new_volunteer_object(submission)
@@ -331,7 +336,8 @@ class TestFormSubmissionProcessing:
             "teaching_certificate": "No",
             "vietnamese_speaking": "Basic",
             "other_support": "",
-            "additional_info": ""
+            "additional_info": "",
+            "status": "ACCEPTED"
         }
         
         volunteer = create_new_volunteer_object(submission)
@@ -358,7 +364,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "additional_info": "",
+                "status": "ACCEPTED"
             }
         ]
 
@@ -418,7 +425,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "additional_info": "",
+                "status": "ACCEPTED"
             }
         ]
 
@@ -458,7 +466,8 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "additional_info": "",
+                "status": "ACCEPTED"
             }
         ]
 
@@ -484,4 +493,122 @@ class TestFormSubmissionProcessing:
                 
                 # The email service should have logged the communication
                 # This is tested in the email service tests, but we can verify the volunteer exists
-                assert volunteer.email == "test@example.com" 
+                assert volunteer.email == "test@example.com"
+
+    def test_status_filtering_only_processes_accepted_submissions(self, client, test_db):
+        """Test that only submissions with STATUS = 'ACCEPTED' are processed"""
+        # Mock form submissions with different statuses
+        mock_submissions = [
+            {
+                "full_name": "Accepted Volunteer",
+                "email": "accepted@example.com",
+                "phone": "1111111111",
+                "position": "Teacher",
+                "location": "Ho Chi Minh City",
+                "availability": "Monday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "additional_info": "",
+                "status": "ACCEPTED"
+            },
+            {
+                "full_name": "Pending Volunteer",
+                "email": "pending@example.com",
+                "phone": "2222222222",
+                "position": "Teacher",
+                "location": "Ho Chi Minh City",
+                "availability": "Tuesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "additional_info": "",
+                "status": "PENDING"
+            },
+            {
+                "full_name": "Rejected Volunteer",
+                "email": "rejected@example.com",
+                "phone": "3333333333",
+                "position": "Teacher",
+                "location": "Ho Chi Minh City",
+                "availability": "Wednesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "additional_info": "",
+                "status": "REJECTED"
+            },
+            {
+                "full_name": "No Status Volunteer",
+                "email": "nostatus@example.com",
+                "phone": "4444444444",
+                "position": "Teacher",
+                "location": "Ho Chi Minh City",
+                "availability": "Thursday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "additional_info": "",
+                "status": ""
+            }
+        ]
+
+        # Mock the sheets service
+        with patch('app.routers.admin.sheets_service') as mock_sheets:
+            mock_sheets.get_signup_form_submissions.return_value = mock_submissions
+            
+            # Mock the email service
+            with patch('app.routers.admin.email_service') as mock_email:
+                mock_email.send_confirmation_emails.return_value = None
+                
+                # Call the function
+                response = client.get("/admin/forms/submissions?process_new=true")
+                
+                assert response.status_code == 200
+                result = response.json()
+                
+                # Should return success with status filtering info
+                assert result["status"] == "success"
+                assert "4 form submissions" in result["message"]
+                assert "1 accepted, 3 non-accepted" in result["message"]
+                
+                # Check the details
+                assert result["details"]["submissions_retrieved"] == 4
+                assert result["details"]["accepted_submissions"] == 1
+                assert result["details"]["non_accepted_submissions"] == 3
+                assert result["details"]["new_submissions_found"] == 1
+                assert result["details"]["volunteers_created"] == 1
+                
+                # Check database state - only the accepted volunteer should be created
+                all_volunteers = test_db.query(VolunteerModel).all()
+                assert len(all_volunteers) == 1
+                
+                # Verify only the accepted volunteer was added
+                accepted_volunteer = test_db.query(VolunteerModel).filter_by(email="accepted@example.com").first()
+                assert accepted_volunteer is not None
+                assert accepted_volunteer.name == "Accepted Volunteer"
+                
+                # Verify other volunteers were not added
+                pending_volunteer = test_db.query(VolunteerModel).filter_by(email="pending@example.com").first()
+                rejected_volunteer = test_db.query(VolunteerModel).filter_by(email="rejected@example.com").first()
+                nostatus_volunteer = test_db.query(VolunteerModel).filter_by(email="nostatus@example.com").first()
+                
+                assert pending_volunteer is None
+                assert rejected_volunteer is None
+                assert nostatus_volunteer is None 
