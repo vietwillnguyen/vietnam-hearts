@@ -354,7 +354,7 @@ def get_signup_form_submissions(
         
         # Calculate status statistics for all cases
         total_submissions = len(submissions)
-        accepted_submissions = len([sub for sub in submissions if sub.get("status", "").upper() == "ACCEPTED"])
+        accepted_submissions = len([sub for sub in submissions if sub.get("applicant_status", "").upper() == "ACCEPTED"])
         non_accepted_submissions = total_submissions - accepted_submissions
 
         if process_new:
@@ -367,7 +367,7 @@ def get_signup_form_submissions(
             # Filter new submissions - only process those with STATUS = 'ACCEPTED'
             new_submissions = [
                 sub for sub in submissions 
-                if sub["email"] not in existing_emails and sub.get("status", "").upper() == "ACCEPTED"
+                if sub["email_address"] not in existing_emails and sub.get("applicant_status", "").upper() == "ACCEPTED"
             ]
             
             # Log statistics about status filtering
@@ -376,9 +376,9 @@ def get_signup_form_submissions(
             # Log details about non-accepted submissions for transparency
             if non_accepted_submissions > 0:
                 non_accepted_details = [
-                    {"email": sub.get("email", "unknown"), "status": sub.get("status", "missing")}
+                    {"email": sub.get("email_address", "unknown"), "applicant_status": sub.get("applicant_status", "missing")}
                     for sub in submissions 
-                    if sub.get("status", "").upper() != "ACCEPTED"
+                    if sub.get("applicant_status", "").upper() != "ACCEPTED"
                 ]
                 logger.info(f"Skipped non-accepted submissions: {non_accepted_details}")
             
@@ -391,9 +391,9 @@ def get_signup_form_submissions(
                     logger.info(f"New Volunteer {volunteer.email} created with id: {volunteer.id}")
                     new_volunteers.append(volunteer)
                 except Exception as e:
-                    logger.error(f"Failed to process submission for {submission.get('email', 'unknown')}: {str(e)}")
+                    logger.error(f"Failed to process submission for {submission.get('email_address', 'unknown')}: {str(e)}")
                     failed_submissions.append({
-                        "email": submission.get('email', 'unknown'),
+                        "email": submission.get('email_address', 'unknown'),
                         "error": str(e)
                     })
                     continue
@@ -494,13 +494,22 @@ def get_signup_form_submissions(
 
 def create_new_volunteer_object(submission: dict) -> VolunteerModel:
     """Create a new volunteer object without database operations"""
+    # Combine first and last name for the full name
+    first_name = submission.get("first_name", "").strip()
+    last_name = submission.get("last_name", "").strip()
+    full_name = f"{first_name} {last_name}".strip()
+    
+    # Handle empty name case
+    if not full_name:
+        full_name = "Unknown Volunteer"
+    
     return VolunteerModel(
-        name=submission["full_name"],
-        email=submission["email"],
-        phone=submission["phone"],
-        positions=[pos.strip() for pos in submission["position"].split(",")],
+        name=full_name,
+        email=submission["email_address"],
+        phone=submission["phone_number"],
+        positions=[pos.strip() for pos in submission["position_interest"].split(",")] if submission.get("position_interest") else [],
         location=submission["location"],
-        availability=[slot.strip() for slot in submission["availability"].split(",")],
+        availability=[slot.strip() for slot in submission["availability"].split(",")] if submission.get("availability") else [],
         start_date=parse_start_date(submission["start_date"]),
         commitment_duration=submission["commitment_duration"],
         teaching_experience=submission["teaching_experience"],
@@ -510,9 +519,10 @@ def create_new_volunteer_object(submission: dict) -> VolunteerModel:
         additional_support=[
             support.strip() for support in submission["other_support"].split(",")
         ]
-        if submission["other_support"]
+        if submission.get("other_support")
         else [],
-        additional_info=submission["additional_info"],
+        # Store additional info including social media and referral source
+        additional_info=f"Social Media: {submission.get('social_media_link', 'N/A')}\nReferral Source: {submission.get('referral_source', 'N/A')}",
         is_active=True,
     )
 

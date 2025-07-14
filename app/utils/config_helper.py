@@ -15,9 +15,6 @@ from app.config import (
     ENVIRONMENT,
     EMAIL_SENDER,
     GMAIL_APP_PASSWORD,
-    GOOGLE_OAUTH_CLIENT_ID,
-    GOOGLE_OAUTH_CLIENT_SECRET,
-    SERVICE_ACCOUNT_EMAIL,
     GOOGLE_APPLICATION_CREDENTIALS,
     TEMPLATE_PATH,
 )
@@ -39,9 +36,6 @@ class ConfigHelper:
     ENVIRONMENT = ENVIRONMENT
     EMAIL_SENDER = EMAIL_SENDER
     GMAIL_APP_PASSWORD = GMAIL_APP_PASSWORD
-    GOOGLE_OAUTH_CLIENT_ID = GOOGLE_OAUTH_CLIENT_ID
-    GOOGLE_OAUTH_CLIENT_SECRET = GOOGLE_OAUTH_CLIENT_SECRET
-    SERVICE_ACCOUNT_EMAIL = SERVICE_ACCOUNT_EMAIL
     GOOGLE_APPLICATION_CREDENTIALS = GOOGLE_APPLICATION_CREDENTIALS
     TEMPLATE_PATH = TEMPLATE_PATH
     
@@ -137,7 +131,7 @@ class ConfigHelper:
     def get_dry_run(db: Session, default: bool = False) -> bool:
         """Get the dry run setting from database settings"""
         value = get_setting(db, "DRY_RUN", str(default))
-        return value if value else default
+        return value.lower() == "true" if value else default
     
     @staticmethod
     def get_dry_run_email_recipient(db: Session, default: str = "") -> str:

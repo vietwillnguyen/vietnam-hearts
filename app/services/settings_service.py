@@ -152,11 +152,11 @@ def initialize_default_settings(db: Session) -> None:
         },
         "SCHEDULE_SHEET_ID": {
             "value": "",
-            "description": "Google Sheets ID for the schedule spreadsheet"
+            "description": "Google Sheets ID for the schedule spreadsheet. You can find this in the URL of the spreadsheet. (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit#gid=0, the ID is 1234567890)"
         },
         "NEW_SIGNUPS_SHEET_ID": {
             "value": "",
-            "description": "Google Sheets ID for new volunteer signups"
+            "description": "Google Sheets ID for new volunteer signups. You can find this in the URL of the spreadsheet. (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit#gid=0, the ID is 1234567890)"
         },
         "GOOGLE_SCHEDULE_RANGE": {
             "value": "B7:G11",

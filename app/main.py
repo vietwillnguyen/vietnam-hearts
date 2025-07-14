@@ -8,7 +8,7 @@ API documentation available at /docs and /redoc
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from .utils.logging_config import get_logger, get_log_file_path, print_log_paths
-from .database import init_database, get_db
+from .database import create_tables, get_db
 from .config import (
     API_URL,
     ENVIRONMENT,
@@ -66,20 +66,18 @@ async def lifespan(app: FastAPI):
         logger.info("Configuration validated successfully")
 
         # Initialize database
-        init_database()
+        create_tables()
         logger.info("✅ Database initialized")
 
         # Now we can safely access database settings
         try:
             db = next(get_db())
-            dry_run = ConfigHelper.get_dry_run(db)
-            dry_run_email = ConfigHelper.get_dry_run_email_recipient(db)
-            logger.info(f"- DRY_RUN={dry_run}")
-            if dry_run:
-                logger.info(f"- DRY_RUN_EMAIL_RECIPIENT={dry_run_email}")
+            logger.info(f"- DRY_RUN={ConfigHelper.get_dry_run(db)}")
+            logger.info(f"- DRY_RUN_EMAIL_RECIPIENT={ConfigHelper.get_dry_run_email_recipient(db)}")
         except Exception as e:
             logger.warning(f"Could not read dry run settings from database: {e}")
             logger.info("- DRY_RUN=Unknown (database not accessible)")
+            logger.info("- DRY_RUN_EMAIL_RECIPIENT=Unknown (database not accessible)")
 
         # Start API server
         logger.info("✅ API server started successfully")

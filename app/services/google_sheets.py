@@ -6,6 +6,36 @@ This service handles:
 2. Processing and validating form data
 3. Converting form submissions to volunteer records
 4. Managing schedule sheet rotation and visibility
+
+NEW FORM STRUCTURE (Updated 2024):
+The form now includes the following columns:
+1. Applicant Status
+2. Timestamp
+3. Email Address
+4. Score
+5. First Name (as it appears on passport/ID)
+6. Last Name (as it appears on passport/ID)
+7. Passport/ID number
+8. Passport/ID expiry date
+9. Date of birth MM/DD/YYYY
+10. Passport upload link
+11. Headshot upload link
+12. Facebook/LinkedIn profile link
+13. Where are you from?
+14. Phone number (with region code)
+15. Position interested in
+16. Availability
+17. When would you like to start?
+18. Commitment duration
+19. Teaching experience
+20. Experience details
+21. Teaching certificate
+22. Vietnamese speaking ability
+23. Other support ways
+24. How did you hear about us?
+
+Note: Personal information (passport details, uploads) is collected but not stored in the database
+for privacy and security reasons.
 """
 
 import os
@@ -55,7 +85,6 @@ class GoogleSheetsService:
             
             if not ConfigHelper.get_new_signups_sheet_id(db):
                 errors.append("NEW_SIGNUPS_SHEET_ID setting is required")
-
         else:
             # Fallback to environment variables or skip validation
             logger.warning("No database session provided for config validation, skipping dynamic settings check")
@@ -114,13 +143,13 @@ class GoogleSheetsService:
             self._initialize_service(db)
 
     @property
-    def service(self):
+    def service(self) -> Any:
         """Get the Google Sheets service (lazy initialization)"""
         self._ensure_initialized()
         return self._service
 
     @property
-    def sheet(self):
+    def sheet(self) -> Any:
         """Get the Google Sheets spreadsheet service (lazy initialization)"""
         self._ensure_initialized()
         return self._sheet
@@ -170,7 +199,7 @@ class GoogleSheetsService:
             )
             return []
 
-    def get_schedule_range(self, db: Session, range_name: str = None) -> List[List[str]]:
+    def get_schedule_range(self, db: Session, range_name: Optional[str] = None) -> List[List[str]]:
         """
         Fetch a specific range from the schedule sheet (raw values)
         Args:
@@ -184,7 +213,7 @@ class GoogleSheetsService:
         return self.get_range_from_sheet(db, sheet_id, range_name or default_range)
 
     def get_signup_form_submissions(
-        self, db: Session, range_name: str = None
+        self, db: Session, range_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Fetch all form submissions from the signups sheet with retry logic
@@ -215,14 +244,23 @@ class GoogleSheetsService:
             )
             values = result.get("values", [])
 
-            # Map column headers to field names
+            # Map column headers to field names for new form structure
             headers = [
-                "timestamp",
-                "email",
-                "full_name",
+                "applicant_status",
+                "timestamp", 
+                "email_address",
+                "score",
+                "first_name",
+                "last_name",
+                "passport_id_number",
+                "passport_expiry_date",
+                "date_of_birth",
+                "passport_upload",
+                "headshot_upload",
+                "social_media_link",
                 "location",
-                "phone",
-                "position",
+                "phone_number",
+                "position_interest",
                 "availability",
                 "start_date",
                 "commitment_duration",
@@ -231,11 +269,7 @@ class GoogleSheetsService:
                 "teaching_certificate",
                 "vietnamese_speaking",
                 "other_support",
-                "additional_info",
                 "referral_source",
-                "guidelines_acknowledged",
-                "confirmation_email_sent",
-                "status",
             ]
 
             # Process each row into a dictionary
@@ -274,80 +308,19 @@ class GoogleSheetsService:
             logger.error(f"Failed to fetch form submissions: {str(e)}", exc_info=True)
             raise
 
-    def update_confirmation_status(self, email: str, status: bool = True, db: Optional[Session] = None) -> bool:
-        """
-        Update the confirmation email status for a volunteer in the Google Sheet
-
-        Args:
-            email (str): The email address of the volunteer
-            status (bool): Whether the confirmation email was sent (True) or not (False)
-            db (Session): Database session for configuration
-
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        try:
-            if not db:
-                logger.error("Database session required for update_confirmation_status")
-                return False
-                
-            # Get sheet configuration
-            sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
-            default_range = ConfigHelper.get_google_signups_range(db)
-            if not sheet_id:
-                logger.error("NEW_SIGNUPS_SHEET_ID is not configured")
-                return False
-            # Use only the range, do not prefix with sheet name
-            full_range = default_range
-            # First, find the row with the matching email
-            result = (
-                self.sheet.values()
-                .get(spreadsheetId=sheet_id, range=full_range)
-                .execute()
-            )
-            values = result.get("values", [])
-
-            # Find the row index (1-based) for the email
-            email_column_index = 1  # Email is in column B (index 1)
-            row_index = None
-            for i, row in enumerate(values):
-                if len(row) > email_column_index and row[email_column_index] == email:
-                    row_index = i + 1  # Convert to 1-based index
-                    break
-
-            if row_index is None:
-                logger.warning(f"Email {email} not found in signups sheet")
-                return False
-
-            # Update the confirmation email status column (column R, index 17)
-            confirmation_column = "R"
-            cell_range = f"{confirmation_column}{row_index}"
-
-            # Convert boolean to string for Google Sheets
-            status_value = "TRUE" if status else "FALSE"
-
-            body = {"values": [[status_value]]}
-
-            result = (
-                self.sheet.values()
-                .update(
-                    spreadsheetId=sheet_id,
-                    range=cell_range,
-                    valueInputOption="RAW",
-                    body=body,
-                )
-                .execute()
-            )
-
-            logger.info(f"Updated confirmation status for {email} to {status}")
-            return True
-
-        except Exception as e:
-            logger.error(
-                f"Failed to update confirmation status for {email}: {str(e)}",
-                exc_info=True,
-            )
-            return False
+    # NOTE: This function is currently disabled as the new form structure doesn't include
+    # a confirmation email status column. The database is now the source of truth for
+    # email communication tracking.
+    # 
+    # def update_confirmation_status(self, email: str, status: bool = True, db: Optional[Session] = None) -> bool:
+    #     """
+    #     Update the confirmation email status for a volunteer in the Google Sheet
+    #     
+    #     DISABLED: New form structure doesn't include confirmation status column.
+    #     Database is now the source of truth for email communication tracking.
+    #     """
+    #     logger.warning("update_confirmation_status is disabled - database is source of truth")
+    #     return True  # Return True to avoid breaking existing code
 
     def create_sheet_from_template(
         self, template_sheet_name: str, new_sheet_date: datetime, db: Session
@@ -685,7 +658,7 @@ class GoogleSheetsService:
             current_monday = now - timedelta(days=days_since_monday)
 
             # Get all existing schedule sheets before rotation
-            existing_sheets = self.get_schedule_sheets()
+            existing_sheets = self.get_schedule_sheets(db)
             before_state = {
                 sheet["properties"]["title"]: {
                     "hidden": sheet["properties"].get("hidden", False),
@@ -761,8 +734,8 @@ class GoogleSheetsService:
                         "Schedule Template", date, db
                     )
                     self.update_sheet_dates(date, db)
-                    self.set_sheet_visibility(new_sheet_id, False, db)  # False = visible
-                    self.move_sheet(new_sheet_id, i + 1, db)  # Move to correct position
+                    self.set_sheet_visibility(int(new_sheet_id), False, db)  # False = visible
+                    self.move_sheet(int(new_sheet_id), i + 1, db)  # Move to correct position
                     sheets_created.append(sheet_name)
 
             # Handle visibility for all sheets except 'Schedule Template'
@@ -800,7 +773,7 @@ class GoogleSheetsService:
                     continue
 
             # Get final state after all changes
-            final_sheets = self.get_schedule_sheets()
+            final_sheets = self.get_schedule_sheets(db)
             after_state = {
                 sheet["properties"]["title"]: {
                     "hidden": sheet["properties"].get("hidden", False),

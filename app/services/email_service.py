@@ -16,7 +16,7 @@ from app.models import (
     Volunteer as VolunteerModel,
 )
 from app.utils.logging_config import get_api_logger
-from app.utils.config_helper import config, ConfigHelper
+from app.utils.config_helper import config
 from jinja2 import Template
 
 logger = get_api_logger()
@@ -64,10 +64,16 @@ class EmailService:
             # Generate and save token if it doesn't exist
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
 
-        # Use API_URL directly with the unsubscribe endpoint
-        from app.config import API_URL
-        base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
-        
+        # Try to get the base unsubscribe link from database settings
+        base_url = None
+        if hasattr(config, 'get_email_preferences_link'):
+            base_url = config.get_email_preferences_link(db)
+        if not base_url:
+            # Fallback to API_URL if not set in DB
+            from app.config import API_URL
+            base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
+        else:
+            base_url = base_url.rstrip("/")
         logger.info(
             f"Unsubscribe link: {base_url}?token={volunteer.email_unsubscribe_token}"
         )
@@ -198,13 +204,13 @@ class EmailService:
         html_body = Template(self.reminder_template).render(
             first_name=first_name,
             class_tables=[ct['table_html'] for ct in class_tables],
-            SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
+            SCHEDULE_SIGNUP_LINK=config.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
-            FACEBOOK_MESSENGER_LINK=ConfigHelper.get_facebook_messenger_link(db) or "#",
-            DISCORD_INVITE_LINK=ConfigHelper.get_discord_invite_link(db) or "#",
-            ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
-            INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
-            FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
+            FACEBOOK_MESSENGER_LINK=config.get_facebook_messenger_link(db) or "#",
+            DISCORD_INVITE_LINK=config.get_discord_invite_link(db) or "#",
+            ONBOARDING_GUIDE_LINK=config.get_onboarding_guide_link(db) or "#",
+            INSTAGRAM_LINK=config.get_instagram_link(db) or "#",
+            FACEBOOK_PAGE_LINK=config.get_facebook_page_link(db) or "#",
         )
 
         return html_body, subject
@@ -250,7 +256,7 @@ class EmailService:
             to_email = volunteer.email
 
             # DRY_RUN logic
-            if ConfigHelper.get_dry_run(db) and to_email != ConfigHelper.get_dry_run_email_recipient(db):
+            if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database")
                 # Log the email communication in database
                 email_comm = EmailCommunicationModel(
@@ -349,7 +355,7 @@ class EmailService:
         """
         try:
             # DRY_RUN logic
-            if ConfigHelper.get_dry_run(db) and to_email != ConfigHelper.get_dry_run_email_recipient(db):
+            if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database")
                 email_comm = EmailCommunicationModel(
                     volunteer_id=volunteer_id,
