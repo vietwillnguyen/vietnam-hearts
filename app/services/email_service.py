@@ -86,7 +86,10 @@ class EmailService:
         )
 
     def build_class_table(self, class_name: str, config: dict, sheet_service, db: Session) -> dict:
-        """Build HTML table for a specific class, with Day/Teacher/Assistant(s)/Status columns"""
+        """
+        Build HTML table for a specific class, with Day/Teacher/Head TA/Assistant(s)/Status columns.
+        A class must have at least one Head Teaching Assistant.
+        """
         try:
             sheet_range = config.get("sheet_range")
             class_time = config.get("time", "")
@@ -98,18 +101,20 @@ class EmailService:
                     "has_data": False,
                 }
             class_data = sheet_service.get_schedule_range(db, sheet_range)
-            if not class_data or len(class_data) < 3:  # MIN_REQUIRED_ROWS = 3
+            # Expecting: [header_row, teacher_row, head_ta_row, assistant_row]
+            if not class_data or len(class_data) < 4:  # Must have at least 4 rows
+                logger.error(f"Insufficient data rows for {class_name}. Expected at least 4 rows (header, teacher, head TA, assistant).")
                 return {
                     "class_name": class_name,
-                    "table_html": f"<p>No data available for {class_name}</p>",
+                    "table_html": f"<p>No data available for {class_name} (missing Head Teaching Assistant row)</p>",
                     "has_data": False,
                 }
 
-            # Transpose data: columns are days, rows are header/teacher/assistant
-            # class_data: [header_row, teacher_row, assistant_row]
+            # Transpose data: columns are days, rows are header/teacher/head_ta/assistant
             days = class_data[0][1:]  # skip first col (label)
             teachers = class_data[1][1:]
-            assistants = class_data[2][1:]
+            head_tas = class_data[2][1:]
+            assistants = class_data[3][1:]
 
             # Table header
             table_html = f"<h3>{class_name} ({class_time})</h3>"
@@ -117,18 +122,22 @@ class EmailService:
             table_html += "<thead><tr style='background-color: #f0f0f0;'>"
             table_html += "<th style='padding: 8px; text-align: center;'>Day</th>"
             table_html += "<th style='padding: 8px; text-align: center;'>Teacher</th>"
+            table_html += "<th style='padding: 8px; text-align: center;'>Head Teaching Assistant</th>"
             table_html += "<th style='padding: 8px; text-align: center;'>Assistant(s)</th>"
             table_html += "<th style='padding: 8px; text-align: center;'>Status</th>"
             table_html += "</tr></thead><tbody>"
 
             for i, day in enumerate(days):
                 teacher = teachers[i] if i < len(teachers) else ""
+                head_ta = head_tas[i] if i < len(head_tas) else ""
                 assistant = assistants[i] if i < len(assistants) else ""
                 # Status logic
                 status = ""
                 bg_color = ""
                 teacher_lower = teacher.strip().lower() if teacher else ""
+                head_ta_lower = head_ta.strip().lower() if head_ta else ""
                 assistant_lower = assistant.strip().lower() if assistant else ""
+
                 if "optional" in teacher_lower:
                     status = "optional day, volunteers welcome to support existing classes"
                     bg_color = "#f5f5f5"
@@ -141,6 +150,9 @@ class EmailService:
                 elif "need volunteers" in teacher_lower:
                     status = "❌ Missing Teacher"
                     bg_color = "#ffcccc"
+                elif not head_ta or "need volunteers" in head_ta_lower:
+                    status = "❌ Missing Head TA"
+                    bg_color = "#ffe5b4"
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
@@ -151,6 +163,7 @@ class EmailService:
                 table_html += f"<tr style='background-color: {bg_color};'>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{day}</td>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{teacher}</td>"
+                table_html += f"<td style='padding: 8px; text-align: center;'>{head_ta}</td>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{assistant}</td>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{status}</td>"
                 table_html += "</tr>"
@@ -200,17 +213,19 @@ class EmailService:
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
             db.commit()
 
+        from app.utils.config_helper import ConfigHelper
+
         # Render template with class tables and all variables
         html_body = Template(self.reminder_template).render(
             first_name=first_name,
             class_tables=[ct['table_html'] for ct in class_tables],
-            SCHEDULE_SIGNUP_LINK=config.get_schedule_signup_link(db) or "#",
+            SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
-            FACEBOOK_MESSENGER_LINK=config.get_facebook_messenger_link(db) or "#",
-            DISCORD_INVITE_LINK=config.get_discord_invite_link(db) or "#",
-            ONBOARDING_GUIDE_LINK=config.get_onboarding_guide_link(db) or "#",
-            INSTAGRAM_LINK=config.get_instagram_link(db) or "#",
-            FACEBOOK_PAGE_LINK=config.get_facebook_page_link(db) or "#",
+            FACEBOOK_MESSENGER_LINK=ConfigHelper.get_facebook_messenger_link(db) or "#",
+            DISCORD_INVITE_LINK=ConfigHelper.get_discord_invite_link(db) or "#",
+            ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
+            INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
+            FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
         )
 
         return html_body, subject

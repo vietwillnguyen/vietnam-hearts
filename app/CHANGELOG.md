@@ -1,5 +1,9 @@
 CHANGELOG:
 
+## Version 1.2.0
+
+- Update: Adjust email 
+- Update: Adjust schedulte templates for new Head Teaching Assistant
 
 ## Version 1.1.3
 

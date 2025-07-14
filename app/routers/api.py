@@ -244,7 +244,7 @@ def send_weekly_reminder_emails():
             class_tables = []
             for class_name, config in CLASS_CONFIG.items():
                 class_tables.append(
-                    build_class_table(class_name, config, sheets_service, db)
+                    email_service.build_class_table(class_name, config, sheets_service, db)
                 )
 
             # Get current schedule dates from the visible sheet
@@ -350,89 +350,6 @@ def rotate_schedule_sheets(request: Request):
         raise
     except Exception as e:
         handle_scheduler_error("rotate schedule sheets", e)
-
-
-def build_class_table(class_name, config, sheet_service, db):
-    """Build HTML table for a specific class, with Day/Teacher/Assistant(s)/Status columns"""
-    try:
-        sheet_range = config.get("sheet_range")
-        class_time = config.get("time", "")
-        if not sheet_range:
-            logger.error(f"No sheet_range configured for class {class_name}")
-            return {
-                "class_name": class_name,
-                "table_html": f"<p>No sheet range configured for {class_name}</p>",
-                "has_data": False,
-            }
-        class_data = sheet_service.get_schedule_range(db, sheet_range)
-        if not class_data or len(class_data) < MIN_REQUIRED_ROWS:
-            return {
-                "class_name": class_name,
-                "table_html": f"<p>No data available for {class_name}</p>",
-                "has_data": False,
-            }
-
-        # Transpose data: columns are days, rows are header/teacher/assistant
-        # class_data: [header_row, teacher_row, assistant_row]
-        days = class_data[HEADER_ROW][1:]  # skip first col (label)
-        teachers = class_data[TEACHER_ROW][1:]
-        assistants = class_data[ASSISTANT_ROW][1:]
-
-        # Table header
-        table_html = f"<h3>{class_name} ({class_time})</h3>"
-        table_html += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
-        table_html += "<thead><tr style='background-color: #f0f0f0;'>"
-        table_html += "<th style='padding: 8px; text-align: center;'>Day</th>"
-        table_html += "<th style='padding: 8px; text-align: center;'>Teacher</th>"
-        table_html += "<th style='padding: 8px; text-align: center;'>Assistant(s)</th>"
-        table_html += "<th style='padding: 8px; text-align: center;'>Status</th>"
-        table_html += "</tr></thead><tbody>"
-
-        for i, day in enumerate(days):
-            teacher = teachers[i] if i < len(teachers) else ""
-            assistant = assistants[i] if i < len(assistants) else ""
-            # Status logic
-            status = ""
-            bg_color = ""
-            teacher_lower = teacher.strip().lower() if teacher else ""
-            assistant_lower = assistant.strip().lower() if assistant else ""
-            if "optional" in teacher_lower:
-                status = "optional day, volunteers welcome to support existing classes"
-                bg_color = "#f5f5f5"
-            elif "no class" in teacher_lower:
-                if "holiday" in teacher_lower:
-                    status = "No class: holiday"
-                else:
-                    status = "No class"
-                bg_color = "#f5f5f5"
-            elif "need volunteers" in teacher_lower:
-                status = "❌ Missing Teacher"
-                bg_color = "#ffcccc"
-            elif "need volunteers" in assistant_lower:
-                status = "❌ Missing TA's"
-                bg_color = "#fff3cd"
-            else:
-                status = "✅ Fully Covered, TA's welcome to join"
-                bg_color = "#d4edda"
-
-            table_html += f"<tr style='background-color: {bg_color};'>"
-            table_html += f"<td style='padding: 8px; text-align: center;'>{day}</td>"
-            table_html += f"<td style='padding: 8px; text-align: center;'>{teacher}</td>"
-            table_html += f"<td style='padding: 8px; text-align: center;'>{assistant}</td>"
-            table_html += f"<td style='padding: 8px; text-align: center;'>{status}</td>"
-            table_html += "</tr>"
-
-        table_html += "</tbody></table>"
-        return {"class_name": class_name, "table_html": table_html, "has_data": True}
-
-    except Exception as e:
-        logger.error(f"Failed to build table for {class_name}: {str(e)}")
-        return {
-            "class_name": class_name,
-            "table_html": f"<p>Error loading data for {class_name}</p>",
-            "has_data": False,
-        }
-
 
 @api_router.get("/health")
 def health_check(db: Session = Depends(get_db)):
