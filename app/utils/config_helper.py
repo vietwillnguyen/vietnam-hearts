@@ -19,6 +19,7 @@ from app.config import (
     TEMPLATE_PATH,
 )
 from app.services.settings_service import get_setting
+from app.utils.sheet_utils import extract_sheet_id_from_url, format_google_sheets_url
 
 
 class ConfigHelper:
@@ -42,17 +43,17 @@ class ConfigHelper:
     @staticmethod
     def get_schedule_signup_link(db: Session, default: str = "") -> str:
         """Get the schedule signup link from database settings"""
-        return get_setting(db, "SCHEDULE_SIGNUP_LINK", default) or default
+        return get_setting(db, "SCHEDULE_SHEETS_LINK", default) or default
     
     @staticmethod
-    def get_facebook_messenger_link(db: Session, default: str = "") -> str:
+    def get_invite_link_facebook_messenger(db: Session, default: str = "") -> str:
         """Get the Facebook Messenger link from database settings"""
-        return get_setting(db, "FACEBOOK_MESSENGER_LINK", default) or default
+        return get_setting(db, "INVITE_LINK_FACEBOOK_MESSENGER", default) or default
     
     @staticmethod
-    def get_discord_invite_link(db: Session, default: str = "") -> str:
+    def get_invite_link_discord(db: Session, default: str = "") -> str:
         """Get the Discord invite link from database settings"""
-        return get_setting(db, "DISCORD_INVITE_LINK", default) or default
+        return get_setting(db, "INVITE_LINK_DISCORD", default) or default
     
     @staticmethod
     def get_onboarding_guide_link(db: Session, default: str = "") -> str:
@@ -72,24 +73,18 @@ class ConfigHelper:
     @staticmethod
     def get_schedule_sheet_id(db: Session, default: str = "") -> str:
         """Get the schedule sheet ID from database settings"""
-        return get_setting(db, "SCHEDULE_SHEET_ID", default) or default
+        value = get_setting(db, "SCHEDULE_SHEETS_LINK", default) or default
+        # Extract sheet ID if it's a full URL
+        sheet_id = extract_sheet_id_from_url(value)
+        return sheet_id if sheet_id else value
     
     @staticmethod
     def get_new_signups_sheet_id(db: Session, default: str = "") -> str:
         """Get the new signups sheet ID from database settings"""
-        return get_setting(db, "NEW_SIGNUPS_SHEET_ID", default) or default
-    
-    @staticmethod
-    def get_google_schedule_range(db: Session, default: str = "B7:G11") -> str:
-        """Get the Google schedule range from database settings"""
-        value = get_setting(db, "GOOGLE_SCHEDULE_RANGE", default)
-        return value if value else default
-    
-    @staticmethod
-    def get_google_signups_range(db: Session, default: str = "A2:R") -> str:
-        """Get the Google signups range from database settings"""
-        value = get_setting(db, "GOOGLE_SIGNUPS_RANGE", default)
-        return value if value else default
+        value = get_setting(db, "NEW_SIGNUPS_RESPONSES_LINK", default) or default
+        # Extract sheet ID if it's a full URL
+        sheet_id = extract_sheet_id_from_url(value)
+        return sheet_id if sheet_id else value
     
     @staticmethod
     def get_schedule_sheets_display_weeks_count(db: Session, default: int = 4) -> int:

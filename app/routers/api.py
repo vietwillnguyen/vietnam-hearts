@@ -19,13 +19,10 @@ from app.services.google_sheets import sheets_service
 from contextlib import contextmanager
 from google.oauth2 import id_token
 from google.auth.transport import requests
-from jinja2 import Template
 from datetime import datetime
 from app.models import (
     Volunteer as VolunteerModel,
-    EmailCommunication as EmailCommunicationModel,
 )
-from app.services.classes_config import CLASS_CONFIG
 from app.config import (
     GOOGLE_OAUTH_CLIENT_ID,
     SERVICE_ACCOUNT_EMAIL,
@@ -204,129 +201,78 @@ def send_weekly_reminder_emails():
                     "message": "Weekly reminders are currently disabled globally. Enable them in the admin settings to send weekly reminders.",
                 }
 
+            # Get volunteers to send emails to
             if ConfigHelper.get_dry_run(db):
-                logger.info(
-                    "DRY_RUN is enabled, sending emails to dry run email recipient"
-                )
-                dry_run_volunteer = (
+                logger.info("DRY_RUN is enabled, sending emails to dry run email recipient")
+                dry_run_email = ConfigHelper.get_dry_run_email_recipient(db)
+                db_volunteers = (
                     db.query(VolunteerModel)
-                    .filter(VolunteerModel.email == ConfigHelper.get_dry_run_email_recipient(db))
-                    .first()
+                    .filter(VolunteerModel.email == dry_run_email)
+                    .all()
                 )
-                volunteers = [
-                    {"email": dry_run_volunteer.email, "name": dry_run_volunteer.name}
-                ]
-                volunteer_lookup = {dry_run_volunteer.email: dry_run_volunteer}
             else:
-                # Get volunteers from database with lookup dictionary to avoid N+1 queries
+                # Get all active volunteers subscribed to weekly reminders
                 db_volunteers = (
                     db.query(VolunteerModel)
                     .filter(VolunteerModel.is_active == True)
-                    .filter(
-                        VolunteerModel.weekly_reminders_subscribed == True
-                    )  # Only send to volunteers subscribed to weekly reminders
+                    .filter(VolunteerModel.weekly_reminders_subscribed == True)
                     .all()
                 )
 
-                volunteers = [
-                    {"email": volunteer.email, "name": volunteer.name}
-                    for volunteer in db_volunteers
-                ]
-                volunteer_lookup = {
-                    volunteer.email: volunteer for volunteer in db_volunteers
-                }
+            logger.info(f"Sending weekly reminder emails to {len(db_volunteers)} volunteers")
 
-            logger.info(
-                f"Sending weekly reminder emails to {len(volunteers)} volunteers"
-            )
+            # Track results
+            emails_sent = 0
+            emails_failed = 0
+            failed_emails = []
 
-            # Build class tables once
-            class_tables = []
-            for class_name, config in CLASS_CONFIG.items():
-                class_tables.append(
-                    email_service.build_class_table(class_name, config, sheets_service, db)
-                )
-
-            # Get current schedule dates from the visible sheet
-            current_monday, current_friday = sheets_service.get_current_schedule_dates(db)
-            subject = email_service.get_reminder_subject(current_monday, current_friday)
-
-            # Process emails in batches for better performance
-            email_communications = []
-
-            for volunteer in volunteers:
-                # Look up volunteer in database using pre-built lookup
-                db_volunteer = volunteer_lookup.get(volunteer["email"])
-                logger.info(
-                    f"Volunteer {volunteer['email']} found in database: {db_volunteer}"
-                )
-
-                if not db_volunteer:
-                    logger.warning(
-                        f"Volunteer {volunteer['email']} not found in database, skipping"
-                    )
-                    continue
-
-                # Generate unsubscribe token if not exists
-                if not db_volunteer.email_unsubscribe_token:
-                    db_volunteer.email_unsubscribe_token = (
-                        email_service.generate_unsubscribe_token()
-                    )
-                    db.commit()
-
-                first_name = db_volunteer.name.split()[0] if db_volunteer.name else "Volunteer"
-                html_body = Template(email_service.reminder_template).render(
-                    first_name=first_name,
-                    class_tables=[ct['table_html'] for ct in class_tables],
-                    SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
-                    EMAIL_PREFERENCES_LINK=email_service.get_volunteer_unsubscribe_link(db_volunteer, db),
-                    FACEBOOK_MESSENGER_LINK=ConfigHelper.get_facebook_messenger_link(db) or "#",
-                    DISCORD_INVITE_LINK=ConfigHelper.get_discord_invite_link(db) or "#",
-                    ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
-                    INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
-                    FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
-                )
-
-                # Create email communication record
-                email_comm = EmailCommunicationModel(
-                    volunteer_id=db_volunteer.id,
-                    recipient_email=volunteer["email"],
-                    email_type="weekly_reminder",
-                    subject=subject,
-                    status="pending",
-                )
-                email_communications.append((email_comm, html_body))
-
-            # Batch insert email communications
-            for email_comm, _ in email_communications:
-                db.add(email_comm)
-            db.commit()
-
-            # Send emails and update status
-            for email_comm, html_body in email_communications:
+            # Send emails to each volunteer
+            for volunteer in db_volunteers:
                 try:
-                    email_service.send_custom_email(
-                        to_email=email_comm.recipient_email,
-                        subject=email_comm.subject,
+                    # Build email content using the centralized service method
+                    html_body, subject = email_service.build_weekly_reminder_content(volunteer, db)
+
+                    # Send the email
+                    success = email_service.send_custom_email(
+                        to_email=volunteer.email,
+                        subject=subject,
                         html_body=html_body,
+                        db=db,
+                        volunteer_id=volunteer.id,
+                        email_type="weekly_reminder"
                     )
-                    email_comm.status = "sent"
-                    email_comm.sent_at = datetime.now()
+
+                    if success:
+                        emails_sent += 1
+                        logger.info(f"✅ Weekly reminder sent to {volunteer.email}")
+                    else:
+                        emails_failed += 1
+                        failed_emails.append(volunteer.email)
+                        logger.error(f"❌ Failed to send weekly reminder to {volunteer.email}")
+
                 except Exception as e:
-                    logger.error(
-                        f"Failed to send weekly reminder to {email_comm.recipient_email}: {str(e)}"
-                    )
-                    email_comm.status = "failed"
-                    email_comm.error_message = str(e)
+                    emails_failed += 1
+                    failed_emails.append(volunteer.email)
+                    logger.error(f"❌ Error sending weekly reminder to {volunteer.email}: {str(e)}")
 
-            # Batch update statuses
-            db.commit()
-
-        logger.info(f"✅ Weekly reminder emails sent. DRY_RUN={ConfigHelper.get_dry_run(db)}")
-        return {
-            "status": "success",
-            "message": "Weekly reminder emails sent successfully",
-        }
+        # Prepare response
+        total_volunteers = len(db_volunteers)
+        if emails_failed == 0:
+            return {
+                "status": "success",
+                "message": f"Weekly reminder emails sent successfully to {emails_sent} volunteers",
+                "emails_sent": emails_sent,
+                "volunteers_processed": total_volunteers
+            }
+        else:
+            return {
+                "status": "partial_success",
+                "message": f"Weekly reminder emails sent to {emails_sent} volunteers, {emails_failed} failed",
+                "emails_sent": emails_sent,
+                "emails_failed": emails_failed,
+                "volunteers_processed": total_volunteers,
+                "failed_emails": failed_emails
+            }
 
     except HTTPException:
         raise

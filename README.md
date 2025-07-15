@@ -75,13 +75,13 @@ The application uses the following environment variables (see `env.template` for
 
 #### Required for Production
 - `GMAIL_APP_PASSWORD` - Gmail app password for sending emails
-- `SCHEDULE_SIGNUP_LINK` - Link for volunteer signups
+- `SCHEDULE_SHEETS_LINK` - Link for volunteer signups
 - `EMAIL_PREFERENCES_LINK` - Link for email preferences
-- `NEW_SIGNUPS_SHEET_ID` - Google Sheets ID for new signups
+- `NEW_SIGNUPS_RESPONSES_LINK` - Google Sheets ID for new signups
 - Social media links (Facebook, Discord, Instagram, etc.)
 
 #### Google Sheets Integration
-- `SCHEDULE_SHEET_ID` - Main schedule Google Sheets ID
+- `SCHEDULE_SHEETS_LINK` - Main schedule Google Sheets ID
 - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON
 - `SERVICE_ACCOUNT_EMAIL` - Google service account email
 

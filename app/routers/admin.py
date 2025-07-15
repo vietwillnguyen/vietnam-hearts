@@ -27,6 +27,7 @@ from app.utils.auth import get_user_info
 from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
 from app.utils.retry_utils import log_ssl_error, safe_api_call
+from app.utils.sheet_utils import validate_google_sheets_url
 
 logger = get_api_logger()
 admin_router = APIRouter(
@@ -280,7 +281,7 @@ def get_schedule_status(db: Session = Depends(get_db)):
     """Get current status of schedule sheets"""
     try:
         # Get all schedule sheets
-        sheets = sheets_service.get_schedule_sheets()
+        sheets = sheets_service.get_schedule_sheets(db)
 
         # Process sheet information
         sheet_info = []
@@ -899,11 +900,11 @@ def validate_configuration(db: Session = Depends(get_db)):
         # Check required Google Sheets settings
         schedule_sheet_id = ConfigHelper.get_schedule_sheet_id(db)
         if not schedule_sheet_id:
-            missing_settings.append("SCHEDULE_SHEET_ID")
+            missing_settings.append("SCHEDULE_SHEETS_LINK")
         
         new_signups_sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
         if not new_signups_sheet_id:
-            missing_settings.append("NEW_SIGNUPS_SHEET_ID")
+            missing_settings.append("NEW_SIGNUPS_RESPONSES_LINK")
         
         if missing_settings:
             return {

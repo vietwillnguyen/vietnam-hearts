@@ -81,10 +81,10 @@ class GoogleSheetsService:
         if db:
             # Use database settings if available
             if not ConfigHelper.get_schedule_sheet_id(db):
-                errors.append("SCHEDULE_SHEET_ID setting is required")
+                errors.append("SCHEDULE_SHEETS_LINK setting is required")
             
             if not ConfigHelper.get_new_signups_sheet_id(db):
-                errors.append("NEW_SIGNUPS_SHEET_ID setting is required")
+                errors.append("NEW_SIGNUPS_RESPONSES_LINK setting is required")
         else:
             # Fallback to environment variables or skip validation
             logger.warning("No database session provided for config validation, skipping dynamic settings check")
@@ -209,8 +209,9 @@ class GoogleSheetsService:
             List[List[str]]: 2D list of cell values
         """
         sheet_id = ConfigHelper.get_schedule_sheet_id(db)
-        default_range = ConfigHelper.get_google_schedule_range(db)
-        return self.get_range_from_sheet(db, sheet_id, range_name or default_range)
+        if not range_name:
+            raise ValueError("range_name is required for get_schedule_range")
+        return self.get_range_from_sheet(db, sheet_id, range_name)
 
     def get_signup_form_submissions(
         self, db: Session, range_name: Optional[str] = None
@@ -229,10 +230,9 @@ class GoogleSheetsService:
         def _fetch_submissions():
             sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
             if not sheet_id:
-                raise ValueError("NEW_SIGNUPS_SHEET_ID is not configured. Please set it in the admin settings.")
-            default_range = ConfigHelper.get_google_signups_range(db)
-            # Use only the range, do not prefix with sheet name
-            full_range = range_name or default_range
+                raise ValueError("NEW_SIGNUPS_RESPONSES_LINK is not configured. Please set it in the admin settings.")
+            # Use hardcoded range for now, can be made configurable later
+            full_range = range_name or "A2:R"
             logger.info(f"Fetching signups from sheet {sheet_id} with range {full_range}")
             result = (
                 self.sheet.values()
@@ -307,20 +307,6 @@ class GoogleSheetsService:
         except Exception as e:
             logger.error(f"Failed to fetch form submissions: {str(e)}", exc_info=True)
             raise
-
-    # NOTE: This function is currently disabled as the new form structure doesn't include
-    # a confirmation email status column. The database is now the source of truth for
-    # email communication tracking.
-    # 
-    # def update_confirmation_status(self, email: str, status: bool = True, db: Optional[Session] = None) -> bool:
-    #     """
-    #     Update the confirmation email status for a volunteer in the Google Sheet
-    #     
-    #     DISABLED: New form structure doesn't include confirmation status column.
-    #     Database is now the source of truth for email communication tracking.
-    #     """
-    #     logger.warning("update_confirmation_status is disabled - database is source of truth")
-    #     return True  # Return True to avoid breaking existing code
 
     def create_sheet_from_template(
         self, template_sheet_name: str, new_sheet_date: datetime, db: Session

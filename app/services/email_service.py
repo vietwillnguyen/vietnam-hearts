@@ -198,7 +198,7 @@ class EmailService:
         # Get the reminder subject
         subject = self.get_reminder_subject(start_date, end_date)
 
-        # Build class tables
+        # Build class tables using CLASS_CONFIG
         class_tables = []
         for class_name, config in CLASS_CONFIG.items():
             class_tables.append(
@@ -219,10 +219,10 @@ class EmailService:
         html_body = Template(self.reminder_template).render(
             first_name=first_name,
             class_tables=[ct['table_html'] for ct in class_tables],
-            SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
+            SCHEDULE_SHEETS_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
-            FACEBOOK_MESSENGER_LINK=ConfigHelper.get_facebook_messenger_link(db) or "#",
-            DISCORD_INVITE_LINK=ConfigHelper.get_discord_invite_link(db) or "#",
+            INVITE_LINK_FACEBOOK_MESSENGER=ConfigHelper.get_invite_link_facebook_messenger(db) or "#",
+            INVITE_LINK_DISCORD=ConfigHelper.get_invite_link_discord(db) or "#",
             ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
             INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
             FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
@@ -243,8 +243,8 @@ class EmailService:
 
             # Get dynamic settings from database
             schedule_signup_link = config.get_schedule_signup_link(db)
-            facebook_messenger_link = config.get_facebook_messenger_link(db)
-            discord_invite_link = config.get_discord_invite_link(db)
+            INVITE_LINK_FACEBOOK_MESSENGER = config.get_invite_link_facebook_messenger(db)
+            INVITE_LINK_DISCORD = config.get_invite_link_discord(db)
             onboarding_guide_link = config.get_onboarding_guide_link(db)
             instagram_link = config.get_instagram_link(db)
             facebook_page_link = config.get_facebook_page_link(db)
@@ -252,12 +252,12 @@ class EmailService:
             # Prepare template variables
             template_vars = {
                 "UserFullName": volunteer.name,
-                "SCHEDULE_SIGNUP_LINK": schedule_signup_link or "#",
+                "SCHEDULE_SHEETS_LINK": schedule_signup_link or "#",
                 "EMAIL_PREFERENCES_LINK": self.get_volunteer_unsubscribe_link(
                     volunteer, db
                 ),
-                "FACEBOOK_MESSENGER_LINK": facebook_messenger_link or "#",
-                "DISCORD_INVITE_LINK": discord_invite_link or "#",
+                "INVITE_LINK_FACEBOOK_MESSENGER": INVITE_LINK_FACEBOOK_MESSENGER or "#",
+                "INVITE_LINK_DISCORD": INVITE_LINK_DISCORD or "#",
                 "ONBOARDING_GUIDE_LINK": onboarding_guide_link or "#",
                 "INSTAGRAM_LINK": instagram_link or "#",
                 "FACEBOOK_PAGE_LINK": facebook_page_link or "#",

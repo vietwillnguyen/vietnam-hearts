@@ -3,6 +3,7 @@
 <head>
     <title>Vietnam Hearts Admin Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .table-container {
             margin: 20px;
@@ -72,6 +73,14 @@
             font-size: 0.75em;
             margin-left: 0.5rem;
         }
+        .form-control.is-valid {
+            border-color: #28a745;
+            box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+        }
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -101,6 +110,35 @@
             <div class="tab-pane fade show active" id="volunteers" role="tabpanel">
                 <div class="table-container">
                     <h2>Volunteers ({{ total_volunteers }})</h2>
+                    
+                    <!-- Global Action Buttons -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">📧 Email Actions</h5>
+                                    <p class="card-text">Send weekly reminders to all subscribed volunteers</p>
+                                    <button class="btn btn-primary global-action-btn" 
+                                            data-action="send-all-weekly-reminders">
+                                        <i class="fas fa-envelope"></i> Send All Weekly Reminders
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">🔄 Sync Actions</h5>
+                                    <p class="card-text">Sync volunteers from Google Sheets</p>
+                                    <button class="btn btn-success global-action-btn" 
+                                            data-action="sync-volunteers">
+                                        <i class="fas fa-sync"></i> Sync Volunteers from Sheets
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <table class="table table-striped">
                         <thead>
                             <tr>
@@ -299,7 +337,7 @@
                                    id="{{ setting.key }}" 
                                    name="{{ setting.key }}" 
                                    value="{{ setting.value }}"
-                                   placeholder="Enter value for {{ setting.key }}">
+                                   placeholder="{% if setting.key == 'SCHEDULE_SHEETS_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SHEETS_LINK/edit{% elif setting.key == 'NEW_SIGNUPS_RESPONSES_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit{% else %}Enter value for {{ setting.key }}{% endif %}">
                             {% endif %}
                             
                             {% if setting.description %}
@@ -324,6 +362,11 @@
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.action-btn').forEach(button => {
                 button.addEventListener('click', handleAction);
+            });
+            
+            // Add event listeners for global action buttons
+            document.querySelectorAll('.global-action-btn').forEach(button => {
+                button.addEventListener('click', handleGlobalAction);
             });
         });
         
@@ -499,6 +542,108 @@
             }
         }
 
+        // Global action handler
+        async function handleGlobalAction(event) {
+            const button = event.target;
+            const action = button.dataset.action;
+            
+            switch(action) {
+                case 'send-all-weekly-reminders':
+                    await sendAllWeeklyReminders();
+                    break;
+                case 'sync-volunteers':
+                    await syncVolunteers();
+                    break;
+            }
+        }
+
+        async function sendAllWeeklyReminders() {
+            if (!confirm('Send weekly reminders to ALL subscribed volunteers? This will send emails to all active volunteers who are subscribed to weekly reminders.')) return;
+            
+            const button = document.querySelector('[data-action="send-all-weekly-reminders"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                button.disabled = true;
+                
+                const response = await fetch('/api/send-weekly-reminders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let message = `Success: ${result.message}\n\nStatus: ${result.status}`;
+                    if (result.emails_sent !== undefined) {
+                        message += `\nEmails sent: ${result.emails_sent}`;
+                    }
+                    if (result.volunteers_processed !== undefined) {
+                        message += `\nVolunteers processed: ${result.volunteers_processed}`;
+                    }
+                    if (result.emails_failed !== undefined && result.emails_failed > 0) {
+                        message += `\nEmails failed: ${result.emails_failed}`;
+                    }
+                    if (result.failed_emails && result.failed_emails.length > 0) {
+                        message += `\nFailed emails: ${result.failed_emails.join(', ')}`;
+                    }
+                    alert(message);
+                    location.reload(); // Refresh to show updated status
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to send weekly reminders'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function syncVolunteers() {
+            if (!confirm('Sync volunteers from Google Sheets? This will update the volunteer database with the latest information from the signup sheet. This will also send confirmation emails to new volunteers.')) return;
+            
+            const button = document.querySelector('[data-action="sync-volunteers"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+                button.disabled = true;
+                
+                const response = await fetch('/api/sync-volunteers', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let message = `Success: ${result.message}\n\nStatus: ${result.status}`;
+                    if (result.details) {
+                        message += `\n\nDetails: ${JSON.stringify(result.details, null, 2)}`;
+                    }
+                    alert(message);
+                    location.reload(); // Refresh to show updated data
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to sync volunteers'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
         // Settings form handling
         document.getElementById('settings-form').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -557,6 +702,48 @@
             }
         });
 
+        // Validate Google Sheets URLs
+        function validateGoogleSheetsUrl(url) {
+            if (!url) return { isValid: false, message: 'URL is required' };
+            
+            const pattern = /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
+            const match = url.match(pattern);
+            
+            if (match) {
+                return { isValid: true, message: 'Valid Google Sheets URL', sheetId: match[1] };
+            } else {
+                return { isValid: false, message: 'Please enter a valid Google Sheets URL' };
+            }
+        }
+
+        // Add validation to Google Sheets URL fields
+        document.addEventListener('DOMContentLoaded', function() {
+            const sheetFields = ['SCHEDULE_SHEETS_LINK', 'NEW_SIGNUPS_RESPONSES_LINK'];
+            
+            sheetFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.addEventListener('blur', function() {
+                        const validation = validateGoogleSheetsUrl(this.value);
+                        
+                        // Remove existing validation classes
+                        this.classList.remove('is-valid', 'is-invalid');
+                        
+                        if (this.value) { // Only validate if there's a value
+                            if (validation.isValid) {
+                                this.classList.add('is-valid');
+                                // Show helpful tooltip
+                                this.title = `Valid URL! Sheet ID: ${validation.sheetId}`;
+                            } else {
+                                this.classList.add('is-invalid');
+                                this.title = validation.message;
+                            }
+                        }
+                    });
+                }
+            });
+        });
+
         // Reset to defaults function
         function resetToDefaults() {
             if (!confirm('Are you sure you want to reset all settings to their default values? This will overwrite all current settings.')) {
@@ -567,16 +754,14 @@
                 'DRY_RUN': 'false',
                 'DRY_RUN_EMAIL_RECIPIENT': '',
                 'WEEKLY_REMINDERS_ENABLED': 'true',
-                'SCHEDULE_SIGNUP_LINK': '',
-                'FACEBOOK_MESSENGER_LINK': '',
-                'DISCORD_INVITE_LINK': '',
+                'SCHEDULE_SHEETS_LINK': '',
+                'INVITE_LINK_FACEBOOK_MESSENGER': '',
+                'INVITE_LINK_DISCORD': '',
                 'ONBOARDING_GUIDE_LINK': '',
                 'INSTAGRAM_LINK': '',
                 'FACEBOOK_PAGE_LINK': '',
-                'SCHEDULE_SHEET_ID': '',
-                'NEW_SIGNUPS_SHEET_ID': '',
-                'GOOGLE_SCHEDULE_RANGE': 'B7:G11',
-                'GOOGLE_SIGNUPS_RANGE': 'A2:R',
+                'SCHEDULE_SHEETS_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SHEETS_LINK/edit',
+                'NEW_SIGNUPS_RESPONSES_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit',
                 'SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT': '4'
             };
             
