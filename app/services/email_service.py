@@ -89,10 +89,13 @@ class EmailService:
         """
         Build HTML table for a specific class, with Day/Teacher/Head TA/Assistant(s)/Status columns.
         A class must have at least one Head Teaching Assistant.
+        Enforces max_assistants limit from config.
         """
         try:
             sheet_range = config.get("sheet_range")
             class_time = config.get("time", "")
+            max_assistants = config.get("max_assistants", 3)  # Default to 3 if not specified
+            
             if not sheet_range:
                 logger.error(f"No sheet_range configured for class {class_name}")
                 return {
@@ -117,7 +120,7 @@ class EmailService:
             assistants = class_data[3][1:]
 
             # Table header
-            table_html = f"<h3>{class_name} ({class_time})</h3>"
+            table_html = f"<h3>{class_name} ({class_time}) - Max {max_assistants} Assistants</h3>"
             table_html += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
             table_html += "<thead><tr style='background-color: #f0f0f0;'>"
             table_html += "<th style='padding: 8px; text-align: center;'>Day</th>"
@@ -131,7 +134,15 @@ class EmailService:
                 teacher = teachers[i] if i < len(teachers) else ""
                 head_ta = head_tas[i] if i < len(head_tas) else ""
                 assistant = assistants[i] if i < len(assistants) else ""
-                # Status logic
+                
+                # Count current assistants (split by comma and count non-empty entries)
+                current_assistants = 0
+                if assistant and assistant.strip():
+                    # Split by comma and count non-empty entries
+                    assistant_list = [a.strip() for a in assistant.split(',') if a.strip()]
+                    current_assistants = len(assistant_list)
+                
+                # Status logic with max assistants enforcement
                 status = ""
                 bg_color = ""
                 teacher_lower = teacher.strip().lower() if teacher else ""
@@ -156,8 +167,14 @@ class EmailService:
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
+                elif current_assistants > max_assistants:
+                    status = f"Over-Assigned ({current_assistants}/{max_assistants} assistants), entry for all volunteers may not be permitted, priority will be given to those who come first"
+                    bg_color = "#fff3cd"  # Yellow for over-assigned assistants
+                elif current_assistants == max_assistants:
+                    status = f"✅ Fully Covered ({current_assistants}/{max_assistants} assistants)"
+                    bg_color = "#d4edda"
                 else:
-                    status = "✅ Fully Covered, TA's welcome to join"
+                    status = f"✅ Partially Covered ({current_assistants}/{max_assistants} assistants) - TA's welcome to join"
                     bg_color = "#d4edda"
 
                 table_html += f"<tr style='background-color: {bg_color};'>"
@@ -186,7 +203,7 @@ class EmailService:
         Returns:
             tuple: (html_body, subject)
         """
-        from app.services.classes_config import CLASS_CONFIG
+        from app.services.classes_config import get_class_config
         from app.services.google_sheets import sheets_service
         from datetime import datetime, timedelta
 
@@ -198,9 +215,10 @@ class EmailService:
         # Get the reminder subject
         subject = self.get_reminder_subject(start_date, end_date)
 
-        # Build class tables using CLASS_CONFIG
+        # Build class tables using dynamic configuration from Google Sheets
+        class_config = get_class_config(db)
         class_tables = []
-        for class_name, config in CLASS_CONFIG.items():
+        for class_name, config in class_config.items():
             class_tables.append(
                 self.build_class_table(class_name, config, sheets_service, db)
             )

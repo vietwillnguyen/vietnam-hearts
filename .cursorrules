@@ -65,7 +65,7 @@ Vietnam Hearts is a volunteer organization focused on teaching English to underp
 - Include request IDs for debugging
 
 ## Testing
-- This project uses poetry, use poetry run before commands with dependencies
+- This project uses poetry, use poetry run before commands with dependencies like python
 - Include integration tests for API endpoints
 - Test scenarios in pytest that can be parameterized in pytest should be
 - Test general behavior and some edge cases when writing tests

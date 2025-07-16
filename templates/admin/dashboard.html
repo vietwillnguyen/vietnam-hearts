@@ -113,10 +113,10 @@
                     
                     <!-- Global Action Buttons -->
                     <div class="row mb-4">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="card">
                                 <div class="card-body">
-                                    <h5 class="card-title">📧 Email Actions</h5>
+                                    <h5 class="card-title">📧 Weekly Reminders</h5>
                                     <p class="card-text">Send weekly reminders to all subscribed volunteers</p>
                                     <button class="btn btn-primary global-action-btn" 
                                             data-action="send-all-weekly-reminders">
@@ -125,7 +125,19 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">📢 Announcement Recipients</h5>
+                                    <p class="card-text">Get list of volunteers subscribed to announcements</p>
+                                    <button class="btn btn-info global-action-btn" 
+                                            data-action="get-announcement-recipients">
+                                        <i class="fas fa-users"></i> Get Announcement Recipients
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
                             <div class="card">
                                 <div class="card-body">
                                     <h5 class="card-title">🔄 Sync Actions</h5>
@@ -273,7 +285,6 @@
                                 <th>Subject</th>
                                 <th>Status</th>
                                 <th>Sent At</th>
-                                <th>Delivered At</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -290,7 +301,6 @@
                                     </span>
                                 </td>
                                 <td>{{ email.sent_at }}</td>
-                                <td>{{ email.delivered_at or 'N/A' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -551,6 +561,9 @@
                 case 'send-all-weekly-reminders':
                     await sendAllWeeklyReminders();
                     break;
+                case 'get-announcement-recipients':
+                    await getAnnouncementRecipients();
+                    break;
                 case 'sync-volunteers':
                     await syncVolunteers();
                     break;
@@ -603,6 +616,151 @@
                 button.innerHTML = originalText;
                 button.disabled = false;
             }
+        }
+
+        async function getAnnouncementRecipients() {
+            const button = document.querySelector('[data-action="get-announcement-recipients"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+                button.disabled = true;
+                
+                const response = await fetch('/admin/volunteers/announcement-recipients', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                // Check if response is ok before trying to parse JSON
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const result = await response.json();
+                
+                // Debug logging
+                console.log('API Response:', result);
+                
+                // Validate the response structure
+                if (!result || typeof result !== 'object') {
+                    throw new Error('Invalid response format from server');
+                }
+                
+                // Create email list once for use throughout the function
+                const emailList = result.recipients && Array.isArray(result.recipients) 
+                    ? result.recipients.map(v => v.email).filter(email => email).join(', ')
+                    : '';
+                
+                if (response.ok) {
+                    // Create a formatted list of recipients
+                    let message = `📢 Announcement Recipients\n\n`;
+                    message += `Total volunteers subscribed to announcements: ${result.total_recipients || 0}\n\n`;
+                    
+                    if (result.recipients && Array.isArray(result.recipients) && result.recipients.length > 0) {
+                        message += `Recipients:\n`;
+                        result.recipients.forEach((volunteer, index) => {
+                            message += `${index + 1}. ${volunteer.name || 'Unknown'} (${volunteer.email || 'No email'})\n`;
+                        });
+                        
+                        // Add copy-to-clipboard functionality
+                        message += `\n📋 Email list (copy this for your email client):\n${emailList}`;
+                    } else {
+                        message += `No volunteers are currently subscribed to announcements.`;
+                    }
+                    
+                    // Show in a larger dialog or copy to clipboard
+                    if (result.recipients && Array.isArray(result.recipients) && result.recipients.length > 0) {
+                        // Create a modal-like display
+                        const modal = document.createElement('div');
+                        modal.style.cssText = `
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            background: rgba(0,0,0,0.5);
+                            z-index: 9999;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        `;
+                        
+                        const content = document.createElement('div');
+                        content.style.cssText = `
+                            background: white;
+                            padding: 20px;
+                            border-radius: 8px;
+                            max-width: 600px;
+                            max-height: 80vh;
+                            overflow-y: auto;
+                            position: relative;
+                        `;
+                        
+                        content.innerHTML = `
+                            <h4>📢 Announcement Recipients</h4>
+                            <p><strong>Total:</strong> ${result.total_recipients || 0} volunteers</p>
+                            <div style="margin: 15px 0;">
+                                <button onclick="copyToClipboard('${emailList.replace(/'/g, "\\'")}')" class="btn btn-primary btn-sm">
+                                    📋 Copy Email List
+                                </button>
+                                <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary btn-sm ms-2">
+                                    Close
+                                </button>
+                            </div>
+                            <div style="margin: 15px 0;">
+                                <h6>📧 Email List (Gmail Ready):</h6>
+                                <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; font-family: monospace; word-break: break-all;">
+                                    ${emailList}
+                                </div>
+                            </div>
+                            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;">
+                                <h6>👥 Volunteer Details:</h6>
+                                <pre style="margin: 0; white-space: pre-wrap;">${result.recipients.map((v, i) => `${i + 1}. ${v.name || 'Unknown'} (${v.email || 'No email'})`).join('\n')}</pre>
+                            </div>
+                        `;
+                        
+                        modal.appendChild(content);
+                        modal.className = 'modal-overlay';
+                        document.body.appendChild(modal);
+                        
+                        // Close modal when clicking outside
+                        modal.addEventListener('click', (e) => {
+                            if (e.target === modal) modal.remove();
+                        });
+                    } else {
+                        alert(message);
+                    }
+                } else {
+                    alert(`Error: ${result.detail || result.message || 'Failed to get announcement recipients'}`);
+                }
+            } catch (error) {
+                console.error('Error in getAnnouncementRecipients:', error);
+                alert(`Error: ${error.message || 'Failed to get announcement recipients'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Helper function to copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Email list copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Email list copied to clipboard!');
+            });
         }
 
         async function syncVolunteers() {

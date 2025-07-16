@@ -153,6 +153,45 @@ def list_active_volunteers(db: Session = Depends(get_db)):
     return db.query(VolunteerModel).filter(VolunteerModel.is_active == True).all()
 
 
+@admin_router.get("/volunteers/announcement-recipients")
+def get_announcement_recipients(db: Session = Depends(get_db)):
+    """Get all volunteers who are subscribed to announcements (all emails)"""
+    try:
+        # Get all active volunteers who are subscribed to all emails
+        recipients = (
+            db.query(VolunteerModel)
+            .filter(VolunteerModel.is_active == True)
+            .filter(VolunteerModel.all_emails_subscribed == True)
+            .order_by(VolunteerModel.name)
+            .all()
+        )
+        
+        # Format the response
+        recipient_data = []
+        for volunteer in recipients:
+            recipient_data.append({
+                "id": volunteer.id,
+                "name": volunteer.name,
+                "email": volunteer.email,
+                "weekly_reminders_subscribed": volunteer.weekly_reminders_subscribed,
+                "all_emails_subscribed": volunteer.all_emails_subscribed,
+                "created_at": volunteer.created_at.isoformat() if volunteer.created_at else None
+            })
+        
+        return {
+            "status": "success",
+            "total_recipients": len(recipient_data),
+            "recipients": recipient_data,
+            "message": f"Found {len(recipient_data)} volunteers subscribed to announcements"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get announcement recipients: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get announcement recipients: {str(e)}"
+        )
+
+
 @admin_router.get(
     "/volunteers/{volunteer_id}",
     summary="Get volunteer details",
@@ -389,7 +428,6 @@ def get_signup_form_submissions(
             for submission in new_submissions:
                 try:
                     volunteer = create_new_volunteer_object(submission)
-                    logger.info(f"New Volunteer {volunteer.email} created with id: {volunteer.id}")
                     new_volunteers.append(volunteer)
                 except Exception as e:
                     logger.error(f"Failed to process submission for {submission.get('email_address', 'unknown')}: {str(e)}")
@@ -405,6 +443,10 @@ def get_signup_form_submissions(
                     db.bulk_save_objects(new_volunteers)
                     db.commit()
                     logger.info(f"Added {len(new_volunteers)} new volunteers to database")
+                    
+                    # Log the created volunteers with their actual IDs after database commit
+                    for volunteer in new_volunteers:
+                        logger.info(f"New Volunteer {volunteer.email} created with id: {volunteer.id}")
                 except Exception as e:
                     logger.error(f"Failed to save new volunteers to database: {str(e)}")
                     db.rollback()

@@ -1,10 +1,11 @@
 CHANGELOG:
 
-## Version 1.2.0
+## Version 1.4.0
 
 - Add: Dashboard allows forms sync
-- Add: Dashboard configures different settings
-- Update: Adjust email 
+- Add: Dashboard configures different many settings
+- Add: Schedule Config now adjusts the schedule.
+- Update: Adjust emails content 
 - Update: Adjust schedulte templates for new Head Teaching Assistant
 - Fix: 'Schedule Template' now is hidden during rotation of schedules
 

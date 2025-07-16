@@ -47,7 +47,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import safe_api_call, log_ssl_error
-from app.services.classes_config import CLASS_CONFIG
+from app.services.classes_config import get_class_config
 from app.config import (
     GOOGLE_APPLICATION_CREDENTIALS,
 )
@@ -458,7 +458,8 @@ class GoogleSheetsService:
             dates = [
                 (sheet_date + timedelta(days=i)).strftime("%m/%d") for i in range(5)
             ]
-            for class_name, config in CLASS_CONFIG.items():
+            class_config = get_class_config(db)
+            for class_name, config in class_config.items():
                 # Get the start cell for the header row (e.g., B7)
                 start_cell = config["sheet_range"].split(":")[0]
                 header_range = (
