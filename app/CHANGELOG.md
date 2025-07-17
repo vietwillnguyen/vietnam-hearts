@@ -1,6 +1,6 @@
 CHANGELOG:
 
-## Version 1.4.0
+## Version 1.2.0
 
 - Add: Dashboard allows forms sync
 - Add: Dashboard configures different many settings

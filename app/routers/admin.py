@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
+import os
 
 from app.database import get_db
 from app.models import (
@@ -23,7 +24,7 @@ from app.schemas import Volunteer
 from app.services.google_sheets import sheets_service
 from app.services.email_service import email_service
 from app.utils.logging_config import get_api_logger
-from app.utils.auth import get_user_info
+from app.utils.auth import require_admin_or_scheduler_auth, require_web_admin_auth
 from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
 from app.utils.retry_utils import log_ssl_error, safe_api_call
@@ -33,7 +34,6 @@ logger = get_api_logger()
 admin_router = APIRouter(
     prefix="/admin",
     tags=["admin"],
-    dependencies=[Depends(get_user_info)] if ENVIRONMENT == "production" else None,
 )
 
 # Initialize templates
@@ -123,7 +123,10 @@ def get_email_summary(communications):
 
 # Volunteer endpoints
 @admin_router.get("/volunteers")
-def view_volunteers(db: Session = Depends(get_db)):
+def view_volunteers(
+    db: Session = Depends(get_db),
+    auth_info: dict = Depends(require_admin_or_scheduler_auth)
+):
     """View all volunteers and their email status"""
     try:
         volunteers = db.query(VolunteerModel).all()
@@ -208,7 +211,10 @@ def get_volunteer_by_id(volunteer_id: int, db: Session = Depends(get_db)):
 
 
 @admin_router.get("/email-logs")
-def view_email_logs(db: Session = Depends(get_db)):
+def view_email_logs(
+    db: Session = Depends(get_db),
+    auth_info: dict = Depends(require_admin_or_scheduler_auth)
+):
     """View all email communications"""
     try:
         communications = db.query(EmailCommunicationModel).all()
@@ -228,7 +234,11 @@ def view_email_logs(db: Session = Depends(get_db)):
 
 
 @admin_router.get("/dashboard", response_class=HTMLResponse)
-def admin_dashboard(request: Request, db: Session = Depends(get_db)):
+async def admin_dashboard(
+    request: Request, 
+    db: Session = Depends(get_db),
+    auth_info: dict = Depends(require_web_admin_auth)
+):
     """Admin dashboard to view volunteers and email logs"""
     try:
         # Get volunteer data
@@ -238,6 +248,18 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         # Get email data
         communications = db.query(EmailCommunicationModel).all()
         email_data = get_email_summary(communications)
+        
+        # Get settings for template
+        settings = []
+        from app.services.settings_service import get_all_settings
+        all_settings = get_all_settings(db)
+        
+        for setting in all_settings:
+            settings.append({
+                "key": setting.key,
+                "value": setting.value,
+                "description": setting.description
+            })
 
         # Get settings data
         from app.services.settings_service import get_all_settings
@@ -252,6 +274,10 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
                 "total_emails": len(email_data),
                 "emails": email_data,
                 "settings": settings,
+                "config": {
+                    "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
+                    "SUPABASE_ANON_KEY": os.getenv("SUPABASE_ANON_KEY", ""),
+                }
             },
         )
 

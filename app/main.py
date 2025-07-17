@@ -21,6 +21,8 @@ from .routers.api import api_router
 from .routers.public import public_router
 from app.routers.oauth import oauth_router
 from app.routers.settings import router as settings_router
+from app.routers.supabase_auth import supabase_auth_router
+from app.routers.home import home_router
 
 # Configure logging
 logger = get_logger("main")
@@ -104,7 +106,8 @@ app = FastAPI(
 )
 
 # Routers
-app.include_router(oauth_router)
+# app.include_router(oauth_router)  # Disabled - using Supabase auth instead
+app.include_router(supabase_auth_router)
 
 # Conditionally include admin router
 if ENVIRONMENT == "development":
@@ -114,3 +117,4 @@ if ENVIRONMENT == "development":
 app.include_router(api_router)
 app.include_router(public_router)
 app.include_router(settings_router)
+app.include_router(home_router)

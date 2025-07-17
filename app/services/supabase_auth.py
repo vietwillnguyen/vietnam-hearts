@@ -1,244 +1,194 @@
 """
-Supabase Authentication Service
+Supabase Auth service for Vietnam Hearts application
 
-This service handles:
-1. User authentication with Supabase
-2. JWT token verification
-3. User role management
-4. Session handling
+Provides authentication using Supabase with Google OAuth as a provider.
+Handles admin role checking and session management.
 """
 
 import os
-import jwt
-import time
 from typing import Optional, Dict, Any
-from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import HTTPException, status, Request
 from supabase import create_client, Client
-from app.models import User, UserRole
-from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
+# Initialize Supabase client
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not supabase_url or not supabase_anon_key:
+    raise ValueError(
+        "Missing Supabase configuration. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables."
+    )
+
+# Create Supabase client
+supabase: Client = create_client(supabase_url, supabase_anon_key)
+
+# Admin service client (for admin operations)
+admin_supabase: Optional[Client] = None
+if supabase_service_role_key:
+    admin_supabase = create_client(supabase_url, supabase_service_role_key)
+
 
 class SupabaseAuthService:
-    """Service for handling Supabase authentication"""
+    """Service for handling Supabase authentication with Google OAuth"""
     
-    def __init__(self):
-        """Initialize Supabase client"""
-        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-            raise ValueError("Supabase URL and ANON_KEY must be configured")
+    @staticmethod
+    def get_auth_url() -> str:
+        """
+        Get the Google OAuth sign-in URL for Supabase
         
-        self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        self.service_role_key = SUPABASE_SERVICE_ROLE_KEY
-        
-    def verify_jwt_token(self, token: str) -> Dict[str, Any]:
+        Returns:
+            str: The sign-in URL
+        """
+        try:
+            response = supabase.auth.sign_in_with_oauth({
+                "provider": "google",
+                "options": {
+                    "redirect_to": f"{os.getenv('API_URL', 'http://localhost:8080')}/auth/supabase-callback"
+                }
+            })
+            return response.url
+        except Exception as e:
+            logger.error(f"Failed to get auth URL: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate authentication URL"
+            )
+    
+    @staticmethod
+    def verify_token(token: str) -> Dict[str, Any]:
         """
         Verify a Supabase JWT token
         
         Args:
-            token: JWT token from Supabase
+            token: The JWT token to verify
             
         Returns:
-            dict: Decoded token payload
+            Dict containing user information
             
         Raises:
             HTTPException: If token is invalid
         """
         try:
-            # Use Supabase client to verify the token
-            # This is the recommended approach for server-side token verification
-            if not self.service_role_key:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Supabase service role key not configured"
-                )
+            # Verify the token with Supabase
+            response = supabase.auth.get_user(token)
             
-            # Create a service role client for token verification
-            service_client = create_client(SUPABASE_URL, self.service_role_key)
-            
-            # Get user from token using Supabase admin API
-            user_response = service_client.auth.get_user(token)
-            
-            if user_response.user is None:
+            if not response.user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid authentication token"
+                    detail="Invalid token"
                 )
             
-            # Return user data as token payload
-            return {
-                "sub": user_response.user.id,
-                "email": user_response.user.email,
-                "exp": user_response.user.created_at.timestamp() + 3600,  # 1 hour expiry
-                "iat": user_response.user.created_at.timestamp()
+            user = response.user
+            
+            # Extract user information
+            user_info = {
+                "id": user.id,
+                "email": user.email,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at,
+                "user_metadata": user.user_metadata or {},
+                "app_metadata": user.app_metadata or {},
             }
             
+            logger.info(f"Token verified for user: {user.email}")
+            return user_info
+            
         except Exception as e:
-            logger.error(f"Error verifying JWT token: {str(e)}")
+            logger.error(f"Token verification failed: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication failed"
+                detail="Invalid authentication token"
             )
     
-    def get_user_by_supabase_id(self, db: Session, supabase_user_id: str) -> Optional[User]:
+    @staticmethod
+    def is_admin(user_info: Dict[str, Any]) -> bool:
         """
-        Get user by Supabase user ID
+        Check if user has admin privileges
         
         Args:
-            db: Database session
-            supabase_user_id: Supabase user UUID
+            user_info: User information from verify_token
             
         Returns:
-            User: User object if found, None otherwise
+            bool: True if user is admin
         """
-        return db.query(User).filter(User.supabase_user_id == supabase_user_id).first()
+        user_email = user_info.get("email", "")
+        logger.info(f"Checking admin status for user: {user_email}")
+        
+        # Check user metadata for admin flag
+        user_metadata = user_info.get("user_metadata", {})
+        if user_metadata.get("is_admin"):
+            logger.info(f"User {user_email} is admin via user_metadata")
+            return True
+        
+        # Check app metadata for admin role
+        app_metadata = user_info.get("app_metadata", {})
+        if app_metadata.get("role") == "admin":
+            logger.info(f"User {user_email} is admin via app_metadata")
+            return True
+        
+        # Check allowed admin emails from environment
+        allowed_admin_emails = os.getenv("ADMIN_EMAILS", "").split(",")
+        # Clean up empty strings from split
+        allowed_admin_emails = [email.strip() for email in allowed_admin_emails if email.strip()]
+        
+        logger.info(f"Allowed admin emails: {allowed_admin_emails}")
+        
+        if user_email in allowed_admin_emails:
+            logger.info(f"User {user_email} is admin via ADMIN_EMAILS environment variable")
+            return True
+        
+        logger.warning(f"User {user_email} is NOT an admin")
+        return False
     
-    def get_user_by_email(self, db: Session, email: str) -> Optional[User]:
+    @staticmethod
+    def refresh_session(refresh_token: str) -> Dict[str, Any]:
         """
-        Get user by email
+        Refresh a user session using refresh token
         
         Args:
-            db: Database session
-            email: User email
+            refresh_token: The refresh token
             
         Returns:
-            User: User object if found, None otherwise
+            Dict containing new session information
         """
-        return db.query(User).filter(User.email == email).first()
-    
-    def create_user_from_supabase(self, db: Session, supabase_user_id: str, email: str, role: UserRole = UserRole.VOLUNTEER) -> User:
-        """
-        Create a new user from Supabase authentication
-        
-        Args:
-            db: Database session
-            supabase_user_id: Supabase user UUID
-            email: User email
-            role: User role (default: VOLUNTEER)
-            
-        Returns:
-            User: Created user object
-        """
-        # Check if user already exists
-        existing_user = self.get_user_by_supabase_id(db, supabase_user_id)
-        if existing_user:
-            return existing_user
-        
-        # Check if user exists by email (for linking to existing volunteers)
-        existing_user_by_email = self.get_user_by_email(db, email)
-        if existing_user_by_email:
-            # Update the existing user with the real Supabase ID
-            existing_user_by_email.supabase_user_id = supabase_user_id
-            db.commit()
-            db.refresh(existing_user_by_email)
-            logger.info(f"Updated existing user {email} with Supabase ID")
-            return existing_user_by_email
-        
-        # Create new user
-        user = User(
-            supabase_user_id=supabase_user_id,
-            email=email,
-            role=role,
-            is_active=True
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        
-        logger.info(f"Created new user: {email} with role {role.value}")
-        return user
-    
-    def require_authentication(self, token: str, db: Session) -> User:
-        """
-        Require valid authentication and return user
-        
-        Args:
-            token: JWT token from request
-            db: Database session
-            
-        Returns:
-            User: Authenticated user
-            
-        Raises:
-            HTTPException: If authentication fails
-        """
-        # Verify the JWT token
-        token_data = self.verify_jwt_token(token)
-        
-        # Extract user ID from token
-        supabase_user_id = token_data.get("sub")
-        if not supabase_user_id:
+        try:
+            response = supabase.auth.refresh_session(refresh_token)
+            return {
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token,
+                "expires_at": response.session.expires_at,
+                "user": response.user
+            }
+        except Exception as e:
+            logger.error(f"Session refresh failed: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token missing user ID"
+                detail="Failed to refresh session"
             )
-        
-        # Get user from database
-        user = self.get_user_by_supabase_id(db, supabase_user_id)
-        if not user:
-            # User doesn't exist in our database, create them
-            email = token_data.get("email")
-            if not email:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token missing email"
-                )
-            
-            user = self.create_user_from_supabase(db, supabase_user_id, email)
-        
-        # Check if user is active
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is deactivated"
-            )
-        
-        logger.info(f"User authenticated: {user.email} (role: {user.role.value})")
-        return user
     
-    def require_admin_role(self, user: User) -> User:
+    @staticmethod
+    def sign_out(token: str) -> bool:
         """
-        Require admin role for access
+        Sign out a user (invalidate their session)
         
         Args:
-            user: Authenticated user
+            token: The user's access token
             
         Returns:
-            User: User if admin role
-            
-        Raises:
-            HTTPException: If user is not admin
+            bool: True if successful
         """
-        if user.role != UserRole.ADMIN:
-            logger.warning(f"Access denied for non-admin user: {user.email}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
-        
-        return user
-    
-    def get_user_info(self, user: User) -> Dict[str, Any]:
-        """
-        Get user information for API responses
-        
-        Args:
-            user: User object
-            
-        Returns:
-            dict: User information
-        """
-        return {
-            "id": user.id,
-            "email": user.email,
-            "role": user.role.value,
-            "is_active": user.is_active,
-            "volunteer_id": user.volunteer_id,
-            "created_at": user.created_at.isoformat() if user.created_at else None
-        }
+        try:
+            supabase.auth.sign_out(token)
+            return True
+        except Exception as e:
+            logger.error(f"Sign out failed: {str(e)}")
+            return False
 
 
-# Global instance
-supabase_auth = SupabaseAuthService() 
+# Create service instance
+supabase_auth_service = SupabaseAuthService() 

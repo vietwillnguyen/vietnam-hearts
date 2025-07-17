@@ -85,7 +85,12 @@
 </head>
 <body class="bg-light">
     <div class="container-fluid">
-        <h1 class="my-4">Vietnam Hearts Admin Dashboard</h1>
+        <div class="d-flex justify-content-between align-items-center my-4">
+            <h1>Vietnam Hearts Admin Dashboard</h1>
+            <button class="btn btn-outline-danger" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
         
         <ul class="nav nav-tabs" id="myTab" role="tablist">
             <li class="nav-item">
@@ -367,9 +372,18 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Add event listeners for action buttons
-        document.addEventListener('DOMContentLoaded', function() {
+        // Initialize Supabase client
+        const supabaseUrl = '{{ config.SUPABASE_URL }}';
+        const supabaseAnonKey = '{{ config.SUPABASE_ANON_KEY }}';
+        const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+        
+        // Check authentication status on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            await checkAuthStatus();
+            
+            // Add event listeners for action buttons
             document.querySelectorAll('.action-btn').forEach(button => {
                 button.addEventListener('click', handleAction);
             });
@@ -379,6 +393,57 @@
                 button.addEventListener('click', handleGlobalAction);
             });
         });
+        
+        async function checkAuthStatus() {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                
+                if (!session) {
+                    // No active session, redirect to login
+                    window.location.href = '/auth/test';
+                    return;
+                }
+                
+                // Verify admin status
+                const { data: userInfo } = await supabase.auth.getUser();
+                if (!userInfo.user) {
+                    throw new Error('No user found');
+                }
+                
+                // Check if user is admin (this will be verified on the server side)
+                console.log('Authenticated as:', userInfo.user.email);
+                
+            } catch (error) {
+                console.error('Authentication check failed:', error);
+                window.location.href = '/auth/test';
+            }
+        }
+        
+        async function getAuthHeaders() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                throw new Error('No active session');
+            }
+            return {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json'
+            };
+        }
+        
+        async function logout() {
+            try {
+                const { error } = await supabase.auth.signOut();
+                if (error) {
+                    console.error('Logout error:', error);
+                }
+                // Redirect to home page
+                window.location.href = '/logout-success';
+            } catch (error) {
+                console.error('Logout failed:', error);
+                // Still redirect to home page
+                window.location.href = '/logout-success';
+            }
+        }
         
         async function handleAction(event) {
             const button = event.target;
@@ -412,11 +477,10 @@
             if (!confirm(`Send confirmation email to ${email}?`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/send-confirmation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -436,11 +500,10 @@
             if (!confirm(`Reset confirmation status for ${email}? This will mark them as not having received a confirmation email.`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/reset-confirmation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -460,11 +523,10 @@
             if (!confirm(`Resend confirmation email to ${email}?`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/send-confirmation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -484,11 +546,10 @@
             if (!confirm(`Deactivate volunteer ${email}? This will prevent them from receiving emails and being synced from Google Sheets.`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/deactivate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -508,11 +569,10 @@
             if (!confirm(`Reactivate volunteer ${email}? This will allow them to receive emails and be synced from Google Sheets again.`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/reactivate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -532,11 +592,10 @@
             if (!confirm(`Send weekly reminder email to ${email}?`)) return;
 
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/send-weekly-reminder`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
 
                 const result = await response.json();
@@ -581,11 +640,10 @@
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
                 button.disabled = true;
                 
+                const headers = await getAuthHeaders();
                 const response = await fetch('/api/send-weekly-reminders', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -627,11 +685,10 @@
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
                 button.disabled = true;
                 
+                const headers = await getAuthHeaders();
                 const response = await fetch('/admin/volunteers/announcement-recipients', {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 // Check if response is ok before trying to parse JSON
@@ -774,11 +831,10 @@
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
                 button.disabled = true;
                 
+                const headers = await getAuthHeaders();
                 const response = await fetch('/api/sync-volunteers', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
