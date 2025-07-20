@@ -390,7 +390,7 @@
                     });
                     
                     if (response.ok) {
-                        // User is already signed in, redirect to dashboard
+                        // User is authenticated, redirect to dashboard
                         window.location.href = '/admin/dashboard';
                     } else {
                         // Token is invalid, remove it
@@ -400,6 +400,9 @@
                 }
             } catch (error) {
                 console.log('No valid session found');
+                // Clear any invalid tokens
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
             }
         }
         
@@ -415,11 +418,11 @@
             if (error) {
                 statusMessage.className = 'status-message status-error';
                 statusMessage.style.display = 'block';
-                statusMessage.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${error}`;
+                statusMessage.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${decodeURIComponent(error)}`;
             } else if (success) {
                 statusMessage.className = 'status-message status-success';
                 statusMessage.style.display = 'block';
-                statusMessage.innerHTML = `<i class="fas fa-check-circle"></i> ${success}`;
+                statusMessage.innerHTML = `<i class="fas fa-check-circle"></i> ${decodeURIComponent(success)}`;
             }
             
             // Check if user is already authenticated
