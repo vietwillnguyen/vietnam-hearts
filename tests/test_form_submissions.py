@@ -742,3 +742,152 @@ class TestFormSubmissionProcessing:
                 assert pending_volunteer is None
                 assert rejected_volunteer is None
                 assert nostatus_volunteer is None 
+
+    def test_empty_email_submissions_are_filtered_out(self, client, test_db):
+        """Test that submissions with empty email addresses are filtered out and not counted"""
+        # Mock form submissions including some with empty emails (using new form structure)
+        mock_submissions = [
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "valid@example.com",
+                "score": "85",
+                "first_name": "Valid",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport1.jpg",
+                "headshot_upload": "https://example.com/headshot1.jpg",
+                "social_media_link": "https://facebook.com/validvolunteer",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 1111111111",
+                "position_interest": "Teacher",
+                "availability": "Monday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Facebook"
+            },
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 11:00:00",
+                "email_address": "",  # Empty email
+                "score": "75",
+                "first_name": "Empty",
+                "last_name": "Email",
+                "passport_id_number": "987654321",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport2.jpg",
+                "headshot_upload": "https://example.com/headshot2.jpg",
+                "social_media_link": "https://facebook.com/emptyemail",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 2222222222",
+                "position_interest": "Teacher",
+                "availability": "Tuesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Instagram"
+            },
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 12:00:00",
+                "email_address": "   ",  # Whitespace-only email
+                "score": "80",
+                "first_name": "Whitespace",
+                "last_name": "Email",
+                "passport_id_number": "456789123",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport3.jpg",
+                "headshot_upload": "https://example.com/headshot3.jpg",
+                "social_media_link": "https://facebook.com/whitespaceemail",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 3333333333",
+                "position_interest": "Teacher",
+                "availability": "Wednesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Facebook"
+            },
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 13:00:00",
+                "email_address": "another@example.com",
+                "score": "90",
+                "first_name": "Another",
+                "last_name": "Valid",
+                "passport_id_number": "789123456",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport4.jpg",
+                "headshot_upload": "https://example.com/headshot4.jpg",
+                "social_media_link": "https://facebook.com/anothervalid",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 4444444444",
+                "position_interest": "Teacher",
+                "availability": "Thursday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Word of mouth"
+            }
+        ]
+
+        # Mock the sheets service to return our test submissions
+        with patch('app.routers.admin.sheets_service') as mock_sheets:
+            mock_sheets.get_signup_form_submissions.return_value = mock_submissions
+            
+            # Mock the email service
+            with patch('app.routers.admin.email_service') as mock_email:
+                mock_email.send_confirmation_emails.return_value = None
+                
+                # Call the function
+                response = client.get("/admin/forms/submissions?process_new=true")
+                
+                assert response.status_code == 200
+                result = response.json()
+                
+                # Should only process 2 valid submissions (excluding empty/whitespace emails)
+                assert result["status"] == "success"
+                assert "2 form submissions" in result["message"]
+                assert "2 accepted, 0 non-accepted" in result["message"]
+                
+                # Check the details
+                assert result["details"]["submissions_retrieved"] == 2
+                assert result["details"]["accepted_submissions"] == 2
+                assert result["details"]["non_accepted_submissions"] == 0
+                assert result["details"]["new_submissions_found"] == 2
+                assert result["details"]["volunteers_created"] == 2
+                
+                # Check database state - only the valid volunteers should be created
+                all_volunteers = test_db.query(VolunteerModel).all()
+                assert len(all_volunteers) == 2
+                
+                # Verify only the valid volunteers were added
+                valid_emails = [v.email for v in all_volunteers]
+                assert "valid@example.com" in valid_emails
+                assert "another@example.com" in valid_emails
+                
+                # Verify empty email volunteers were not added
+                assert "" not in valid_emails
+                assert "   " not in valid_emails 

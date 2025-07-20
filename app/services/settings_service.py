@@ -157,7 +157,7 @@ def initialize_default_settings(db: Session) -> None:
         },
         "SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT": {
             "value": "4",
-            "description": "Number of weeks to display in the schedule sheets"
+            "description": "The default number of weeks to display in the schedule sheets"
         }
     }
     

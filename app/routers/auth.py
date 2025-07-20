@@ -34,11 +34,11 @@ class RefreshSessionRequest(BaseModel):
 @router.get("/login")
 async def login_page(request: Request):
     """
-    Serve the login page
+    Redirect to home page for login
     
-    Returns the login page template for Google OAuth sign-in.
+    The login functionality is now integrated into the home page.
     """
-    return templates.TemplateResponse("auth/login.html", {"request": request})
+    return RedirectResponse(url="/", status_code=302)
 
 
 @router.post("/signin/google")

@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
         logger.info(f"- DATABASE_URL={DATABASE_URL}")
         logger.info(f"- LOGS_DIR={get_log_file_path()}")
         logger.info("-" * 50)
-        
+
         # Log the actual log file paths
         logger.info("📁 Log file locations:")
         print_log_paths()
@@ -115,3 +115,10 @@ if ENVIRONMENT == "development":
 app.include_router(api_router)
 app.include_router(public_router)
 app.include_router(settings_router)
+
+# Root route redirects to home page
+@app.get("/")
+async def root():
+    """Redirect root to home page"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/public/", status_code=302)

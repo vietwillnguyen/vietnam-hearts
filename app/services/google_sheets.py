@@ -274,10 +274,32 @@ class GoogleSheetsService:
 
             # Process each row into a dictionary
             submissions = []
+            skipped_count = 0
             for row in values:
                 # Pad row with empty strings if it's shorter than headers
                 row_data = row + [""] * (len(headers) - len(row))
                 submission = dict(zip(headers, row_data))
+
+                # Skip submissions with empty email addresses or missing essential fields
+                email_address = submission.get("email_address", "").strip()
+                if not email_address:
+                    logger.debug(f"Skipping submission with empty email address: {submission}")
+                    skipped_count += 1
+                    continue
+                
+                # Skip submissions that are completely empty (no meaningful data)
+                has_meaningful_data = any([
+                    submission.get("first_name", "").strip(),
+                    submission.get("last_name", "").strip(),
+                    submission.get("phone_number", "").strip(),
+                    submission.get("position_interest", "").strip(),
+                    submission.get("availability", "").strip(),
+                ])
+                
+                if not has_meaningful_data:
+                    logger.debug(f"Skipping submission with no meaningful data: {submission}")
+                    skipped_count += 1
+                    continue
 
                 # Convert timestamp string to datetime
                 if submission["timestamp"]:
@@ -292,6 +314,7 @@ class GoogleSheetsService:
 
                 submissions.append(submission)
 
+            logger.info(f"Processed {len(values)} total rows: {len(submissions)} valid submissions, {skipped_count} skipped")
             return submissions
         
         try:

@@ -1,3 +1,7 @@
+"""
+Public endpoints for the volunteer management system
+"""
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -24,6 +28,16 @@ public_router = APIRouter(prefix="/public", tags=["public"])
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
+
+
+@public_router.get("/", response_class=HTMLResponse)
+async def home_page(request: Request):
+    """
+    Serve the home page
+    
+    Returns the main landing page with login functionality.
+    """
+    return templates.TemplateResponse("home.html", {"request": request})
 
 
 # Unsubscribe endpoints (public)
