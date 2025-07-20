@@ -990,3 +990,235 @@ def validate_configuration(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500, detail=f"Configuration validation failed: {str(e)}"
         )
+
+
+# Admin Management Endpoints
+from pydantic import BaseModel
+from typing import Optional
+from app.services.supabase_auth import get_current_admin_user
+
+
+class AdminCreateRequest(BaseModel):
+    """Request model for creating a new admin"""
+    email: str
+    role: str = "admin"  # "admin" or "super_admin"
+
+
+class AdminRoleUpdateRequest(BaseModel):
+    """Request model for updating admin role"""
+    role: str  # "admin" or "super_admin"
+
+
+@admin_router.get("/users")
+async def get_admins(current_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Get all admin users and current user info"""
+    try:
+        from app.services.admin_user_service import AdminUserService
+        from app.services.supabase_auth import supabase
+        
+        admin_service = AdminUserService(supabase)
+        
+        # Get admin users from database
+        admin_users = await admin_service.get_admin_users(current_admin["email"])
+        
+        # Get current user info
+        current_user = {
+            "email": current_admin["email"],
+            "role": "admin"  # Default role, will be updated below
+        }
+        
+        # Find current user in admin list to get their role
+        for admin_user in admin_users:
+            if admin_user.email == current_admin["email"]:
+                current_user["role"] = admin_user.role
+                break
+        
+        # Convert to dict format for frontend
+        admins = []
+        for admin_user in admin_users:
+            admins.append({
+                "email": admin_user.email,
+                "role": admin_user.role,
+                "status": "active" if admin_user.is_active else "inactive",
+                "last_login": admin_user.last_login.isoformat() if admin_user.last_login else None,
+                "created_at": admin_user.created_at.isoformat() if admin_user.created_at else None
+            })
+        
+        logger.info(f"Admin {current_admin['email']} retrieved admin list")
+        
+        return {
+            "current_user": current_user,
+            "admins": admins,
+            "total": len(admins),
+            "message": "Admin list retrieved successfully"
+        }
+        
+    except PermissionError as e:
+        logger.error(f"Permission denied: {str(e)}")
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get admins: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@admin_router.post("/users")
+async def create_admin(
+    request: AdminCreateRequest,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Add a new admin user"""
+    try:
+        from app.services.admin_user_service import AdminUserService
+        from app.services.supabase_auth import supabase
+        
+        # Validate email format
+        if not request.email or "@" not in request.email:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid email address"
+            )
+        
+        # Validate role
+        if request.role not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid role. Must be 'admin' or 'super_admin'"
+            )
+        
+        admin_service = AdminUserService(supabase)
+        
+        # Add admin user
+        success = await admin_service.add_admin_user(
+            email=request.email,
+            role=request.role,
+            added_by_email=current_admin["email"]
+        )
+        
+        if success:
+            logger.info(f"Super admin {current_admin['email']} added admin {request.email}")
+            return {
+                "status": "success",
+                "message": f"Admin {request.email} added successfully with role {request.role}",
+                "admin_email": request.email,
+                "role": request.role
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to add admin {request.email}. They may already exist."
+            )
+        
+    except PermissionError as e:
+        logger.error(f"Permission denied: {str(e)}")
+        raise HTTPException(status_code=403, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create admin: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@admin_router.put("/users/{email}/role")
+async def update_admin_role(
+    email: str,
+    request: AdminRoleUpdateRequest,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Update admin role"""
+    try:
+        from app.services.admin_user_service import AdminUserService
+        from app.services.supabase_auth import supabase
+        
+        # Validate role
+        if request.role not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid role. Must be 'admin' or 'super_admin'"
+            )
+        
+        # Prevent removing the last super admin
+        if request.role == "admin" and email == current_admin["email"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot demote yourself from super admin"
+            )
+        
+        admin_service = AdminUserService(supabase)
+        
+        # Update admin role
+        success = await admin_service.update_admin_role(
+            email=email,
+            new_role=request.role,
+            updated_by_email=current_admin["email"]
+        )
+        
+        if success:
+            logger.info(f"Super admin {current_admin['email']} changed {email} role to {request.role}")
+            return {
+                "status": "success",
+                "message": f"Admin {email} role updated to {request.role}",
+                "admin_email": email,
+                "new_role": request.role
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Admin {email} not found or update failed"
+            )
+        
+    except PermissionError as e:
+        logger.error(f"Permission denied: {str(e)}")
+        raise HTTPException(status_code=403, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update admin role: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@admin_router.delete("/users/{email}")
+async def remove_admin(
+    email: str,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Remove an admin user"""
+    try:
+        from app.services.admin_user_service import AdminUserService
+        from app.services.supabase_auth import supabase
+        
+        # Prevent removing yourself
+        if email == current_admin["email"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot remove yourself as admin"
+            )
+        
+        admin_service = AdminUserService(supabase)
+        
+        # Remove admin user
+        success = await admin_service.remove_admin_user(
+            email=email,
+            removed_by_email=current_admin["email"]
+        )
+        
+        if success:
+            logger.info(f"Super admin {current_admin['email']} removed admin {email}")
+            return {
+                "status": "success",
+                "message": f"Admin {email} removed successfully",
+                "admin_email": email
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Admin {email} not found or removal failed"
+            )
+        
+    except PermissionError as e:
+        logger.error(f"Permission denied: {str(e)}")
+        raise HTTPException(status_code=403, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to remove admin: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

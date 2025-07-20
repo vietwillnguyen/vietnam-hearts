@@ -350,13 +350,22 @@ class SupabaseAuthService:
         Returns:
             True if user is admin, False otherwise
         """
-        from app.config import ADMIN_EMAILS
-        
-        # For testing, allow mock user to be admin
-        if user_email == "test@example.com":
-            return True
-        
-        return user_email in ADMIN_EMAILS
+        try:
+            # Try dynamic admin service first
+            from app.services.admin_user_service import AdminUserService
+            admin_service = AdminUserService(self.supabase)
+            return await admin_service.is_admin(user_email)
+        except Exception as e:
+            self.logger.warning(f"Dynamic admin check failed, falling back to environment: {e}")
+            
+            # Fallback to environment variable
+            from app.config import ADMIN_EMAILS
+            
+            # For testing, allow mock user to be admin
+            if user_email == "test@example.com":
+                return True
+            
+            return user_email in ADMIN_EMAILS
 
 
 # Create a global instance of the auth service

@@ -23,15 +23,9 @@ from app.models import (
     EmailCommunication as EmailCommunicationModel,
 )
 from app.services.classes_config import CLASS_CONFIG
-from app.config import (
-    GOOGLE_OAUTH_CLIENT_ID,
-    SERVICE_ACCOUNT_EMAIL,
-)
 from app.utils.config_helper import ConfigHelper
-from app.utils.retry_utils import safe_api_call, log_ssl_error
+from app.utils.retry_utils import safe_api_call
 from typing import List, Dict, Any
-import ssl
-from typing import Callable
 from jinja2 import Template
 
 logger = get_api_logger()

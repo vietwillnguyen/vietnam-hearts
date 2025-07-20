@@ -80,8 +80,8 @@ This guide will walk you through setting up Google OAuth authentication for the 
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    
    # Google OAuth for Supabase Auth
-   GOOGLE_CLIENT_ID=your-google-client-id
-   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   GOOGLE_OAUTH_CLIENT_ID=your-google-client-id
+   GOOGLE_OAUTH_CLIENT_SECRET=your-google-client-secret
    
    # Admin emails (comma-separated)
    ADMIN_EMAILS=admin1@example.com,admin2@example.com

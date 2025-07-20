@@ -23,8 +23,8 @@ You should see something like:
   "configuration": {
     "supabase_url": false,
     "supabase_anon_key": false,
-    "google_client_id": false,
-    "google_client_secret": false
+    "GOOGLE_OAUTH_CLIENT_ID": false,
+    "GOOGLE_OAUTH_CLIENT_SECRET": false
   },
   "all_configured": false
 }
@@ -122,8 +122,8 @@ You should see something like:
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
    
    # Google OAuth for Supabase Auth
-   GOOGLE_CLIENT_ID=your-google-client-id-here
-   GOOGLE_CLIENT_SECRET=your-google-client-secret-here
+   GOOGLE_OAUTH_CLIENT_ID=your-google-client-id-here
+   GOOGLE_OAUTH_CLIENT_SECRET=your-google-client-secret-here
    
    # Admin emails (comma-separated)
    ADMIN_EMAILS=your-email@example.com
@@ -151,8 +151,8 @@ You should now see:
   "configuration": {
     "supabase_url": true,
     "supabase_anon_key": true,
-    "google_client_id": true,
-    "google_client_secret": true
+    "GOOGLE_OAUTH_CLIENT_ID": true,
+    "GOOGLE_OAUTH_CLIENT_SECRET": true
   },
   "all_configured": true
 }
