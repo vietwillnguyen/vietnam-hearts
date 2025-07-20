@@ -64,7 +64,7 @@ class SupabaseAuthService:
         except Exception as e:
             self.logger.error(f"Failed to generate Google OAuth URL: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to initiate Google sign-in: {str(e)}")
-    
+        
     async def handle_auth_callback(self, code: str, state: Optional[str] = None) -> Dict[str, Any]:
         """
         Handle the OAuth callback from Google
@@ -87,23 +87,30 @@ class SupabaseAuthService:
             
             # Use the correct Supabase API for exchanging the code
             try:
-                # The correct method for Supabase Python client
-                response = self.supabase.auth.exchange_code_for_session(code)
-                self.logger.info(f"Supabase response type: {type(response)}")
-                self.logger.info(f"Supabase response: {response}")
+                # The correct method call with proper parameter structure
+                response = self.supabase.auth.exchange_code_for_session({
+                    "auth_code": code
+                })
                 
-                # Handle the response
-                if hasattr(response, 'user') and hasattr(response, 'access_token'):
-                    # Standard session object
+                self.logger.debug(f"Supabase response type: {type(response)}")
+                self.logger.debug(f"Supabase response: {response}")
+                
+                # Handle different response types
+                if isinstance(response, str):
+                    self.logger.error(f"Received string response instead of session object: {response}")
+                    return self._get_mock_response(code)
+                
+                # Handle AuthResponse object (which has both user and session attributes)
+                if hasattr(response, 'user') and hasattr(response, 'session'):
                     user = response.user
-                    session = response
+                    session = response.session
                     
                     return {
                         "user": {
                             "id": user.id,
                             "email": user.email,
-                            "name": user.user_metadata.get("full_name") if hasattr(user, 'user_metadata') else None,
-                            "avatar_url": user.user_metadata.get("avatar_url") if hasattr(user, 'user_metadata') else None,
+                            "name": user.user_metadata.get("full_name", "") if hasattr(user, 'user_metadata') and user.user_metadata else None,
+                            "avatar_url": user.user_metadata.get("avatar_url") if hasattr(user, 'user_metadata') and user.user_metadata else None,
                             "email_verified": user.email_confirmed_at is not None if hasattr(user, 'email_confirmed_at') else False
                         },
                         "session": {
@@ -113,12 +120,39 @@ class SupabaseAuthService:
                         },
                         "message": "Successfully signed in with Google"
                     }
+                # Handle direct session object (fallback)
+                elif hasattr(response, 'user') and hasattr(response, 'access_token'):
+                    user = response.user
+                    
+                    return {
+                        "user": {
+                            "id": user.id,
+                            "email": user.email,
+                            "name": user.user_metadata.get("full_name", "") if hasattr(user, 'user_metadata') and user.user_metadata else None,
+                            "avatar_url": user.user_metadata.get("avatar_url") if hasattr(user, 'user_metadata') and user.user_metadata else None,
+                            "email_verified": user.email_confirmed_at is not None if hasattr(user, 'email_confirmed_at') else False
+                        },
+                        "session": {
+                            "access_token": response.access_token,
+                            "refresh_token": response.refresh_token,
+                            "expires_at": response.expires_at
+                        },
+                        "message": "Successfully signed in with Google"
+                    }
                 else:
-                    self.logger.error(f"Unexpected response format: {response}")
+                    self.logger.error(f"Unexpected response format from Supabase: {response}")
+                    self.logger.error(f"Response attributes: {dir(response)}")
                     return self._get_mock_response(code)
                     
+            except AttributeError as attr_error:
+                self.logger.error(f"Attribute error in Supabase response: {str(attr_error)}")
+                self.logger.error(f"This might be due to the response being a string or having unexpected structure")
+                self.logger.info("Falling back to mock response")
+                return self._get_mock_response(code)
+                
             except Exception as supabase_error:
                 self.logger.error(f"Supabase authentication error: {str(supabase_error)}")
+                self.logger.error(f"Error type: {type(supabase_error)}")
                 self.logger.info("Falling back to mock response")
                 return self._get_mock_response(code)
             
@@ -172,7 +206,17 @@ class SupabaseAuthService:
             
             # Real Supabase authentication (for production)
             try:
-                user = self.supabase.auth.get_user(token)
+                user_response = self.supabase.auth.get_user(token)
+                
+                self.logger.debug(f"User response type: {type(user_response)}")
+                self.logger.debug(f"User response: {user_response}")
+                
+                # Handle UserResponse object (which has a user attribute)
+                if hasattr(user_response, 'user'):
+                    user = user_response.user
+                else:
+                    # If it's already a User object
+                    user = user_response
                 
                 if not user:
                     raise HTTPException(status_code=401, detail="Invalid authentication token")
@@ -180,11 +224,11 @@ class SupabaseAuthService:
                 return {
                     "id": user.id,
                     "email": user.email,
-                    "name": user.user_metadata.get("full_name") if hasattr(user, 'user_metadata') else None,
-                    "avatar_url": user.user_metadata.get("avatar_url") if hasattr(user, 'user_metadata') else None,
+                    "name": user.user_metadata.get("full_name", "") if hasattr(user, 'user_metadata') and user.user_metadata else None,
+                    "avatar_url": user.user_metadata.get("avatar_url") if hasattr(user, 'user_metadata') and user.user_metadata else None,
                     "email_verified": user.email_confirmed_at is not None if hasattr(user, 'email_confirmed_at') else False,
-                    "created_at": user.created_at if hasattr(user, 'created_at') else None,
-                    "last_sign_in": user.last_sign_in_at if hasattr(user, 'last_sign_in_at') else None
+                    "created_at": user.created_at.isoformat() if hasattr(user, 'created_at') and user.created_at else None,
+                    "last_sign_in": user.last_sign_in_at.isoformat() if hasattr(user, 'last_sign_in_at') and user.last_sign_in_at else None
                 }
             except Exception as supabase_error:
                 self.logger.error(f"Supabase get_user error: {str(supabase_error)}")
@@ -321,7 +365,15 @@ auth_service = SupabaseAuthService()
 
 # Dependency for getting current user
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """Dependency to get the current authenticated user"""
+    """
+    Get the current authenticated user from JWT token
+    
+    Args:
+        credentials: HTTP Bearer token credentials
+        
+    Returns:
+        Dict containing user information
+    """
     return await auth_service.get_current_user(credentials)
 
 
