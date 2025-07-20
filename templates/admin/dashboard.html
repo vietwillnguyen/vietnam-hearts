@@ -118,6 +118,11 @@
                     Settings
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link" id="schedule-tab" data-bs-toggle="tab" href="#schedule" role="tab">
+                    Schedule Management
+                </a>
+            </li>
         </ul>
         
         <div class="tab-content" id="myTabContent">
@@ -469,6 +474,82 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Schedule Management Tab -->
+            <div class="tab-pane fade" id="schedule" role="tabpanel">
+                <div class="table-container">
+                    <h2>Schedule Management</h2>
+                    
+                    <!-- Schedule Status Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Current Schedule Status</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="schedule-status-content">
+                                <div class="text-center">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading schedule status...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Schedule Actions Section -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-cogs"></i> Schedule Actions</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">🔄 Rotate Schedule</h6>
+                                            <p class="card-text">Rotate schedule sheets to show the next week(s). This will hide old sheets and show new ones.</p>
+                                            
+                                            <div class="form-group mb-3">
+                                                <label for="displayWeeks" class="form-label">Number of weeks to display:</label>
+                                                <select class="form-control" id="displayWeeks">
+                                                    <option value="">Use default setting</option>
+                                                    <option value="1">1 week</option>
+                                                    <option value="2">2 weeks</option>
+                                                    <option value="3">3 weeks</option>
+                                                    <option value="4">4 weeks (default)</option>
+                                                    <option value="5">5 weeks</option>
+                                                    <option value="6">6 weeks</option>
+                                                    <option value="8">8 weeks</option>
+                                                    <option value="10">10 weeks</option>
+                                                    <option value="12">12 weeks</option>
+                                                </select>
+                                                <div class="form-text">Leave empty to use the default setting from the Settings tab</div>
+                                            </div>
+                                            
+                                            <button class="btn btn-primary" onclick="rotateSchedule()">
+                                                <i class="fas fa-sync"></i> Rotate Schedule
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">📊 Schedule Statistics</h6>
+                                            <p class="card-text">View detailed information about the current schedule setup.</p>
+                                            
+                                            <div id="schedule-stats">
+                                                <div class="text-center">
+                                                    <i class="fas fa-spinner fa-spin"></i> Loading statistics...
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -494,6 +575,9 @@
             
             // Load admin data when admin tab is shown
             document.getElementById('admins-tab').addEventListener('shown.bs.tab', loadAdminData);
+            
+            // Load schedule data when schedule tab is shown
+            document.getElementById('schedule-tab').addEventListener('shown.bs.tab', loadScheduleData);
         });
         
         async function checkAuthentication() {
@@ -763,7 +847,7 @@
                 button.disabled = true;
                 
                 const headers = await getAuthHeaders();
-                const response = await fetch('/api/send-weekly-reminders', {
+                const response = await fetch('/admin/send-weekly-reminders', {
                     method: 'POST',
                     headers: headers
                 });
@@ -954,7 +1038,7 @@
                 button.disabled = true;
                 
                 const headers = await getAuthHeaders();
-                const response = await fetch('/api/sync-volunteers', {
+                const response = await fetch('/admin/sync-volunteers', {
                     method: 'POST',
                     headers: headers
                 });
@@ -1287,6 +1371,245 @@
             }
             
             alert('Settings have been reset to defaults. Click "Save All Settings" to apply the changes.');
+        }
+
+        // Schedule Management Functions
+        async function loadScheduleData() {
+            try {
+                await loadScheduleStatus();
+                await loadScheduleStats();
+            } catch (error) {
+                console.error('Error loading schedule data:', error);
+            }
+        }
+
+        async function loadScheduleStatus() {
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/schedule-status', {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const details = data.details;
+                    const content = document.getElementById('schedule-status-content');
+                    
+                    content.innerHTML = `
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">${details.total_sheets}</h4>
+                                    <small class="text-muted">Total Sheets</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-success">${details.visible_sheets}</h4>
+                                    <small class="text-muted">Visible Sheets</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">${details.hidden_sheets}</h4>
+                                    <small class="text-muted">Hidden Sheets</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">${details.display_weeks_count}</h4>
+                                    <small class="text-muted">Display Weeks</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <h6>Sheet Details:</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Sheet Name</th>
+                                            <th>Date</th>
+                                            <th>Status</th>
+                                            <th>Position</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${details.sheets.map(sheet => `
+                                            <tr>
+                                                <td>${sheet.title}</td>
+                                                <td>${sheet.date ? new Date(sheet.date).toLocaleDateString() : 'N/A'}</td>
+                                                <td>
+                                                    <span class="badge ${sheet.hidden ? 'bg-secondary' : 'bg-success'}">
+                                                        ${sheet.hidden ? 'Hidden' : 'Visible'}
+                                                    </span>
+                                                </td>
+                                                <td>${sheet.index}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.detail || 'Failed to load schedule status');
+                }
+            } catch (error) {
+                console.error('Error loading schedule status:', error);
+                document.getElementById('schedule-status-content').innerHTML = 
+                    `<div class="alert alert-danger">Error loading schedule status: ${error.message}</div>`;
+            }
+        }
+
+        async function loadScheduleStats() {
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/schedule-status', {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const details = data.details;
+                    const stats = document.getElementById('schedule-stats');
+                    
+                    // Calculate additional statistics
+                    const visibleSheets = details.sheets.filter(s => !s.hidden);
+                    const hiddenSheets = details.sheets.filter(s => s.hidden);
+                    const scheduleSheets = details.sheets.filter(s => s.title.startsWith('Schedule ') && s.title !== 'Schedule Template');
+                    
+                    stats.innerHTML = `
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Total Sheets:</small><br>
+                                <strong>${details.total_sheets}</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Schedule Sheets:</small><br>
+                                <strong>${scheduleSheets.length}</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Visible:</small><br>
+                                <strong class="text-success">${details.visible_sheets}</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Hidden:</small><br>
+                                <strong class="text-warning">${details.hidden_sheets}</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-12">
+                                <small class="text-muted">Display Weeks Setting:</small><br>
+                                <strong class="text-info">${details.display_weeks_count} weeks</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-12">
+                                <small class="text-muted">Last Updated:</small><br>
+                                <strong>${new Date().toLocaleString()}</strong>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.detail || 'Failed to load schedule statistics');
+                }
+            } catch (error) {
+                console.error('Error loading schedule statistics:', error);
+                document.getElementById('schedule-stats').innerHTML = 
+                    `<div class="alert alert-danger">Error loading statistics: ${error.message}</div>`;
+            }
+        }
+
+        async function rotateSchedule() {
+            const displayWeeks = document.getElementById('displayWeeks').value;
+            const weeksText = displayWeeks ? `${displayWeeks} weeks` : 'default setting';
+            
+            if (!confirm(`Are you sure you want to rotate the schedule? This will:\n\n` +
+                       `• Hide old schedule sheets\n` +
+                       `• Show new schedule sheets for ${weeksText}\n` +
+                       `• Reorder sheets as needed\n\n` +
+                       `This action cannot be undone.`)) {
+                return;
+            }
+            
+            const button = document.querySelector('button[onclick="rotateSchedule()"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rotating...';
+                button.disabled = true;
+                
+                const headers = await getAuthHeaders();
+                const url = displayWeeks ? 
+                    `/admin/rotate-schedule?display_weeks=${displayWeeks}` : 
+                    '/admin/rotate-schedule';
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let message = `✅ Schedule rotated successfully!\n\n`;
+                    message += `Status: ${result.status}\n`;
+                    message += `Message: ${result.message}\n\n`;
+                    
+                    if (result.details) {
+                        const details = result.details;
+                        message += `📊 Rotation Details:\n`;
+                        message += `• Display weeks: ${details.display_weeks_count}\n`;
+                        message += `• Override used: ${details.display_weeks_override_used ? 'Yes' : 'No'}\n`;
+                        message += `• Sheets created: ${details.changes.sheets_added.length}\n`;
+                        message += `• Sheets hidden: ${details.changes.sheets_hidden.length}\n`;
+                        message += `• Sheets unhidden: ${details.changes.sheets_unhidden.length}\n`;
+                        message += `• Sheets reordered: ${details.changes.sheets_reordered.length}\n\n`;
+                        
+                        if (details.display_dates && details.display_dates.length > 0) {
+                            message += `📅 Display dates: ${details.display_dates.join(', ')}\n\n`;
+                        }
+                        
+                        if (details.current_state) {
+                            message += `👁️ Current visible sheets: ${details.current_state.visible_sheets.join(', ')}\n`;
+                        }
+                    }
+                    
+                    alert(message);
+                    
+                    // Refresh the schedule data
+                    await loadScheduleData();
+                } else {
+                    alert(`❌ Error: ${result.detail || result.message || 'Failed to rotate schedule'}`);
+                }
+            } catch (error) {
+                console.error('Error rotating schedule:', error);
+                alert(`❌ Error: ${error.message || 'Failed to rotate schedule'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
         }
     </script>
 </body>

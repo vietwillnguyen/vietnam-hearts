@@ -17,7 +17,6 @@ from .config import (
 from app.utils.config_helper import ConfigHelper
 import os
 from app.routers.admin import admin_router
-from app.routers.api import api_router
 from app.routers.public import public_router
 from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
@@ -112,7 +111,6 @@ if ENVIRONMENT == "development":
     app.include_router(admin_router)
     logger.info("Admin endpoints enabled")
 
-app.include_router(api_router)
 app.include_router(public_router)
 app.include_router(settings_router)
 

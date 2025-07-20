@@ -650,9 +650,13 @@ class GoogleSheetsService:
             logger.error(f"Failed to move sheet: {str(e)}", exc_info=True)
             raise
 
-    def rotate_schedule_sheets(self, db: Session) -> Dict[str, Any]:
+    def rotate_schedule_sheets(self, db: Session, display_weeks_override: Optional[int] = None) -> Dict[str, Any]:
         """
         Rotate schedule sheets.
+
+        Args:
+            db: Database session
+            display_weeks_override: Optional override for the number of weeks to display (overrides setting)
 
         Returns:
             Dict[str, Any]: Detailed information about the rotation operation including:
@@ -680,9 +684,13 @@ class GoogleSheetsService:
             # Calculate the date range to display
             # Start from next Monday since current week is over
             next_monday = current_monday + timedelta(days=7)
+            
+            # Use override if provided, otherwise use setting
+            display_weeks_count = display_weeks_override if display_weeks_override is not None else ConfigHelper.get_schedule_sheets_display_weeks_count(db)
+            
             display_dates = [
                 next_monday + timedelta(days=7 * i)
-                for i in range(ConfigHelper.get_schedule_sheets_display_weeks_count(db))
+                for i in range(display_weeks_count)
             ]
 
             # Create a set of sheet names that should be visible
@@ -832,11 +840,12 @@ class GoogleSheetsService:
                     ],
                 },
                 "display_dates": [date.strftime("%m/%d") for date in display_dates],
-                "display_weeks_count": ConfigHelper.get_schedule_sheets_display_weeks_count(db),
+                "display_weeks_count": display_weeks_count,
+                "display_weeks_override_used": display_weeks_override is not None,
             }
 
             logger.info(
-                f"Successfully rotated schedule sheets for {ConfigHelper.get_schedule_sheets_display_weeks_count(db)} weeks"
+                f"Successfully rotated schedule sheets for {display_weeks_count} weeks"
             )
             return result
 

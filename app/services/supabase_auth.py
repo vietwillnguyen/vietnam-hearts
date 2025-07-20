@@ -25,6 +25,9 @@ else:
 # Security scheme for JWT tokens
 security = HTTPBearer()
 
+# Custom security scheme for service role keys
+from fastapi import Header
+
 
 class SupabaseAuthService:
     """Service for handling Supabase authentication operations"""
@@ -182,19 +185,40 @@ class SupabaseAuthService:
             "message": "Successfully signed in with Google (mock response)"
         }
     
-    async def get_current_user(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    async def get_current_user_from_apikey(self, apikey: str) -> Dict[str, Any]:
         """
-        Get the current authenticated user from JWT token
+        Get the current authenticated user from service role key
         
         Args:
-            credentials: HTTP Bearer token credentials
+            apikey: Service role key from apikey header
             
         Returns:
             Dict containing user information
         """
         try:
-            token = credentials.credentials
+            # For service accounts, check if it's a service role key
+            if self._is_service_role_key(apikey):
+                return self._get_service_account_user_from_key(apikey)
             
+            # If not a service role key, it's an invalid apikey
+            self.logger.error(f"Invalid apikey format: {apikey[:20]}...")
+            raise HTTPException(status_code=401, detail="Invalid service role key")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get current user from apikey: {str(e)}")
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+    
+    async def get_current_user_from_token(self, token: str) -> Dict[str, Any]:
+        """
+        Get the current authenticated user from JWT token
+        
+        Args:
+            token: JWT token from Authorization header
+            
+        Returns:
+            Dict containing user information
+        """
+        try:
             # For testing, check if it's a mock token
             if token.startswith("mock-access-token-"):
                 return self._get_mock_user()
@@ -236,7 +260,7 @@ class SupabaseAuthService:
                 return self._get_mock_user()
             
         except Exception as e:
-            self.logger.error(f"Failed to get current user: {str(e)}")
+            self.logger.error(f"Failed to get current user from token: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid authentication token")
     
     def _get_mock_user(self) -> Dict[str, Any]:
@@ -250,6 +274,37 @@ class SupabaseAuthService:
             "created_at": "2024-01-01T00:00:00Z",
             "last_sign_in": "2024-01-01T00:00:00Z"
         }
+    
+    def _is_service_role_key(self, token: str) -> bool:
+        """Check if the token is a valid service role key"""
+        try:
+            # Service role keys can be either:
+            # 1. JWT format (starts with eyJ...)
+            # 2. Secret key format (starts with sb_)
+            return (token.startswith("eyJ") and len(token) > 100) or (token.startswith("sb_") and len(token) > 50)
+        except Exception:
+            return False
+    
+    def _get_service_account_user_from_key(self, service_role_key: str) -> Dict[str, Any]:
+        """Get service account user from service role key"""
+        try:
+            # Validate that this is actually our service role key
+            if service_role_key != SUPABASE_SERVICE_ROLE_KEY:
+                raise HTTPException(status_code=401, detail="Invalid service role key")
+            
+            # Return service account user info
+            return {
+                "id": "service-account-auto-scheduler",
+                "email": "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com",
+                "name": "Auto Scheduler Service Account",
+                "avatar_url": None,
+                "email_verified": True,
+                "created_at": "2024-01-01T00:00:00Z",
+                "last_sign_in": "2024-01-01T00:00:00Z"
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to validate service role key: {str(e)}")
+            raise HTTPException(status_code=401, detail="Invalid service role key")
     
     async def sign_out(self, access_token: str) -> Dict[str, str]:
         """
@@ -351,6 +406,11 @@ class SupabaseAuthService:
             True if user is admin, False otherwise
         """
         try:
+            # Special case for service account
+            if user_email == "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com":
+                self.logger.info(f"Service account {user_email} is admin")
+                return True
+            
             # Try dynamic admin service first
             from app.services.admin_user_service import AdminUserService
             admin_service = AdminUserService(self.supabase)
@@ -365,6 +425,7 @@ class SupabaseAuthService:
             if user_email == "test@example.com":
                 return True
             
+            self.logger.info(f"Checking {user_email} against ADMIN_EMAILS: {ADMIN_EMAILS}")
             return user_email in ADMIN_EMAILS
 
 
@@ -372,23 +433,40 @@ class SupabaseAuthService:
 auth_service = SupabaseAuthService()
 
 
-# Dependency for getting current user
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+# Custom dependency for getting current user with support for both Authorization and apikey headers
+async def get_current_user(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    apikey: Optional[str] = Header(None, alias="apikey")
+) -> Dict[str, Any]:
     """
-    Get the current authenticated user from JWT token
+    Get the current authenticated user from JWT token or service role key
     
     Args:
-        credentials: HTTP Bearer token credentials
+        authorization: Authorization header (Bearer token)
+        apikey: API key header (service role key)
         
     Returns:
         Dict containing user information
     """
-    return await auth_service.get_current_user(credentials)
+    # Check for service role key first
+    if apikey:
+        return await auth_service.get_current_user_from_apikey(apikey)
+    
+    # Check for Authorization header
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+        return await auth_service.get_current_user_from_token(token)
+    
+    # No valid authentication found
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 # Dependency for getting current admin user
 async def get_current_admin_user(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     """Dependency to get the current authenticated admin user"""
+    logger.info(f"Checking admin access for user: {current_user.get('email', 'No email')}")
     if not await auth_service.is_admin(current_user["email"]):
+        logger.warning(f"Access denied for non-admin user: {current_user.get('email', 'No email')}")
         raise HTTPException(status_code=403, detail="Admin access required")
+    logger.info(f"Admin access granted for user: {current_user.get('email', 'No email')}")
     return current_user 
