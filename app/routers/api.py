@@ -45,22 +45,6 @@ TEACHER_ROW = 1
 ASSISTANT_ROW = 2
 MIN_REQUIRED_ROWS = 3
 
-
-def handle_scheduler_error(context: str, error: Exception):
-    """
-    Centralized error handler for scheduler endpoints.
-    Logs the error and raises a standardized HTTPException.
-    """
-    # Log the error with context and stack trace
-    logger.error(
-        f"Scheduler error in {context}: {str(error)}\n{traceback.format_exc()}"
-    )
-    # Return a generic error to the client (avoid leaking internals)
-    raise HTTPException(
-        status_code=500, detail=f"Scheduler error in {context}: {str(error)}"
-    )
-
-
 @api_router.post("/send-confirmation-emails")
 async def send_confirmation_emails(
     request: Request,
@@ -74,7 +58,12 @@ async def send_confirmation_emails(
     except HTTPException:
         raise
     except Exception as e:
-        handle_scheduler_error("process confirmation emails", e)
+        logger.error(f"Unexpected error in send confirmation emails: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": "Failed to send confirmation emails due to unexpected error",
+            "details": {"error": str(e)}
+        }
 
 
 @api_router.post("/sync-volunteers")
@@ -262,7 +251,12 @@ async def send_weekly_reminder_emails(
     except HTTPException:
         raise
     except Exception as e:
-        handle_scheduler_error("send weekly reminder emails", e)
+        logger.error(f"Unexpected error in send weekly reminder emails: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": "Failed to send weekly reminder emails due to unexpected error",
+            "details": {"error": str(e)}
+        }
 
 
 @api_router.post("/rotate-schedule")
@@ -278,7 +272,12 @@ async def rotate_schedule_sheets(
     except HTTPException:
         raise
     except Exception as e:
-        handle_scheduler_error("rotate schedule sheets", e)
+        logger.error(f"Unexpected error in rotate schedule sheets: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": "Failed to rotate schedule sheets due to unexpected error",
+            "details": {"error": str(e)}
+        }
 
 
 def build_class_table(class_name, config, sheet_service, db):

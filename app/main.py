@@ -21,7 +21,6 @@ from app.routers.api import api_router
 from app.routers.public import public_router
 # from app.routers.supabase_auth import supabase_auth_router  # Removed auth
 from app.routers.settings import router as settings_router
-from app.routers.home import home_router
 
 # Configure logging
 logger = get_logger("main")
@@ -116,4 +115,3 @@ if ENVIRONMENT == "development":
 app.include_router(api_router)
 app.include_router(public_router)
 app.include_router(settings_router)
-app.include_router(home_router)

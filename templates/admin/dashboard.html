@@ -87,9 +87,6 @@
     <div class="container-fluid">
         <div class="d-flex justify-content-between align-items-center my-4">
             <h1>Vietnam Hearts Admin Dashboard</h1>
-            <button class="btn btn-outline-danger" onclick="logout()">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </button>
         </div>
         
         <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -373,16 +370,8 @@
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Get access token from URL parameters (from OAuth flow)
-        const urlParams = new URLSearchParams(window.location.search);
-        const accessToken = urlParams.get('auth_code');
-        const verified = urlParams.get('verified');
-        const userEmail = urlParams.get('email');
-        
-        // Check authentication status on page load
+        // Initialize dashboard on page load
         document.addEventListener('DOMContentLoaded', async function() {
-            await checkAuthStatus();
-            
             // Add event listeners for action buttons
             document.querySelectorAll('.action-btn').forEach(button => {
                 button.addEventListener('click', handleAction);
@@ -394,47 +383,16 @@
             });
         });
         
-        async function checkAuthStatus() {
-            try {
-                // Check if we have access token from OAuth flow
-                if (accessToken && verified === 'true') {
-                    console.log('Authenticated via OAuth flow as:', userEmail);
-                    return; // Authentication successful
-                }
-                
-                // If no access token, redirect to login
-                console.log('No access token found, redirecting to login');
-                window.location.href = '/auth/test';
-                
-            } catch (error) {
-                console.error('Authentication check failed:', error);
-                window.location.href = '/auth/test';
-            }
-        }
-        
         async function getAuthHeaders() {
-            if (!accessToken) {
-                throw new Error('No access token available');
-            }
+            // No authentication required - return basic headers
             return {
-                'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             };
         }
         
         async function logout() {
-            try {
-                // Clear the access token from URL
-                const newUrl = window.location.pathname;
-                window.history.replaceState({}, document.title, newUrl);
-                
-                // Redirect to home page
-                window.location.href = '/';
-            } catch (error) {
-                console.error('Logout failed:', error);
-                // Still redirect to home page
-                window.location.href = '/';
-            }
+            // Simple redirect to home page
+            window.location.href = '/';
         }
         
         async function handleAction(event) {
