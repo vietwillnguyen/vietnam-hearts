@@ -984,7 +984,7 @@
         async function loadAdminData() {
             try {
                 const headers = await getAuthHeaders();
-                const response = await fetch('/admin/users', {
+                const response = await fetch('/admin/users/all', {
                     method: 'GET',
                     headers: headers
                 });
@@ -1002,7 +1002,7 @@
                 }
                 
                 // Update admin count
-                document.getElementById('adminCount').textContent = `${data.admins.length} active admins`;
+                document.getElementById('adminCount').textContent = `${data.admins.length} admins`;
                 
                 // Update admin table
                 const tbody = document.getElementById('admins-table-body');
@@ -1018,7 +1018,11 @@
                                 </span>
                             </td>
                             <td>
-                                <span class="status-badge status-sent">Active</span>
+                                ${
+                                    admin.status === 'active'
+                                        ? '<span class="status-badge status-sent">Active</span>'
+                                        : '<span class="status-badge status-failed bg-secondary">Inactive</span>'
+                                }
                             </td>
                             <td>${admin.last_login || 'Never'}</td>
                             <td>${admin.created_at || 'Unknown'}</td>
