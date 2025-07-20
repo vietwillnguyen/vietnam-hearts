@@ -372,12 +372,12 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Initialize Supabase client
-        const supabaseUrl = '{{ config.SUPABASE_URL }}';
-        const supabaseAnonKey = '{{ config.SUPABASE_ANON_KEY }}';
-        const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+        // Get access token from URL parameters (from OAuth flow)
+        const urlParams = new URLSearchParams(window.location.search);
+        const accessToken = urlParams.get('auth_code');
+        const verified = urlParams.get('verified');
+        const userEmail = urlParams.get('email');
         
         // Check authentication status on page load
         document.addEventListener('DOMContentLoaded', async function() {
@@ -396,22 +396,15 @@
         
         async function checkAuthStatus() {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                
-                if (!session) {
-                    // No active session, redirect to login
-                    window.location.href = '/auth/test';
-                    return;
+                // Check if we have access token from OAuth flow
+                if (accessToken && verified === 'true') {
+                    console.log('Authenticated via OAuth flow as:', userEmail);
+                    return; // Authentication successful
                 }
                 
-                // Verify admin status
-                const { data: userInfo } = await supabase.auth.getUser();
-                if (!userInfo.user) {
-                    throw new Error('No user found');
-                }
-                
-                // Check if user is admin (this will be verified on the server side)
-                console.log('Authenticated as:', userInfo.user.email);
+                // If no access token, redirect to login
+                console.log('No access token found, redirecting to login');
+                window.location.href = '/auth/test';
                 
             } catch (error) {
                 console.error('Authentication check failed:', error);
@@ -420,28 +413,27 @@
         }
         
         async function getAuthHeaders() {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                throw new Error('No active session');
+            if (!accessToken) {
+                throw new Error('No access token available');
             }
             return {
-                'Authorization': `Bearer ${session.access_token}`,
+                'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             };
         }
         
         async function logout() {
             try {
-                const { error } = await supabase.auth.signOut();
-                if (error) {
-                    console.error('Logout error:', error);
-                }
+                // Clear the access token from URL
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+                
                 // Redirect to home page
-                window.location.href = '/logout-success';
+                window.location.href = '/';
             } catch (error) {
                 console.error('Logout failed:', error);
                 // Still redirect to home page
-                window.location.href = '/logout-success';
+                window.location.href = '/';
             }
         }
         

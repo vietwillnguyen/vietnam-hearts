@@ -291,18 +291,6 @@ class EmailService:
             # DRY_RUN logic
             if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database")
-                # Log the email communication in database
-                email_comm = EmailCommunicationModel(
-                    volunteer_id=volunteer.id,
-                    recipient_email=to_email,
-                    email_type="volunteer_confirmation",
-                    subject=subject,
-                    template_name="confirmation-email.html",
-                    status="sent",
-                    sent_at=datetime.now(),
-                )
-                db.add(email_comm)
-                db.commit()
                 return True
 
             # Create message

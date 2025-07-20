@@ -24,7 +24,6 @@ from app.schemas import Volunteer
 from app.services.google_sheets import sheets_service
 from app.services.email_service import email_service
 from app.utils.logging_config import get_api_logger
-from app.utils.auth import require_admin_or_scheduler_auth, require_web_admin_auth
 from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
 from app.utils.retry_utils import log_ssl_error, safe_api_call
@@ -125,7 +124,6 @@ def get_email_summary(communications):
 @admin_router.get("/volunteers")
 def view_volunteers(
     db: Session = Depends(get_db),
-    auth_info: dict = Depends(require_admin_or_scheduler_auth)
 ):
     """View all volunteers and their email status"""
     try:
@@ -213,7 +211,6 @@ def get_volunteer_by_id(volunteer_id: int, db: Session = Depends(get_db)):
 @admin_router.get("/email-logs")
 def view_email_logs(
     db: Session = Depends(get_db),
-    auth_info: dict = Depends(require_admin_or_scheduler_auth)
 ):
     """View all email communications"""
     try:
@@ -237,7 +234,6 @@ def view_email_logs(
 async def admin_dashboard(
     request: Request, 
     db: Session = Depends(get_db),
-    auth_info: dict = Depends(require_web_admin_auth)
 ):
     """Admin dashboard to view volunteers and email logs"""
     try:
@@ -275,8 +271,8 @@ async def admin_dashboard(
                 "emails": email_data,
                 "settings": settings,
                 "config": {
-                    "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
-                    "SUPABASE_ANON_KEY": os.getenv("SUPABASE_ANON_KEY", ""),
+                            # "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),  # Removed auth
+        # "SUPABASE_ANON_KEY": os.getenv("SUPABASE_ANON_KEY", ""),  # Removed auth
                 }
             },
         )

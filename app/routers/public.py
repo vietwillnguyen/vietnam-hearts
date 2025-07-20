@@ -8,7 +8,7 @@ from app.models import (
     EmailCommunication as EmailCommunicationModel,
 )
 from app.services.google_sheets import sheets_service
-from app.utils.auth import rate_limit
+# from app.utils.auth import rate_limit  # Removed auth
 from app.utils.logging_config import get_api_logger
 from app.config import (
     ENVIRONMENT,
@@ -26,9 +26,9 @@ public_router = APIRouter(prefix="/public", tags=["public"])
 templates = Jinja2Templates(directory="templates")
 
 
-# Unsubscribe endpoints (public, but rate-limited)
+# Unsubscribe endpoints (public)
 @public_router.get(
-    "/unsubscribe", response_class=HTMLResponse, dependencies=[Depends(rate_limit)]
+    "/unsubscribe", response_class=HTMLResponse
 )
 def unsubscribe_volunteer_page(
     request: Request, token: str, db: Session = Depends(get_db)
@@ -94,7 +94,7 @@ def unsubscribe_volunteer_page(
 
 
 @public_router.post(
-    "/unsubscribe", response_class=HTMLResponse, dependencies=[Depends(rate_limit)]
+    "/unsubscribe", response_class=HTMLResponse
 )
 def update_email_preferences(
     request: Request,

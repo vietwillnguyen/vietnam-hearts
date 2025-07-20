@@ -39,16 +39,16 @@ GOOGLE_APPLICATION_CREDENTIALS = Path(
 # Email Templates
 TEMPLATE_PATH = PROJECT_ROOT / "templates" / "email" / "weekly-reminder-email.html"
 
-# Google OAuth Configuration
+# Google OAuth Configuration (for Google Sheets only)
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 SERVICE_ACCOUNT_EMAIL = os.getenv("SERVICE_ACCOUNT_EMAIL")
 
-# Supabase Configuration
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAILS") else []
+# Supabase Configuration (removed for auth - kept for potential future use)
+# SUPABASE_URL = os.getenv("SUPABASE_URL")
+# SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+# SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAILS") else []
 
 # Required Environment Variables (only in production)
 REQUIRED_ENV_VARS = [
@@ -56,8 +56,8 @@ REQUIRED_ENV_VARS = [
     "GOOGLE_OAUTH_CLIENT_ID",  # Required for Google Sheets access
     "GOOGLE_OAUTH_CLIENT_SECRET",  # Required for Google Sheets access
     "SERVICE_ACCOUNT_EMAIL",  # Required for Google Sheets access
-    "SUPABASE_URL",  # Required for Supabase Auth
-    "SUPABASE_ANON_KEY",  # Required for Supabase Auth
+    # "SUPABASE_URL",  # Removed - no longer required for auth
+    # "SUPABASE_ANON_KEY",  # Removed - no longer required for auth
 ]
 
 

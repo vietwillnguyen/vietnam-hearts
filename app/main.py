@@ -16,12 +16,11 @@ from .config import (
 )
 from app.utils.config_helper import ConfigHelper
 import os
-from .routers.admin import admin_router  # Keep import but control usage
-from .routers.api import api_router
-from .routers.public import public_router
-from app.routers.oauth import oauth_router
+from app.routers.admin import admin_router
+from app.routers.api import api_router
+from app.routers.public import public_router
+# from app.routers.supabase_auth import supabase_auth_router  # Removed auth
 from app.routers.settings import router as settings_router
-from app.routers.supabase_auth import supabase_auth_router
 from app.routers.home import home_router
 
 # Configure logging
@@ -107,7 +106,7 @@ app = FastAPI(
 
 # Routers
 # app.include_router(oauth_router)  # Disabled - using Supabase auth instead
-app.include_router(supabase_auth_router)
+# app.include_router(supabase_auth_router)  # Removed auth
 
 # Conditionally include admin router
 if ENVIRONMENT == "development":

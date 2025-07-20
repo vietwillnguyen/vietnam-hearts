@@ -6,7 +6,7 @@ These endpoints provide schedule-related functionality:
 - Email sending
 - Volunteer synchronization
 
-All endpoints require authentication (Supabase admin or Google Cloud Scheduler).
+All endpoints are now public (authentication removed).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -29,7 +29,6 @@ from app.config import (
 )
 from app.utils.config_helper import ConfigHelper
 from app.utils.retry_utils import safe_api_call, log_ssl_error
-from app.utils.auth import require_admin_or_scheduler_auth, get_auth_context
 from typing import List, Dict, Any
 import ssl
 from typing import Callable
@@ -65,14 +64,9 @@ def handle_scheduler_error(context: str, error: Exception):
 @api_router.post("/send-confirmation-emails")
 async def send_confirmation_emails(
     request: Request,
-    _: None = Depends(require_admin_or_scheduler_auth),
     db: Session = Depends(get_db)
 ):
     """Process emails for new volunteers - accessible by admin dashboard and scheduler"""
-    auth_info = get_auth_context(request)
-    logger.info(
-        f"User/service {auth_info} running confirmation email processing"
-    )
 
     try:
         email_service.send_confirmation_emails(db)
@@ -86,14 +80,9 @@ async def send_confirmation_emails(
 @api_router.post("/sync-volunteers")
 async def sync_volunteers(
     request: Request,
-    _: None = Depends(require_admin_or_scheduler_auth),
     db: Session = Depends(get_db)
 ):
     """Sync volunteers from Google Sheets and process new signups with graceful degradation"""
-    auth_info = get_auth_context(request)
-    logger.info(
-        f"User/service {auth_info} syncing volunteers from Google Sheets"
-    )
 
     try:
         from app.routers.admin import get_signup_form_submissions
@@ -133,11 +122,8 @@ async def sync_volunteers(
 @api_router.post("/send-weekly-reminders")
 async def send_weekly_reminder_emails(
     request: Request,
-    _: None = Depends(require_admin_or_scheduler_auth)
 ):
     """Send weekly reminder emails to all active volunteers - accessible by admin dashboard and scheduler"""
-    auth_info = get_auth_context(request)
-    logger.info(f"User/service {auth_info} sending weekly reminders")
     
     try:
         with get_db_session() as db:
@@ -282,13 +268,8 @@ async def send_weekly_reminder_emails(
 @api_router.post("/rotate-schedule")
 async def rotate_schedule_sheets(
     request: Request,
-    _: None = Depends(require_admin_or_scheduler_auth)
 ):
     """Rotate schedule sheets to show next week - accessible by admin dashboard and scheduler"""
-    auth_info = get_auth_context(request)
-    logger.info(
-        f"User/service {auth_info} rotating schedule sheets"
-    )
 
     try:
         with get_db_session() as db:
@@ -318,7 +299,7 @@ def build_class_table(class_name, config, sheet_service, db):
                 "class_name": class_name,
                 "table_html": f"<p>No data available for {class_name}</p>",
                 "has_data": False,
-            }
+        }
 
         # Transpose data: columns are days, rows are header/teacher/assistant
         # class_data: [header_row, teacher_row, assistant_row]
