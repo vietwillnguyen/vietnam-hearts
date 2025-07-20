@@ -87,6 +87,14 @@
     <div class="container-fluid">
         <div class="d-flex justify-content-between align-items-center my-4">
             <h1>Vietnam Hearts Admin Dashboard</h1>
+            <div>
+                <span id="userInfo" class="me-3" style="display: none;">
+                    <i class="fas fa-user"></i> <span id="userEmail"></span>
+                </span>
+                <button class="btn btn-outline-danger" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i> Sign Out
+                </button>
+            </div>
         </div>
         
         <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -372,6 +380,9 @@
     <script>
         // Initialize dashboard on page load
         document.addEventListener('DOMContentLoaded', async function() {
+            // Check authentication first
+            await checkAuthentication();
+            
             // Add event listeners for action buttons
             document.querySelectorAll('.action-btn').forEach(button => {
                 button.addEventListener('click', handleAction);
@@ -383,16 +394,75 @@
             });
         });
         
+        async function checkAuthentication() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    // Token is invalid, redirect to login
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                
+                const userData = await response.json();
+                console.log('Authenticated as:', userData.user.email);
+                
+                // Display user information
+                const userInfo = document.getElementById('userInfo');
+                const userEmail = document.getElementById('userEmail');
+                if (userInfo && userEmail) {
+                    userEmail.textContent = userData.user.email;
+                    userInfo.style.display = 'inline';
+                }
+                
+            } catch (error) {
+                console.error('Authentication check failed:', error);
+                window.location.href = '/auth/login';
+            }
+        }
+        
         async function getAuthHeaders() {
-            // No authentication required - return basic headers
+            // Get authentication token from localStorage
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                // Redirect to login if no token
+                window.location.href = '/auth/login';
+                return {};
+            }
+            
             return {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
             };
         }
         
         async function logout() {
-            // Simple redirect to home page
-            window.location.href = '/';
+            try {
+                const headers = await getAuthHeaders();
+                await fetch('/auth/signout', {
+                    method: 'POST',
+                    headers: headers
+                });
+            } catch (error) {
+                console.error('Logout error:', error);
+            } finally {
+                // Clear local storage and redirect to login
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                window.location.href = '/auth/login';
+            }
         }
         
         async function handleAction(event) {

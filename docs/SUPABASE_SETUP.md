@@ -1,201 +1,244 @@
-# Supabase Auth Setup Guide
+# Supabase Authentication Setup Guide
 
-This guide will help you set up Supabase authentication with Google OAuth for the Vietnam Hearts Scheduler application.
+This guide will help you set up real Supabase authentication to replace the mock authentication currently in use.
 
-## Prerequisites
+## Current Status
 
-1. A Supabase account (free tier available)
-2. A Google Cloud project with OAuth 2.0 configured
-3. The Vietnam Hearts application code
+The application is currently using **mock authentication** for testing. This allows you to test the complete authentication flow without configuring Supabase.
 
-## Step 1: Set up Supabase
+## Step 1: Check Current Configuration
 
-### 1.1 Create a Supabase Project
+First, check your current authentication configuration:
 
-1. Go to [supabase.com](https://supabase.com) and sign up/login
-2. Create a new project
-3. Note down your project URL and anon key from the API settings
+```bash
+curl http://localhost:8080/auth/health
+```
 
-### 1.2 Configure Google OAuth in Supabase
+You should see something like:
+```json
+{
+  "status": "configured_with_fallback",
+  "service": "authentication",
+  "message": "Authentication service is running (using mock auth)",
+  "configuration": {
+    "supabase_url": false,
+    "supabase_anon_key": false,
+    "google_client_id": false,
+    "google_client_secret": false
+  },
+  "all_configured": false
+}
+```
+
+## Step 2: Set Up Supabase Project
+
+### 2.1 Create Supabase Project
+
+1. Go to [Supabase](https://supabase.com/) and sign up/login
+2. Click "New Project"
+3. Choose your organization
+4. Enter project details:
+   - **Name**: `vietnam-hearts-auth`
+   - **Database Password**: Choose a strong password
+   - **Region**: Choose closest to your users
+5. Click "Create new project"
+6. Wait for the project to be created (this may take a few minutes)
+
+### 2.2 Get Project Credentials
+
+1. In your Supabase dashboard, go to **Settings** > **API**
+2. Copy the following values:
+   - **Project URL** (e.g., `https://your-project-id.supabase.co`)
+   - **anon public** key
+   - **service_role** key (keep this secret!)
+
+## Step 3: Configure Google OAuth
+
+### 3.1 Set Up Google Cloud Console
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Google+ API:
+   - Go to **APIs & Services** > **Library**
+   - Search for "Google+ API" and enable it
+
+### 3.2 Configure OAuth Consent Screen
+
+1. Go to **APIs & Services** > **OAuth consent screen**
+2. Choose **External** user type
+3. Fill in the required information:
+   - **App name**: `Vietnam Hearts`
+   - **User support email**: Your email
+   - **Developer contact information**: Your email
+4. Add scopes:
+   - `openid`
+   - `email`
+   - `profile`
+5. Add test users (your email addresses)
+6. Save and continue
+
+### 3.3 Create OAuth Credentials
+
+1. Go to **APIs & Services** > **Credentials**
+2. Click **Create Credentials** > **OAuth 2.0 Client IDs**
+3. Choose **Web application**
+4. Set authorized redirect URIs:
+   - `http://localhost:8080/auth/callback` (for development)
+   - `https://your-domain.com/auth/callback` (for production)
+5. Note down the **Client ID** and **Client Secret**
+
+## Step 4: Configure Supabase Auth
+
+### 4.1 Enable Google Provider
 
 1. In your Supabase dashboard, go to **Authentication** > **Providers**
-2. Enable **Google** provider
-3. Configure the Google OAuth settings:
-   - **Client ID**: Your Google OAuth client ID
-   - **Client Secret**: Your Google OAuth client secret
-   - **Redirect URL**: `https://your-project.supabase.co/auth/v1/callback`
+2. Find **Google** and click **Edit**
+3. Enable Google authentication
+4. Enter your Google OAuth credentials:
+   - **Client ID**: From Google Cloud Console
+   - **Client Secret**: From Google Cloud Console
+5. Save the configuration
 
-### 1.3 Set up Admin Users
+### 4.2 Configure Redirect URLs
 
-You have several options to make users admin:
-
-#### Option A: Using Environment Variables
-Add admin emails to your `.env` file:
-```
-ADMIN_EMAILS=admin@vietnamhearts.org,another-admin@example.com
-```
-
-#### Option B: Using Supabase Dashboard
-1. Go to **Authentication** > **Users**
-2. Find the user you want to make admin
-3. Click on the user and edit their metadata
-4. Add: `{"is_admin": true}`
-
-#### Option C: Using SQL
-Run this SQL in the Supabase SQL editor:
-```sql
-UPDATE auth.users 
-SET user_metadata = jsonb_set(
-  COALESCE(user_metadata, '{}'), 
-  '{is_admin}', 
-  'true'
-) 
-WHERE email = 'admin@vietnamhearts.org';
-```
-
-## Step 2: Configure Google OAuth
-
-### 2.1 Create Google OAuth Credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project or select existing one
-3. Enable the Google+ API
-4. Go to **Credentials** > **Create Credentials** > **OAuth 2.0 Client IDs**
-5. Configure the OAuth consent screen
-6. Create a web application client
-7. Add authorized redirect URIs:
-   - `https://your-project.supabase.co/auth/v1/callback`
+1. In Supabase, go to **Authentication** > **URL Configuration**
+2. Add your redirect URLs:
    - `http://localhost:8080/auth/callback` (for development)
+   - `https://your-domain.com/auth/callback` (for production)
 
-### 2.2 Get Service Account for Google Sheets
+## Step 5: Update Environment Variables
 
-1. In Google Cloud Console, go to **IAM & Admin** > **Service Accounts**
-2. Create a new service account or use existing one
-3. Download the JSON key file
-4. Note the service account email
+1. Copy the environment template if you haven't already:
+   ```bash
+   cp env.template .env
+   ```
 
-## Step 3: Environment Configuration
+2. Update your `.env` file with the real values:
 
-Create a `.env` file in your project root with these variables:
+   ```env
+   # Supabase Configuration
+   SUPABASE_URL=https://your-project-id.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key-here
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+   
+   # Google OAuth for Supabase Auth
+   GOOGLE_CLIENT_ID=your-google-client-id-here
+   GOOGLE_CLIENT_SECRET=your-google-client-secret-here
+   
+   # Admin emails (comma-separated)
+   ADMIN_EMAILS=your-email@example.com
+   ```
 
-```env
-# Database Configuration
-DATABASE_URL=sqlite:///./dev.db
+3. Restart your application:
+   ```bash
+   poetry run uvicorn app.main:app --reload --port 8080
+   ```
 
-# API Configuration
-PORT=8080
-API_URL=http://localhost:8080
-ENVIRONMENT=development
+## Step 6: Test Real Authentication
 
-# Email Configuration
-EMAIL_SENDER=your-email@gmail.com
-GMAIL_APP_PASSWORD=your-gmail-app-password
-
-# Google Sheets Configuration
-GOOGLE_APPLICATION_CREDENTIALS=./secrets/google_credentials.json
-
-# Google OAuth Configuration
-GOOGLE_OAUTH_CLIENT_ID=your-google-oauth-client-id
-GOOGLE_OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
-SERVICE_ACCOUNT_EMAIL=your-service-account@your-project.iam.gserviceaccount.com
-
-# Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-supabase-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-
-# Admin Configuration
-ADMIN_EMAILS=admin@vietnamhearts.org
-```
-
-## Step 4: Install Dependencies
-
-The Supabase dependency is already included in `pyproject.toml`. Install dependencies:
+### 6.1 Check Configuration
 
 ```bash
-poetry install
+curl http://localhost:8080/auth/health
 ```
 
-## Step 5: Test the Setup
-
-### 5.1 Start the Application
-
-```bash
-poetry run uvicorn app.main:app --reload --port 8080
+You should now see:
+```json
+{
+  "status": "healthy",
+  "service": "authentication",
+  "message": "Authentication service is running",
+  "configuration": {
+    "supabase_url": true,
+    "supabase_anon_key": true,
+    "google_client_id": true,
+    "google_client_secret": true
+  },
+  "all_configured": true
+}
 ```
 
-### 5.2 Test Authentication
+### 6.2 Test the Flow
 
-1. Go to `http://localhost:8080/auth/test`
-2. Click "Login with Google"
-3. Complete the OAuth flow
-4. You should see a success page with your access token
-
-### 5.3 Test API Access
-
-1. Go to `http://localhost:8080/docs`
-2. Click "Authorize" at the top
-3. Enter your access token with `Bearer ` prefix
-4. Test the protected endpoints
-
-### 5.4 Test Admin Dashboard
-
-1. Go to `http://localhost:8080/admin/dashboard`
-2. You should be redirected to login if not authenticated
-3. After login, you should see the admin dashboard
-
-## Step 6: Production Deployment
-
-### 6.1 Update Environment Variables
-
-For production, update these variables:
-```env
-ENVIRONMENT=production
-API_URL=https://your-domain.com
-```
-
-### 6.2 Update OAuth Redirect URLs
-
-In both Supabase and Google Cloud Console, update redirect URLs to use your production domain.
-
-### 6.3 Set up Google Cloud Scheduler
-
-The application still supports Google Cloud Scheduler for automated tasks. Configure your scheduler jobs to use the same endpoints with OIDC authentication.
+1. Go to `http://localhost:8080/auth/login`
+2. Click "Sign in with Google"
+3. You should be redirected to Google's consent screen
+4. After signing in, you should be redirected back to the callback
+5. The callback should now use real Supabase authentication
+6. You should be redirected to the dashboard with real user data
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"Invalid token" errors**: Make sure your Supabase URL and keys are correct
-2. **"Admin access required" errors**: Check that the user has admin privileges
-3. **OAuth redirect errors**: Verify redirect URLs in both Supabase and Google Cloud Console
-4. **CORS errors**: Make sure your Supabase project allows your domain
+1. **"Invalid redirect URI" error**
+   - Check that redirect URIs match exactly in both Google Cloud Console and Supabase
+   - Ensure protocol (http/https) matches
+
+2. **"Client ID not found" error**
+   - Verify Google OAuth credentials are correct
+   - Check that OAuth consent screen is properly configured
+
+3. **"Authentication failed" error**
+   - Check Supabase configuration
+   - Verify environment variables are set correctly
+   - Check application logs for details
+
+4. **"Supabase not configured" warning**
+   - Ensure all environment variables are set
+   - Restart the application after updating `.env`
 
 ### Debug Mode
 
-Enable debug logging by setting:
+To enable detailed logging:
+
 ```env
-ENVIRONMENT=development
+LOG_LEVEL=DEBUG
 ```
 
-### Check Logs
+### Fallback to Mock Auth
 
-The application logs authentication events. Check the logs for detailed error messages.
+If you encounter issues with real authentication, the system will automatically fall back to mock authentication. You can see this in the logs:
 
-## Security Notes
+```
+Supabase not configured, using mock response
+```
 
-1. Never commit your `.env` file to version control
-2. Use strong, unique passwords for all services
-3. Regularly rotate your API keys and tokens
-4. Monitor your Supabase dashboard for suspicious activity
-5. Use HTTPS in production
+## Production Deployment
+
+### 1. Update Redirect URLs
+
+1. In Google Cloud Console, add your production domain
+2. In Supabase, update redirect URLs for production
+
+### 2. Environment Variables
+
+1. Set all environment variables in your production environment
+2. Ensure `ENVIRONMENT=production`
+
+### 3. Security Considerations
+
+1. Use HTTPS in production
+2. Keep service role key secure
+3. Regularly rotate OAuth credentials
+4. Monitor authentication logs
+
+## Next Steps
+
+After setting up real authentication:
+
+1. **Test with real users**: Try signing in with different Google accounts
+2. **Configure admin access**: Add admin email addresses to `ADMIN_EMAILS`
+3. **Set up user management**: Implement user roles and permissions
+4. **Add security features**: Implement rate limiting, audit logging
+5. **Monitor usage**: Set up monitoring for authentication events
 
 ## Support
 
 If you encounter issues:
 
-1. Check the application logs
-2. Verify all environment variables are set correctly
-3. Test the OAuth flow step by step
-4. Check Supabase and Google Cloud Console for errors
-5. Review the authentication flow in the browser developer tools 
+1. Check the application logs for error messages
+2. Verify your configuration matches this guide
+3. Test with a simple OAuth flow first
+4. Consult the [Supabase Auth documentation](https://supabase.com/docs/guides/auth)
+5. Check the [Google OAuth documentation](https://developers.google.com/identity/protocols/oauth2) 

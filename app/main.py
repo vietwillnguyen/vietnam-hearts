@@ -19,7 +19,7 @@ import os
 from app.routers.admin import admin_router
 from app.routers.api import api_router
 from app.routers.public import public_router
-# from app.routers.supabase_auth import supabase_auth_router  # Removed auth
+from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
 
 # Configure logging
@@ -104,8 +104,8 @@ app = FastAPI(
 )
 
 # Routers
-# app.include_router(oauth_router)  # Disabled - using Supabase auth instead
-# app.include_router(supabase_auth_router)  # Removed auth
+app.include_router(auth_router)
+logger.info("Authentication endpoints enabled")
 
 # Conditionally include admin router
 if ENVIRONMENT == "development":
