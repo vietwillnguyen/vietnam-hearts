@@ -278,10 +278,6 @@ async def admin_dashboard(
                 "total_emails": len(email_data),
                 "emails": email_data,
                 "settings": settings,
-                "config": {
-                            # "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),  # Removed auth
-        # "SUPABASE_ANON_KEY": os.getenv("SUPABASE_ANON_KEY", ""),  # Removed auth
-                }
             },
         )
 

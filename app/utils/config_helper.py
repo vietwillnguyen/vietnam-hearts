@@ -11,7 +11,6 @@ from app.config import (
     # Static settings (environment variables)
     DATABASE_URL,
     PORT,
-    API_URL,
     ENVIRONMENT,
     EMAIL_SENDER,
     GMAIL_APP_PASSWORD,
@@ -33,7 +32,6 @@ class ConfigHelper:
     # Static configuration (environment variables)
     DATABASE_URL = DATABASE_URL
     PORT = PORT
-    API_URL = API_URL
     ENVIRONMENT = ENVIRONMENT
     EMAIL_SENDER = EMAIL_SENDER
     GMAIL_APP_PASSWORD = GMAIL_APP_PASSWORD

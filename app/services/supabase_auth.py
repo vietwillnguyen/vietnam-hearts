@@ -6,11 +6,11 @@ for the Vietnam Hearts application.
 """
 
 import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from supabase import create_client, Client
 from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+from fastapi.security import HTTPBearer
+from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, API_URL
 from app.utils.logging_config import get_logger
 
 logger = get_logger("supabase_auth")
@@ -50,10 +50,14 @@ class SupabaseAuthService:
         """
         try:
             # Get the OAuth URL for Google sign-in
+            final_redirect_to = redirect_to or f"{API_URL}/auth/callback"
+            self.logger.info(f"Using redirect_to: {final_redirect_to}")
+            self.logger.info(f"API_URL from config: {API_URL}")
+            
             auth_url = self.supabase.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": {
-                    "redirect_to": redirect_to or f"{os.getenv('API_URL', 'http://localhost:8080')}/auth/callback"
+                    "redirect_to": final_redirect_to
                 }
             })
             

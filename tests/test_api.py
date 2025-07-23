@@ -37,7 +37,7 @@ class SchedulerAPITester:
     """Test class for scheduler API endpoints"""
     
     def __init__(self, auth_type: str = "gcloud"):
-        self.base_url = os.getenv("API_BASE_URL", "http://localhost:8080")
+        self.base_url = os.getenv("API_BASE_URL", "https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app")
         self.service_account = "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com"
         self.api_prefix = "/admin"
         self.auth_type = auth_type
