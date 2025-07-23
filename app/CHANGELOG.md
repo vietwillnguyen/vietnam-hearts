@@ -1,5 +1,10 @@
 CHANGELOG:
 
+## Version 2.0.0
+
+- Add: Authentication: only those with supabase service role key OR admins can make calls to the API. 
+- Add: Authentication: only those with permitted access can log in through google auth.
+
 ## Version 1.2.0
 
 - Add: Dashboard allows forms sync

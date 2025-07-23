@@ -63,17 +63,6 @@ def timeout_handler(timeout_seconds: float = 30.0):
     return decorator
 
 
-def normalize_date(date_obj):
-    """Convert date object or string to YYYY-MM-DD format"""
-    if date_obj is None:
-        return None
-    return (
-        date_obj.strftime("%Y-%m-%d")
-        if hasattr(date_obj, "strftime")
-        else str(date_obj)
-    )
-
-
 def parse_start_date(date_str):
     """Parse start date from form submission"""
     if not date_str or date_str.upper() == "ASAP":

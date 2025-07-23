@@ -557,6 +557,15 @@
     <script>
         // Initialize dashboard on page load
         document.addEventListener('DOMContentLoaded', async function() {
+            // Check for auth error in localStorage (from auth callback)
+            const authError = localStorage.getItem('auth_error');
+            if (authError) {
+                alert(`Access Error: ${authError}`);
+                localStorage.removeItem('auth_error');
+                window.location.href = '/';
+                return;
+            }
+            
             // Check authentication first
             await checkAuthentication();
             
@@ -594,11 +603,19 @@
                     }
                 });
                 
-                if (!response.ok) {
+                if (response.status === 403) {
+                    // Admin access denied
+                    const errorMessage = 'You do not have admin access to this system.';
+                    localStorage.setItem('auth_error', errorMessage);
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    window.location.href = '/';
+                    return;
+                } else if (!response.ok) {
                     // Token is invalid, redirect to login
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
-                    window.location.href = '/public/home';
+                    window.location.href = '/auth/login';
                     return;
                 }
                 
@@ -632,6 +649,23 @@
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             };
+        }
+        
+        // Helper function to handle API responses with proper error handling
+        async function handleApiResponse(response, errorMessage = 'Request failed') {
+            if (response.status === 403) {
+                // Admin access denied
+                const errorMsg = 'You do not have admin access to this system.';
+                localStorage.setItem('auth_error', errorMsg);
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                window.location.href = '/';
+                throw new Error(errorMsg);
+            } else if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || errorMessage);
+            }
+            return response;
         }
         
         async function logout() {
@@ -689,14 +723,11 @@
                     headers: headers
                 });
                 
+                await handleApiResponse(response, 'Failed to send confirmation email');
                 const result = await response.json();
                 
-                if (response.ok) {
-                    alert(`Success: ${result.message}`);
-                    location.reload(); // Refresh to show updated status
-                } else {
-                    alert(`Error: ${result.detail || 'Failed to send confirmation email'}`);
-                }
+                alert(`Success: ${result.message}`);
+                location.reload(); // Refresh to show updated status
             } catch (error) {
                 alert(`Error: ${error.message}`);
             }
@@ -1073,9 +1104,7 @@
                     headers: headers
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-                }
+                await handleApiResponse(response, 'Failed to load admin data');
                 
                 const data = await response.json();
                 

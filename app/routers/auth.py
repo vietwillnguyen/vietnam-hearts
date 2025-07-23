@@ -61,6 +61,7 @@ async def sign_in_with_google(request: SignInRequest) -> Dict[str, Any]:
 
 @router.get("/callback")
 async def auth_callback(
+    request: Request,
     code: str,
     state: Optional[str] = None,
     error: Optional[str] = None,
@@ -76,75 +77,74 @@ async def auth_callback(
         # Check for OAuth errors
         if error:
             logger.error(f"OAuth error: {error} - {error_description}")
-            return HTMLResponse(
-                content=f"""
-                <html>
-                    <body>
-                        <h1>Authentication Error</h1>
-                        <p>Error: {error}</p>
-                        <p>Description: {error_description}</p>
-                        <a href="/">Return to Home</a>
-                    </body>
-                </html>
-                """,
+            return templates.TemplateResponse(
+                "auth/oauth_error.html",
+                {
+                    "request": request,
+                    "error": error,
+                    "error_description": error_description
+                },
                 status_code=400
             )
         
         # Process the authorization code
         result = await auth_service.handle_auth_callback(code, state)
         
-        # Create a success page that stores tokens and redirects
-        html_content = f"""
-        <html>
-            <head>
-                <title>Sign In Successful - Vietnam Hearts</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }}
-                    .success {{ color: #28a745; }}
-                    .loading {{ color: #007bff; }}
-                    .spinner {{ border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }}
-                    @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
-                </style>
-            </head>
-            <body>
-                <h1 class="success">✅ Sign In Successful!</h1>
-                <p>Welcome to Vietnam Hearts, <strong>{result['user']['name'] or result['user']['email']}</strong>!</p>
-                
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Setting up your session...</p>
-                </div>
-                
-                <script>
-                    // Store tokens in localStorage
-                    localStorage.setItem('access_token', '{result['session']['access_token']}');
-                    localStorage.setItem('refresh_token', '{result['session']['refresh_token']}');
-                    localStorage.setItem('user_email', '{result['user']['email']}');
-                    localStorage.setItem('user_name', '{result['user']['name'] or ''}');
-                    
-                    // Redirect to dashboard after a short delay
-                    setTimeout(() => {{
-                        window.location.href = '/admin/dashboard';
-                    }}, 2000);
-                </script>
-            </body>
-        </html>
-        """
+        # Check if user is an admin using the existing get_current_admin_user logic
+        user_email = result['user']['email']
+        logger.info(f"Checking admin access for user: {user_email}")
         
-        return HTMLResponse(content=html_content)
+        try:
+            # Use the existing is_admin method from auth_service
+            is_admin = await auth_service.is_admin(user_email)
+            
+            if not is_admin:
+                logger.warning(f"Access denied for non-admin user: {user_email}")
+                error_message = f"Access denied. The email {user_email} is not authorized to access the admin system."
+                return templates.TemplateResponse(
+                    "auth/access_denied.html",
+                    {
+                        "request": request,
+                        "error_message": error_message
+                    },
+                    status_code=403
+                )
+            
+            logger.info(f"Admin access granted for user: {user_email}")
+            
+        except Exception as admin_check_error:
+            logger.error(f"Failed to check admin status for {user_email}: {admin_check_error}")
+            # If admin check fails, deny access for security
+            error_message = f"Unable to verify admin access for {user_email}. Please contact the system administrator."
+            return templates.TemplateResponse(
+                "auth/access_verification_failed.html",
+                {
+                    "request": request,
+                    "error_message": error_message
+                },
+                status_code=500
+            )
+        
+        # User is admin, show success page
+        return templates.TemplateResponse(
+            "auth/signin_success.html",
+            {
+                "request": request,
+                "user_email": result['user']['email'],
+                "user_name": result['user']['name'],
+                "access_token": result['session']['access_token'],
+                "refresh_token": result['session']['refresh_token']
+            }
+        )
         
     except Exception as e:
         logger.error(f"Failed to handle auth callback: {str(e)}")
-        return HTMLResponse(
-            content=f"""
-            <html>
-                <body>
-                    <h1>Authentication Failed</h1>
-                    <p>Error: {str(e)}</p>
-                    <a href="/">Return to Home</a>
-                </body>
-            </html>
-            """,
+        return templates.TemplateResponse(
+            "auth/auth_failed.html",
+            {
+                "request": request,
+                "error_message": str(e)
+            },
             status_code=400
         )
 

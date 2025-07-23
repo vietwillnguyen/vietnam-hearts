@@ -24,7 +24,7 @@ from app.utils.config_helper import ConfigHelper
 logger = get_api_logger()
 
 # Public router for unsubscribe and health
-public_router = APIRouter(prefix="/public", tags=["public"])
+public_router = APIRouter(prefix="", tags=["public"])
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates")

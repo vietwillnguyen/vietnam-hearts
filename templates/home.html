@@ -415,7 +415,15 @@
             
             const statusMessage = document.getElementById('statusMessage');
             
-            if (error) {
+            // Check for auth error in localStorage (from auth callback)
+            const authError = localStorage.getItem('auth_error');
+            if (authError) {
+                statusMessage.className = 'status-message status-error';
+                statusMessage.style.display = 'block';
+                statusMessage.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${authError}`;
+                // Clear the error from localStorage after displaying
+                localStorage.removeItem('auth_error');
+            } else if (error) {
                 statusMessage.className = 'status-message status-error';
                 statusMessage.style.display = 'block';
                 statusMessage.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${decodeURIComponent(error)}`;
