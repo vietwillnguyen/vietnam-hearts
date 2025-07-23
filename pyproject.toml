@@ -26,6 +26,7 @@ psycopg2-binary = "^2.9.9"
 supabase = "^2.3.3"
 tenacity = "^8.2.3"
 httpx = "0.28.1"
+PyJWT = "^2.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "7.4.3"

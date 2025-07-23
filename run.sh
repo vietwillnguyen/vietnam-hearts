@@ -146,14 +146,14 @@ validate_env_file() {
             
             required_vars=(
                 "GMAIL_APP_PASSWORD"
-                "SCHEDULE_SIGNUP_LINK"
+                "SCHEDULE_SHEETS_LINK"
                 "EMAIL_PREFERENCES_LINK"
-                "FACEBOOK_MESSENGER_LINK"
-                "DISCORD_INVITE_LINK"
+                "INVITE_LINK_FACEBOOK_MESSENGER"
+                "INVITE_LINK_DISCORD"
                 "ONBOARDING_GUIDE_LINK"
                 "INSTAGRAM_LINK"
                 "FACEBOOK_PAGE_LINK"
-                "NEW_SIGNUPS_SHEET_ID"
+                "NEW_SIGNUPS_RESPONSES_LINK"
             )
             
             missing_vars=()

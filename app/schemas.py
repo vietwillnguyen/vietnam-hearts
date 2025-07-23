@@ -80,7 +80,6 @@ class EmailCommunication(EmailCommunicationBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-
 # Settings schemas
 class SettingBase(BaseModel):
     """Base schema for setting data"""
@@ -88,17 +87,14 @@ class SettingBase(BaseModel):
     value: str
     description: Optional[str] = None
 
-
 class SettingCreate(SettingBase):
     """Schema for creating a new setting"""
     pass
-
 
 class SettingUpdate(BaseModel):
     """Schema for updating a setting"""
     value: str
     description: Optional[str] = None
-
 
 class Setting(SettingBase):
     """Schema for setting responses"""
@@ -107,7 +103,6 @@ class Setting(SettingBase):
 
     class Config:
         from_attributes = True
-
 
 class SettingsList(BaseModel):
     """Schema for listing all settings"""

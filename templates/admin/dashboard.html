@@ -3,6 +3,7 @@
 <head>
     <title>Vietnam Hearts Admin Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .table-container {
             margin: 20px;
@@ -72,11 +73,29 @@
             font-size: 0.75em;
             margin-left: 0.5rem;
         }
+        .form-control.is-valid {
+            border-color: #28a745;
+            box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+        }
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
     </style>
 </head>
 <body class="bg-light">
     <div class="container-fluid">
-        <h1 class="my-4">Vietnam Hearts Admin Dashboard</h1>
+        <div class="d-flex justify-content-between align-items-center my-4">
+            <h1>Vietnam Hearts Admin Dashboard</h1>
+            <div>
+                <span id="userInfo" class="me-3" style="display: none;">
+                    <i class="fas fa-user"></i> <span id="userEmail"></span>
+                </span>
+                <button class="btn btn-outline-danger" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i> Sign Out
+                </button>
+            </div>
+        </div>
         
         <ul class="nav nav-tabs" id="myTab" role="tablist">
             <li class="nav-item">
@@ -90,8 +109,18 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link" id="admins-tab" data-bs-toggle="tab" href="#admins" role="tab">
+                    Admin Management
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link" id="settings-tab" data-bs-toggle="tab" href="#settings" role="tab">
                     Settings
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="schedule-tab" data-bs-toggle="tab" href="#schedule" role="tab">
+                    Schedule Management
                 </a>
             </li>
         </ul>
@@ -101,6 +130,47 @@
             <div class="tab-pane fade show active" id="volunteers" role="tabpanel">
                 <div class="table-container">
                     <h2>Volunteers ({{ total_volunteers }})</h2>
+                    
+                    <!-- Global Action Buttons -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">📧 Weekly Reminders</h5>
+                                    <p class="card-text">Send weekly reminders to all subscribed volunteers</p>
+                                    <button class="btn btn-primary global-action-btn" 
+                                            data-action="send-all-weekly-reminders">
+                                        <i class="fas fa-envelope"></i> Send All Weekly Reminders
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">📢 Announcement Recipients</h5>
+                                    <p class="card-text">Get list of volunteers subscribed to announcements</p>
+                                    <button class="btn btn-info global-action-btn" 
+                                            data-action="get-announcement-recipients">
+                                        <i class="fas fa-users"></i> Get Announcement Recipients
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">🔄 Sync Actions</h5>
+                                    <p class="card-text">Sync volunteers from Google Sheets</p>
+                                    <button class="btn btn-success global-action-btn" 
+                                            data-action="sync-volunteers">
+                                        <i class="fas fa-sync"></i> Sync Volunteers from Sheets
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <table class="table table-striped">
                         <thead>
                             <tr>
@@ -168,7 +238,7 @@
                                                 data-action="reset-confirmation"
                                                 data-volunteer-id="{{ volunteer.id }}"
                                                 data-email="{{ volunteer.email }}">
-                                            Reset Status
+                                            Reset Confirmation Status
                                         </button>
                                         <button class="btn btn-sm btn-primary action-btn" 
                                                 data-action="resend-confirmation"
@@ -235,7 +305,6 @@
                                 <th>Subject</th>
                                 <th>Status</th>
                                 <th>Sent At</th>
-                                <th>Delivered At</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -252,11 +321,101 @@
                                     </span>
                                 </td>
                                 <td>{{ email.sent_at }}</td>
-                                <td>{{ email.delivered_at or 'N/A' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Admin Management Tab -->
+            <div class="tab-pane fade" id="admins" role="tabpanel">
+                <div class="table-container">
+                    <h2>Admin Management</h2>
+                    <p class="text-muted">Manage admin users for Vietnam Hearts</p>
+                    
+                    <!-- Current User Info -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-user-shield"></i> Current User</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>Email:</strong> <span id="currentUserEmail">Loading...</span>
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Role:</strong> <span id="currentUserRole">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Add New Admin Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Add New Admin</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="add-admin-form">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="newAdminEmail" class="form-label">Email Address</label>
+                                            <input type="email" class="form-control" id="newAdminEmail" 
+                                                   placeholder="admin@vietnamhearts.org" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="newAdminRole" class="form-label">Role</label>
+                                            <select class="form-control" id="newAdminRole" required>
+                                                <option value="admin">Admin</option>
+                                                <option value="super_admin">Super Admin</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label class="form-label">&nbsp;</label>
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="fas fa-plus"></i> Add Admin
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Current Admin Users -->
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-users-cog"></i> Current Admin Users</h5>
+                            <span class="badge bg-primary" id="adminCount">Loading...</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped" id="admins-table">
+                                    <thead>
+                                        <tr>
+                                            <th>User</th>
+                                            <th>Role</th>
+                                            <th>Status</th>
+                                            <th>Last Login</th>
+                                            <th>Added</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admins-table-body">
+                                        <tr>
+                                            <td colspan="6" class="text-center">Loading admins...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -299,7 +458,7 @@
                                    id="{{ setting.key }}" 
                                    name="{{ setting.key }}" 
                                    value="{{ setting.value }}"
-                                   placeholder="Enter value for {{ setting.key }}">
+                                   placeholder="{% if setting.key == 'SCHEDULE_SHEETS_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SHEETS_LINK/edit{% elif setting.key == 'NEW_SIGNUPS_RESPONSES_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit{% else %}Enter value for {{ setting.key }}{% endif %}">
                             {% endif %}
                             
                             {% if setting.description %}
@@ -315,17 +474,216 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Schedule Management Tab -->
+            <div class="tab-pane fade" id="schedule" role="tabpanel">
+                <div class="table-container">
+                    <h2>Schedule Management</h2>
+                    
+                    <!-- Schedule Status Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Current Schedule Status</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="schedule-status-content">
+                                <div class="text-center">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading schedule status...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Schedule Actions Section -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-cogs"></i> Schedule Actions</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">🔄 Rotate Schedule</h6>
+                                            <p class="card-text">Rotate schedule sheets to show the next week(s). This will hide old sheets and show new ones.</p>
+                                            
+                                            <div class="form-group mb-3">
+                                                <label for="displayWeeks" class="form-label">Number of weeks to display:</label>
+                                                <select class="form-control" id="displayWeeks">
+                                                    <option value="">Use default setting</option>
+                                                    <option value="1">1 week</option>
+                                                    <option value="2">2 weeks</option>
+                                                    <option value="3">3 weeks</option>
+                                                    <option value="4">4 weeks (default)</option>
+                                                    <option value="5">5 weeks</option>
+                                                    <option value="6">6 weeks</option>
+                                                    <option value="8">8 weeks</option>
+                                                    <option value="10">10 weeks</option>
+                                                    <option value="12">12 weeks</option>
+                                                </select>
+                                                <div class="form-text">Leave empty to use the default setting from the Settings tab</div>
+                                            </div>
+                                            
+                                            <button class="btn btn-primary" onclick="rotateSchedule()">
+                                                <i class="fas fa-sync"></i> Rotate Schedule
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">📊 Schedule Statistics</h6>
+                                            <p class="card-text">View detailed information about the current schedule setup.</p>
+                                            
+                                            <div id="schedule-stats">
+                                                <div class="text-center">
+                                                    <i class="fas fa-spinner fa-spin"></i> Loading statistics...
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Add event listeners for action buttons
-        document.addEventListener('DOMContentLoaded', function() {
+        // Initialize dashboard on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Check for auth error in localStorage (from auth callback)
+            const authError = localStorage.getItem('auth_error');
+            if (authError) {
+                alert(`Access Error: ${authError}`);
+                localStorage.removeItem('auth_error');
+                window.location.href = '/';
+                return;
+            }
+            
+            // Check authentication first
+            await checkAuthentication();
+            
+            // Add event listeners for action buttons
             document.querySelectorAll('.action-btn').forEach(button => {
                 button.addEventListener('click', handleAction);
             });
+            
+            // Add event listeners for global action buttons
+            document.querySelectorAll('.global-action-btn').forEach(button => {
+                button.addEventListener('click', handleGlobalAction);
+            });
+            
+            // Add event listener for admin form
+            document.getElementById('add-admin-form').addEventListener('submit', handleAddAdmin);
+            
+            // Load admin data when admin tab is shown
+            document.getElementById('admins-tab').addEventListener('shown.bs.tab', loadAdminData);
+            
+            // Load schedule data when schedule tab is shown
+            document.getElementById('schedule-tab').addEventListener('shown.bs.tab', loadScheduleData);
         });
+        
+        async function checkAuthentication() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.status === 403) {
+                    // Admin access denied
+                    const errorMessage = 'You do not have admin access to this system.';
+                    localStorage.setItem('auth_error', errorMessage);
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    window.location.href = '/';
+                    return;
+                } else if (!response.ok) {
+                    // Token is invalid, redirect to login
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                
+                const userData = await response.json();
+                console.log('Authenticated as:', userData.user.email);
+                
+                // Display user information
+                const userInfo = document.getElementById('userInfo');
+                const userEmail = document.getElementById('userEmail');
+                if (userInfo && userEmail) {
+                    userEmail.textContent = userData.user.email;
+                    userInfo.style.display = 'inline';
+                }
+                
+            } catch (error) {
+                console.error('Authentication check failed:', error);
+                window.location.href = '/auth/login';
+            }
+        }
+        
+        async function getAuthHeaders() {
+            // Get authentication token from localStorage
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                // Redirect to login if no token
+                window.location.href = '/auth/login';
+                return {};
+            }
+            
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+        }
+        
+        // Helper function to handle API responses with proper error handling
+        async function handleApiResponse(response, errorMessage = 'Request failed') {
+            if (response.status === 403) {
+                // Admin access denied
+                const errorMsg = 'You do not have admin access to this system.';
+                localStorage.setItem('auth_error', errorMsg);
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                window.location.href = '/';
+                throw new Error(errorMsg);
+            } else if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || errorMessage);
+            }
+            return response;
+        }
+        
+        async function logout() {
+            try {
+                const headers = await getAuthHeaders();
+                await fetch('/auth/signout', {
+                    method: 'POST',
+                    headers: headers
+                });
+            } catch (error) {
+                console.error('Logout error:', error);
+            } finally {
+                // Clear local storage and redirect to login
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                window.location.href = '/auth/login';
+            }
+        }
         
         async function handleAction(event) {
             const button = event.target;
@@ -359,21 +717,17 @@
             if (!confirm(`Send confirmation email to ${email}?`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/send-confirmation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
+                await handleApiResponse(response, 'Failed to send confirmation email');
                 const result = await response.json();
                 
-                if (response.ok) {
-                    alert(`Success: ${result.message}`);
-                    location.reload(); // Refresh to show updated status
-                } else {
-                    alert(`Error: ${result.detail || 'Failed to send confirmation email'}`);
-                }
+                alert(`Success: ${result.message}`);
+                location.reload(); // Refresh to show updated status
             } catch (error) {
                 alert(`Error: ${error.message}`);
             }
@@ -383,11 +737,10 @@
             if (!confirm(`Reset confirmation status for ${email}? This will mark them as not having received a confirmation email.`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/reset-confirmation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -407,11 +760,10 @@
             if (!confirm(`Resend confirmation email to ${email}?`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/send-confirmation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -431,11 +783,10 @@
             if (!confirm(`Deactivate volunteer ${email}? This will prevent them from receiving emails and being synced from Google Sheets.`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/deactivate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -455,11 +806,10 @@
             if (!confirm(`Reactivate volunteer ${email}? This will allow them to receive emails and be synced from Google Sheets again.`)) return;
             
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/reactivate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
                 
                 const result = await response.json();
@@ -479,11 +829,10 @@
             if (!confirm(`Send weekly reminder email to ${email}?`)) return;
 
             try {
+                const headers = await getAuthHeaders();
                 const response = await fetch(`/admin/volunteers/${volunteerId}/send-weekly-reminder`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: headers
                 });
 
                 const result = await response.json();
@@ -493,6 +842,428 @@
                     location.reload(); // Refresh to show updated status
                 } else {
                     alert(`Error: ${result.detail || 'Failed to send weekly reminder email'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Global action handler
+        async function handleGlobalAction(event) {
+            const button = event.target;
+            const action = button.dataset.action;
+            
+            switch(action) {
+                case 'send-all-weekly-reminders':
+                    await sendAllWeeklyReminders();
+                    break;
+                case 'get-announcement-recipients':
+                    await getAnnouncementRecipients();
+                    break;
+                case 'sync-volunteers':
+                    await syncVolunteers();
+                    break;
+            }
+        }
+
+        async function sendAllWeeklyReminders() {
+            if (!confirm('Send weekly reminders to ALL subscribed volunteers? This will send emails to all active volunteers who are subscribed to weekly reminders.')) return;
+            
+            const button = document.querySelector('[data-action="send-all-weekly-reminders"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                button.disabled = true;
+                
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/send-weekly-reminders', {
+                    method: 'POST',
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let message = `Success: ${result.message}\n\nStatus: ${result.status}`;
+                    if (result.emails_sent !== undefined) {
+                        message += `\nEmails sent: ${result.emails_sent}`;
+                    }
+                    if (result.volunteers_processed !== undefined) {
+                        message += `\nVolunteers processed: ${result.volunteers_processed}`;
+                    }
+                    if (result.emails_failed !== undefined && result.emails_failed > 0) {
+                        message += `\nEmails failed: ${result.emails_failed}`;
+                    }
+                    if (result.failed_emails && result.failed_emails.length > 0) {
+                        message += `\nFailed emails: ${result.failed_emails.join(', ')}`;
+                    }
+                    alert(message);
+                    location.reload(); // Refresh to show updated status
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to send weekly reminders'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function getAnnouncementRecipients() {
+            const button = document.querySelector('[data-action="get-announcement-recipients"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+                button.disabled = true;
+                
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/volunteers/announcement-recipients', {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                // Check if response is ok before trying to parse JSON
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const result = await response.json();
+                
+                // Debug logging
+                console.log('API Response:', result);
+                
+                // Validate the response structure
+                if (!result || typeof result !== 'object') {
+                    throw new Error('Invalid response format from server');
+                }
+                
+                // Create email list once for use throughout the function
+                const emailList = result.recipients && Array.isArray(result.recipients) 
+                    ? result.recipients.map(v => v.email).filter(email => email).join(', ')
+                    : '';
+                
+                if (response.ok) {
+                    // Create a formatted list of recipients
+                    let message = `📢 Announcement Recipients\n\n`;
+                    message += `Total volunteers subscribed to announcements: ${result.total_recipients || 0}\n\n`;
+                    
+                    if (result.recipients && Array.isArray(result.recipients) && result.recipients.length > 0) {
+                        message += `Recipients:\n`;
+                        result.recipients.forEach((volunteer, index) => {
+                            message += `${index + 1}. ${volunteer.name || 'Unknown'} (${volunteer.email || 'No email'})\n`;
+                        });
+                        
+                        // Add copy-to-clipboard functionality
+                        message += `\n📋 Email list (copy this for your email client):\n${emailList}`;
+                    } else {
+                        message += `No volunteers are currently subscribed to announcements.`;
+                    }
+                    
+                    // Show in a larger dialog or copy to clipboard
+                    if (result.recipients && Array.isArray(result.recipients) && result.recipients.length > 0) {
+                        // Create a modal-like display
+                        const modal = document.createElement('div');
+                        modal.style.cssText = `
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            background: rgba(0,0,0,0.5);
+                            z-index: 9999;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        `;
+                        
+                        const content = document.createElement('div');
+                        content.style.cssText = `
+                            background: white;
+                            padding: 20px;
+                            border-radius: 8px;
+                            max-width: 600px;
+                            max-height: 80vh;
+                            overflow-y: auto;
+                            position: relative;
+                        `;
+                        
+                        content.innerHTML = `
+                            <h4>📢 Announcement Recipients</h4>
+                            <p><strong>Total:</strong> ${result.total_recipients || 0} volunteers</p>
+                            <div style="margin: 15px 0;">
+                                <button onclick="copyToClipboard('${emailList.replace(/'/g, "\\'")}')" class="btn btn-primary btn-sm">
+                                    📋 Copy Email List
+                                </button>
+                                <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary btn-sm ms-2">
+                                    Close
+                                </button>
+                            </div>
+                            <div style="margin: 15px 0;">
+                                <h6>📧 Email List (Gmail Ready):</h6>
+                                <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; font-family: monospace; word-break: break-all;">
+                                    ${emailList}
+                                </div>
+                            </div>
+                            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;">
+                                <h6>👥 Volunteer Details:</h6>
+                                <pre style="margin: 0; white-space: pre-wrap;">${result.recipients.map((v, i) => `${i + 1}. ${v.name || 'Unknown'} (${v.email || 'No email'})`).join('\n')}</pre>
+                            </div>
+                        `;
+                        
+                        modal.appendChild(content);
+                        modal.className = 'modal-overlay';
+                        document.body.appendChild(modal);
+                        
+                        // Close modal when clicking outside
+                        modal.addEventListener('click', (e) => {
+                            if (e.target === modal) modal.remove();
+                        });
+                    } else {
+                        alert(message);
+                    }
+                } else {
+                    alert(`Error: ${result.detail || result.message || 'Failed to get announcement recipients'}`);
+                }
+            } catch (error) {
+                console.error('Error in getAnnouncementRecipients:', error);
+                alert(`Error: ${error.message || 'Failed to get announcement recipients'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Helper function to copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Email list copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Email list copied to clipboard!');
+            });
+        }
+
+        async function syncVolunteers() {
+            if (!confirm('Sync volunteers from Google Sheets? This will update the volunteer database with the latest information from the signup sheet. This will also send confirmation emails to new volunteers.')) return;
+            
+            const button = document.querySelector('[data-action="sync-volunteers"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+                button.disabled = true;
+                
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/sync-volunteers', {
+                    method: 'POST',
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let message = `Success: ${result.message}\n\nStatus: ${result.status}`;
+                    if (result.details) {
+                        message += `\n\nDetails: ${JSON.stringify(result.details, null, 2)}`;
+                    }
+                    alert(message);
+                    location.reload(); // Refresh to show updated data
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to sync volunteers'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Admin Management Functions
+        async function loadAdminData() {
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/users/all', {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                await handleApiResponse(response, 'Failed to load admin data');
+                
+                const data = await response.json();
+                
+                // Update current user info
+                if (data.current_user) {
+                    document.getElementById('currentUserEmail').textContent = data.current_user.email;
+                    document.getElementById('currentUserRole').textContent = data.current_user.role;
+                }
+                
+                // Update admin count
+                document.getElementById('adminCount').textContent = `${data.admins.length} admins`;
+                
+                // Update admin table
+                const tbody = document.getElementById('admins-table-body');
+                if (data.admins.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No admins found</td></tr>';
+                } else {
+                    tbody.innerHTML = data.admins.map(admin => `
+                        <tr>
+                            <td>${admin.email}</td>
+                            <td>
+                                <span class="badge ${admin.role === 'super_admin' ? 'bg-danger' : 'bg-primary'}">
+                                    ${admin.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+                                </span>
+                            </td>
+                            <td>
+                                ${
+                                    admin.status === 'active'
+                                        ? '<span class="status-badge status-sent">Active</span>'
+                                        : '<span class="status-badge status-failed bg-secondary">Inactive</span>'
+                                }
+                            </td>
+                            <td>${admin.last_login || 'Never'}</td>
+                            <td>${admin.created_at || 'Unknown'}</td>
+                            <td>
+                                ${admin.email !== data.current_user.email ? `
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-warning admin-action-btn" 
+                                                data-action="change-role" 
+                                                data-email="${admin.email}" 
+                                                data-current-role="${admin.role}">
+                                            Change Role
+                                        </button>
+                                        <button class="btn btn-sm btn-danger admin-action-btn" 
+                                                data-action="remove-admin" 
+                                                data-email="${admin.email}">
+                                            Remove
+                                        </button>
+                                    </div>
+                                ` : '<span class="text-muted">Current user</span>'}
+                            </td>
+                        </tr>
+                    `).join('');
+                    
+                    // Add event listeners to admin action buttons
+                    document.querySelectorAll('.admin-action-btn').forEach(button => {
+                        button.addEventListener('click', handleAdminAction);
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Error loading admin data:', error);
+                document.getElementById('admins-table-body').innerHTML = 
+                    '<tr><td colspan="6" class="text-center text-danger">Error loading admin data</td></tr>';
+            }
+        }
+        
+        async function handleAddAdmin(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('newAdminEmail').value.trim();
+            const role = document.getElementById('newAdminRole').value;
+            
+            if (!email) {
+                alert('Please enter an email address');
+                return;
+            }
+            
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/users', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ email: email, role: role })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Success: ${result.message}`);
+                    document.getElementById('add-admin-form').reset();
+                    await loadAdminData(); // Refresh the admin list
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to add admin'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+        
+        async function handleAdminAction(event) {
+            const button = event.target;
+            const action = button.dataset.action;
+            const email = button.dataset.email;
+            
+            switch(action) {
+                case 'change-role':
+                    await changeAdminRole(email, button.dataset.currentRole);
+                    break;
+                case 'remove-admin':
+                    await removeAdmin(email);
+                    break;
+            }
+        }
+        
+        async function changeAdminRole(email, currentRole) {
+            const newRole = currentRole === 'admin' ? 'super_admin' : 'admin';
+            const roleName = newRole === 'super_admin' ? 'Super Admin' : 'Admin';
+            
+            if (!confirm(`Change ${email} role to ${roleName}?`)) return;
+            
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch(`/admin/users/${encodeURIComponent(email)}/role`, {
+                    method: 'PUT',
+                    headers: headers,
+                    body: JSON.stringify({ role: newRole })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Success: ${result.message}`);
+                    await loadAdminData(); // Refresh the admin list
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to change role'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+        
+        async function removeAdmin(email) {
+            if (!confirm(`Remove ${email} as admin? This action cannot be undone.`)) return;
+            
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch(`/admin/users/${encodeURIComponent(email)}`, {
+                    method: 'DELETE',
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Success: ${result.message}`);
+                    await loadAdminData(); // Refresh the admin list
+                } else {
+                    alert(`Error: ${result.detail || 'Failed to remove admin'}`);
                 }
             } catch (error) {
                 alert(`Error: ${error.message}`);
@@ -557,6 +1328,48 @@
             }
         });
 
+        // Validate Google Sheets URLs
+        function validateGoogleSheetsUrl(url) {
+            if (!url) return { isValid: false, message: 'URL is required' };
+            
+            const pattern = /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
+            const match = url.match(pattern);
+            
+            if (match) {
+                return { isValid: true, message: 'Valid Google Sheets URL', sheetId: match[1] };
+            } else {
+                return { isValid: false, message: 'Please enter a valid Google Sheets URL' };
+            }
+        }
+
+        // Add validation to Google Sheets URL fields
+        document.addEventListener('DOMContentLoaded', function() {
+            const sheetFields = ['SCHEDULE_SHEETS_LINK', 'NEW_SIGNUPS_RESPONSES_LINK'];
+            
+            sheetFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.addEventListener('blur', function() {
+                        const validation = validateGoogleSheetsUrl(this.value);
+                        
+                        // Remove existing validation classes
+                        this.classList.remove('is-valid', 'is-invalid');
+                        
+                        if (this.value) { // Only validate if there's a value
+                            if (validation.isValid) {
+                                this.classList.add('is-valid');
+                                // Show helpful tooltip
+                                this.title = `Valid URL! Sheet ID: ${validation.sheetId}`;
+                            } else {
+                                this.classList.add('is-invalid');
+                                this.title = validation.message;
+                            }
+                        }
+                    });
+                }
+            });
+        });
+
         // Reset to defaults function
         function resetToDefaults() {
             if (!confirm('Are you sure you want to reset all settings to their default values? This will overwrite all current settings.')) {
@@ -567,16 +1380,14 @@
                 'DRY_RUN': 'false',
                 'DRY_RUN_EMAIL_RECIPIENT': '',
                 'WEEKLY_REMINDERS_ENABLED': 'true',
-                'SCHEDULE_SIGNUP_LINK': '',
-                'FACEBOOK_MESSENGER_LINK': '',
-                'DISCORD_INVITE_LINK': '',
+                'SCHEDULE_SHEETS_LINK': '',
+                'INVITE_LINK_FACEBOOK_MESSENGER': '',
+                'INVITE_LINK_DISCORD': '',
                 'ONBOARDING_GUIDE_LINK': '',
                 'INSTAGRAM_LINK': '',
                 'FACEBOOK_PAGE_LINK': '',
-                'SCHEDULE_SHEET_ID': '',
-                'NEW_SIGNUPS_SHEET_ID': '',
-                'GOOGLE_SCHEDULE_RANGE': 'B7:G11',
-                'GOOGLE_SIGNUPS_RANGE': 'A2:R',
+                'SCHEDULE_SHEETS_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SHEETS_LINK/edit',
+                'NEW_SIGNUPS_RESPONSES_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit',
                 'SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT': '4'
             };
             
@@ -589,6 +1400,245 @@
             }
             
             alert('Settings have been reset to defaults. Click "Save All Settings" to apply the changes.');
+        }
+
+        // Schedule Management Functions
+        async function loadScheduleData() {
+            try {
+                await loadScheduleStatus();
+                await loadScheduleStats();
+            } catch (error) {
+                console.error('Error loading schedule data:', error);
+            }
+        }
+
+        async function loadScheduleStatus() {
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/schedule-status', {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const details = data.details;
+                    const content = document.getElementById('schedule-status-content');
+                    
+                    content.innerHTML = `
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">${details.total_sheets}</h4>
+                                    <small class="text-muted">Total Sheets</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-success">${details.visible_sheets}</h4>
+                                    <small class="text-muted">Visible Sheets</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">${details.hidden_sheets}</h4>
+                                    <small class="text-muted">Hidden Sheets</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">${details.display_weeks_count}</h4>
+                                    <small class="text-muted">Display Weeks</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <h6>Sheet Details:</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Sheet Name</th>
+                                            <th>Date</th>
+                                            <th>Status</th>
+                                            <th>Position</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${details.sheets.map(sheet => `
+                                            <tr>
+                                                <td>${sheet.title}</td>
+                                                <td>${sheet.date ? new Date(sheet.date).toLocaleDateString() : 'N/A'}</td>
+                                                <td>
+                                                    <span class="badge ${sheet.hidden ? 'bg-secondary' : 'bg-success'}">
+                                                        ${sheet.hidden ? 'Hidden' : 'Visible'}
+                                                    </span>
+                                                </td>
+                                                <td>${sheet.index}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.detail || 'Failed to load schedule status');
+                }
+            } catch (error) {
+                console.error('Error loading schedule status:', error);
+                document.getElementById('schedule-status-content').innerHTML = 
+                    `<div class="alert alert-danger">Error loading schedule status: ${error.message}</div>`;
+            }
+        }
+
+        async function loadScheduleStats() {
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/schedule-status', {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const details = data.details;
+                    const stats = document.getElementById('schedule-stats');
+                    
+                    // Calculate additional statistics
+                    const visibleSheets = details.sheets.filter(s => !s.hidden);
+                    const hiddenSheets = details.sheets.filter(s => s.hidden);
+                    const scheduleSheets = details.sheets.filter(s => s.title.startsWith('Schedule ') && s.title !== 'Schedule Template');
+                    
+                    stats.innerHTML = `
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Total Sheets:</small><br>
+                                <strong>${details.total_sheets}</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Schedule Sheets:</small><br>
+                                <strong>${scheduleSheets.length}</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Visible:</small><br>
+                                <strong class="text-success">${details.visible_sheets}</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Hidden:</small><br>
+                                <strong class="text-warning">${details.hidden_sheets}</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-12">
+                                <small class="text-muted">Display Weeks Setting:</small><br>
+                                <strong class="text-info">${details.display_weeks_count} weeks</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-12">
+                                <small class="text-muted">Last Updated:</small><br>
+                                <strong>${new Date().toLocaleString()}</strong>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.detail || 'Failed to load schedule statistics');
+                }
+            } catch (error) {
+                console.error('Error loading schedule statistics:', error);
+                document.getElementById('schedule-stats').innerHTML = 
+                    `<div class="alert alert-danger">Error loading statistics: ${error.message}</div>`;
+            }
+        }
+
+        async function rotateSchedule() {
+            const displayWeeks = document.getElementById('displayWeeks').value;
+            const weeksText = displayWeeks ? `${displayWeeks} weeks` : 'default setting';
+            
+            if (!confirm(`Are you sure you want to rotate the schedule? This will:\n\n` +
+                       `• Hide old schedule sheets\n` +
+                       `• Show new schedule sheets for ${weeksText}\n` +
+                       `• Reorder sheets as needed\n\n` +
+                       `This action cannot be undone.`)) {
+                return;
+            }
+            
+            const button = document.querySelector('button[onclick="rotateSchedule()"]');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rotating...';
+                button.disabled = true;
+                
+                const headers = await getAuthHeaders();
+                const url = displayWeeks ? 
+                    `/admin/rotate-schedule?display_weeks=${displayWeeks}` : 
+                    '/admin/rotate-schedule';
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let message = `✅ Schedule rotated successfully!\n\n`;
+                    message += `Status: ${result.status}\n`;
+                    message += `Message: ${result.message}\n\n`;
+                    
+                    if (result.details) {
+                        const details = result.details;
+                        message += `📊 Rotation Details:\n`;
+                        message += `• Display weeks: ${details.display_weeks_count}\n`;
+                        message += `• Override used: ${details.display_weeks_override_used ? 'Yes' : 'No'}\n`;
+                        message += `• Sheets created: ${details.changes.sheets_added.length}\n`;
+                        message += `• Sheets hidden: ${details.changes.sheets_hidden.length}\n`;
+                        message += `• Sheets unhidden: ${details.changes.sheets_unhidden.length}\n`;
+                        message += `• Sheets reordered: ${details.changes.sheets_reordered.length}\n\n`;
+                        
+                        if (details.display_dates && details.display_dates.length > 0) {
+                            message += `📅 Display dates: ${details.display_dates.join(', ')}\n\n`;
+                        }
+                        
+                        if (details.current_state) {
+                            message += `👁️ Current visible sheets: ${details.current_state.visible_sheets.join(', ')}\n`;
+                        }
+                    }
+                    
+                    alert(message);
+                    
+                    // Refresh the schedule data
+                    await loadScheduleData();
+                } else {
+                    alert(`❌ Error: ${result.detail || result.message || 'Failed to rotate schedule'}`);
+                }
+            } catch (error) {
+                console.error('Error rotating schedule:', error);
+                alert(`❌ Error: ${error.message || 'Failed to rotate schedule'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
         }
     </script>
 </body>

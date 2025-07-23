@@ -28,12 +28,7 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
-# Google OAuth Configuration
-GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-SERVICE_ACCOUNT_EMAIL = os.getenv("SERVICE_ACCOUNT_EMAIL")
-
-# Google Application Credentials
+# Google Sheets Configuration
 GOOGLE_APPLICATION_CREDENTIALS = Path(
     os.getenv(
         "GOOGLE_APPLICATION_CREDENTIALS",
@@ -44,12 +39,24 @@ GOOGLE_APPLICATION_CREDENTIALS = Path(
 # Email Templates
 TEMPLATE_PATH = PROJECT_ROOT / "templates" / "email" / "weekly-reminder-email.html"
 
+# Supabase Configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAILS") else []
+
+# Google OAuth Configuration for Supabase Auth
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+
 # Required Environment Variables (only in production)
 REQUIRED_ENV_VARS = [
     "GMAIL_APP_PASSWORD",  # Required for sending emails
-    "GOOGLE_OAUTH_CLIENT_ID",  # Required for Google Sheets access
-    "GOOGLE_OAUTH_CLIENT_SECRET",  # Required for Google Sheets access
+    "GOOGLE_OAUTH_CLIENT_ID",  # Required for Google OAuth
+    "GOOGLE_OAUTH_CLIENT_SECRET",  # Required for Google OAuth
     "SERVICE_ACCOUNT_EMAIL",  # Required for Google Sheets access
+    "SUPABASE_URL",  # Required for Supabase auth
+    "SUPABASE_ANON_KEY",  # Required for Supabase auth
 ]
 
 

@@ -16,7 +16,7 @@ from app.models import (
     Volunteer as VolunteerModel,
 )
 from app.utils.logging_config import get_api_logger
-from app.utils.config_helper import config, ConfigHelper
+from app.utils.config_helper import config
 from jinja2 import Template
 
 logger = get_api_logger()
@@ -64,10 +64,16 @@ class EmailService:
             # Generate and save token if it doesn't exist
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
 
-        # Use API_URL directly with the unsubscribe endpoint
-        from app.config import API_URL
-        base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
-        
+        # Try to get the base unsubscribe link from database settings
+        base_url = None
+        if hasattr(config, 'get_email_preferences_link'):
+            base_url = config.get_email_preferences_link(db)
+        if not base_url:
+            # Fallback to API_URL if not set in DB
+            from app.config import API_URL
+            base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
+        else:
+            base_url = base_url.rstrip("/")
         logger.info(
             f"Unsubscribe link: {base_url}?token={volunteer.email_unsubscribe_token}"
         )
@@ -80,10 +86,16 @@ class EmailService:
         )
 
     def build_class_table(self, class_name: str, config: dict, sheet_service, db: Session) -> dict:
-        """Build HTML table for a specific class, with Day/Teacher/Assistant(s)/Status columns"""
+        """
+        Build HTML table for a specific class, with Day/Teacher/Head TA/Assistant(s)/Status columns.
+        A class must have at least one Head Teaching Assistant.
+        Enforces max_assistants limit from config.
+        """
         try:
             sheet_range = config.get("sheet_range")
             class_time = config.get("time", "")
+            max_assistants = config.get("max_assistants", 3)  # Default to 3 if not specified
+            
             if not sheet_range:
                 logger.error(f"No sheet_range configured for class {class_name}")
                 return {
@@ -92,37 +104,51 @@ class EmailService:
                     "has_data": False,
                 }
             class_data = sheet_service.get_schedule_range(db, sheet_range)
-            if not class_data or len(class_data) < 3:  # MIN_REQUIRED_ROWS = 3
+            # Expecting: [header_row, teacher_row, head_ta_row, assistant_row]
+            if not class_data or len(class_data) < 4:  # Must have at least 4 rows
+                logger.error(f"Insufficient data rows for {class_name}. Expected at least 4 rows (header, teacher, head TA, assistant).")
                 return {
                     "class_name": class_name,
-                    "table_html": f"<p>No data available for {class_name}</p>",
+                    "table_html": f"<p>No data available for {class_name} (missing Head Teaching Assistant row)</p>",
                     "has_data": False,
                 }
 
-            # Transpose data: columns are days, rows are header/teacher/assistant
-            # class_data: [header_row, teacher_row, assistant_row]
+            # Transpose data: columns are days, rows are header/teacher/head_ta/assistant
             days = class_data[0][1:]  # skip first col (label)
             teachers = class_data[1][1:]
-            assistants = class_data[2][1:]
+            head_tas = class_data[2][1:]
+            assistants = class_data[3][1:]
 
             # Table header
-            table_html = f"<h3>{class_name} ({class_time})</h3>"
+            table_html = f"<h3>{class_name} ({class_time}) - Max {max_assistants} Assistants</h3>"
             table_html += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
             table_html += "<thead><tr style='background-color: #f0f0f0;'>"
             table_html += "<th style='padding: 8px; text-align: center;'>Day</th>"
             table_html += "<th style='padding: 8px; text-align: center;'>Teacher</th>"
+            table_html += "<th style='padding: 8px; text-align: center;'>Head Teaching Assistant</th>"
             table_html += "<th style='padding: 8px; text-align: center;'>Assistant(s)</th>"
             table_html += "<th style='padding: 8px; text-align: center;'>Status</th>"
             table_html += "</tr></thead><tbody>"
 
             for i, day in enumerate(days):
                 teacher = teachers[i] if i < len(teachers) else ""
+                head_ta = head_tas[i] if i < len(head_tas) else ""
                 assistant = assistants[i] if i < len(assistants) else ""
-                # Status logic
+                
+                # Count current assistants (split by comma and count non-empty entries)
+                current_assistants = 0
+                if assistant and assistant.strip():
+                    # Split by comma and count non-empty entries
+                    assistant_list = [a.strip() for a in assistant.split(',') if a.strip()]
+                    current_assistants = len(assistant_list)
+                
+                # Status logic with max assistants enforcement
                 status = ""
                 bg_color = ""
                 teacher_lower = teacher.strip().lower() if teacher else ""
+                head_ta_lower = head_ta.strip().lower() if head_ta else ""
                 assistant_lower = assistant.strip().lower() if assistant else ""
+
                 if "optional" in teacher_lower:
                     status = "optional day, volunteers welcome to support existing classes"
                     bg_color = "#f5f5f5"
@@ -135,16 +161,26 @@ class EmailService:
                 elif "need volunteers" in teacher_lower:
                     status = "❌ Missing Teacher"
                     bg_color = "#ffcccc"
+                elif not head_ta or "need volunteers" in head_ta_lower:
+                    status = "❌ Missing Head TA"
+                    bg_color = "#ffe5b4"
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
+                elif current_assistants > max_assistants:
+                    status = f"Over-Assigned ({current_assistants}/{max_assistants} assistants), entry for all volunteers may not be permitted, priority will be given to those who come first"
+                    bg_color = "#fff3cd"  # Yellow for over-assigned assistants
+                elif current_assistants == max_assistants:
+                    status = f"✅ Fully Covered ({current_assistants}/{max_assistants} assistants)"
+                    bg_color = "#d4edda"
                 else:
-                    status = "✅ Fully Covered, TA's welcome to join"
+                    status = f"✅ Partially Covered ({current_assistants}/{max_assistants} assistants) - TA's welcome to join"
                     bg_color = "#d4edda"
 
                 table_html += f"<tr style='background-color: {bg_color};'>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{day}</td>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{teacher}</td>"
+                table_html += f"<td style='padding: 8px; text-align: center;'>{head_ta}</td>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{assistant}</td>"
                 table_html += f"<td style='padding: 8px; text-align: center;'>{status}</td>"
                 table_html += "</tr>"
@@ -167,7 +203,7 @@ class EmailService:
         Returns:
             tuple: (html_body, subject)
         """
-        from app.services.classes_config import CLASS_CONFIG
+        from app.services.classes_config import get_class_config
         from app.services.google_sheets import sheets_service
         from datetime import datetime, timedelta
 
@@ -179,9 +215,10 @@ class EmailService:
         # Get the reminder subject
         subject = self.get_reminder_subject(start_date, end_date)
 
-        # Build class tables
+        # Build class tables using dynamic configuration from Google Sheets
+        class_config = get_class_config(db)
         class_tables = []
-        for class_name, config in CLASS_CONFIG.items():
+        for class_name, config in class_config.items():
             class_tables.append(
                 self.build_class_table(class_name, config, sheets_service, db)
             )
@@ -194,14 +231,16 @@ class EmailService:
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
             db.commit()
 
+        from app.utils.config_helper import ConfigHelper
+
         # Render template with class tables and all variables
         html_body = Template(self.reminder_template).render(
             first_name=first_name,
             class_tables=[ct['table_html'] for ct in class_tables],
-            SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
+            SCHEDULE_SHEETS_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
-            FACEBOOK_MESSENGER_LINK=ConfigHelper.get_facebook_messenger_link(db) or "#",
-            DISCORD_INVITE_LINK=ConfigHelper.get_discord_invite_link(db) or "#",
+            INVITE_LINK_FACEBOOK_MESSENGER=ConfigHelper.get_invite_link_facebook_messenger(db) or "#",
+            INVITE_LINK_DISCORD=ConfigHelper.get_invite_link_discord(db) or "#",
             ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
             INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
             FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
@@ -222,8 +261,8 @@ class EmailService:
 
             # Get dynamic settings from database
             schedule_signup_link = config.get_schedule_signup_link(db)
-            facebook_messenger_link = config.get_facebook_messenger_link(db)
-            discord_invite_link = config.get_discord_invite_link(db)
+            INVITE_LINK_FACEBOOK_MESSENGER = config.get_invite_link_facebook_messenger(db)
+            INVITE_LINK_DISCORD = config.get_invite_link_discord(db)
             onboarding_guide_link = config.get_onboarding_guide_link(db)
             instagram_link = config.get_instagram_link(db)
             facebook_page_link = config.get_facebook_page_link(db)
@@ -231,12 +270,12 @@ class EmailService:
             # Prepare template variables
             template_vars = {
                 "UserFullName": volunteer.name,
-                "SCHEDULE_SIGNUP_LINK": schedule_signup_link or "#",
+                "SCHEDULE_SHEETS_LINK": schedule_signup_link or "#",
                 "EMAIL_PREFERENCES_LINK": self.get_volunteer_unsubscribe_link(
                     volunteer, db
                 ),
-                "FACEBOOK_MESSENGER_LINK": facebook_messenger_link or "#",
-                "DISCORD_INVITE_LINK": discord_invite_link or "#",
+                "INVITE_LINK_FACEBOOK_MESSENGER": INVITE_LINK_FACEBOOK_MESSENGER or "#",
+                "INVITE_LINK_DISCORD": INVITE_LINK_DISCORD or "#",
                 "ONBOARDING_GUIDE_LINK": onboarding_guide_link or "#",
                 "INSTAGRAM_LINK": instagram_link or "#",
                 "FACEBOOK_PAGE_LINK": facebook_page_link or "#",
@@ -250,20 +289,8 @@ class EmailService:
             to_email = volunteer.email
 
             # DRY_RUN logic
-            if ConfigHelper.get_dry_run(db) and to_email != ConfigHelper.get_dry_run_email_recipient(db):
+            if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database")
-                # Log the email communication in database
-                email_comm = EmailCommunicationModel(
-                    volunteer_id=volunteer.id,
-                    recipient_email=to_email,
-                    email_type="volunteer_confirmation",
-                    subject=subject,
-                    template_name="confirmation-email.html",
-                    status="sent",
-                    sent_at=datetime.now(),
-                )
-                db.add(email_comm)
-                db.commit()
                 return True
 
             # Create message
@@ -349,7 +376,7 @@ class EmailService:
         """
         try:
             # DRY_RUN logic
-            if ConfigHelper.get_dry_run(db) and to_email != ConfigHelper.get_dry_run_email_recipient(db):
+            if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database")
                 email_comm = EmailCommunicationModel(
                     volunteer_id=volunteer_id,

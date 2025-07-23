@@ -1,3 +1,7 @@
+"""
+Public endpoints for the volunteer management system
+"""
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -8,25 +12,37 @@ from app.models import (
     EmailCommunication as EmailCommunicationModel,
 )
 from app.services.google_sheets import sheets_service
-from app.utils.auth import rate_limit
+# from app.utils.auth import rate_limit  # Removed auth
 from app.utils.logging_config import get_api_logger
+from app.config import (
+    ENVIRONMENT,
+)
 from datetime import datetime
 import os
-from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
 
 logger = get_api_logger()
 
 # Public router for unsubscribe and health
-public_router = APIRouter(prefix="/public", tags=["public"])
+public_router = APIRouter(prefix="", tags=["public"])
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
 
 
-# Unsubscribe endpoints (public, but rate-limited)
+@public_router.get("/", response_class=HTMLResponse)
+async def home_page(request: Request):
+    """
+    Serve the home page
+    
+    Returns the main landing page with login functionality.
+    """
+    return templates.TemplateResponse("home.html", {"request": request})
+
+
+# Unsubscribe endpoints (public)
 @public_router.get(
-    "/unsubscribe", response_class=HTMLResponse, dependencies=[Depends(rate_limit)]
+    "/unsubscribe", response_class=HTMLResponse
 )
 def unsubscribe_volunteer_page(
     request: Request, token: str, db: Session = Depends(get_db)
@@ -92,7 +108,7 @@ def unsubscribe_volunteer_page(
 
 
 @public_router.post(
-    "/unsubscribe", response_class=HTMLResponse, dependencies=[Depends(rate_limit)]
+    "/unsubscribe", response_class=HTMLResponse
 )
 def update_email_preferences(
     request: Request,
@@ -278,10 +294,12 @@ def get_health(db: Session = Depends(get_db)):
             db_status = "unhealthy"
             logger.error(f"Database health check failed: {str(e)}")
 
+        from app.main import app
+        version = app.version
         return {
             "status": "healthy",
+            "version": version,
             "timestamp": datetime.now().isoformat(),
-            "version": "1.1.4",
             "environment": ENVIRONMENT,
             "dry_run": ConfigHelper.get_dry_run(db),
             "services": {

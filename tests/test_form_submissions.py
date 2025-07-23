@@ -40,14 +40,24 @@ class TestFormSubmissionProcessing:
         test_db.add(existing_volunteer)
         test_db.commit()
 
-        # Mock form submissions with one duplicate email
+        # Mock form submissions with one duplicate email (using new form structure)
         mock_submissions = [
             {
-                "full_name": "New Volunteer 1",
-                "email": "new1@example.com",
-                "phone": "1111111111",
-                "position": "Teacher, TA",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "new1@example.com",
+                "score": "85",
+                "first_name": "New",
+                "last_name": "Volunteer 1",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport1.jpg",
+                "headshot_upload": "https://example.com/headshot1.jpg",
+                "social_media_link": "https://facebook.com/newvolunteer1",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 1111111111",
+                "position_interest": "Teacher, TA",
                 "availability": "Monday, Tuesday",
                 "start_date": "12/01/2024",
                 "commitment_duration": "6 months",
@@ -56,14 +66,24 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "referral_source": "Facebook"
             },
             {
-                "full_name": "Duplicate Volunteer",
-                "email": "existing@example.com",  # Same email as existing volunteer
-                "phone": "2222222222",
-                "position": "Teacher",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 11:00:00",
+                "email_address": "existing@example.com",  # Same email as existing volunteer
+                "score": "90",
+                "first_name": "Duplicate",
+                "last_name": "Volunteer",
+                "passport_id_number": "987654321",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport2.jpg",
+                "headshot_upload": "https://example.com/headshot2.jpg",
+                "social_media_link": "https://linkedin.com/duplicatevolunteer",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 2222222222",
+                "position_interest": "Teacher",
                 "availability": "Wednesday",
                 "start_date": "12/01/2024",
                 "commitment_duration": "3 months",
@@ -72,14 +92,24 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Fluent",
                 "other_support": "",
-                "additional_info": ""
+                "referral_source": "Instagram"
             },
             {
-                "full_name": "New Volunteer 2",
-                "email": "new2@example.com",
-                "phone": "3333333333",
-                "position": "TA",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 12:00:00",
+                "email_address": "new2@example.com",
+                "score": "88",
+                "first_name": "New",
+                "last_name": "Volunteer 2",
+                "passport_id_number": "456789123",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport3.jpg",
+                "headshot_upload": "https://example.com/headshot3.jpg",
+                "social_media_link": "https://facebook.com/newvolunteer2",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 3333333333",
+                "position_interest": "TA",
                 "availability": "Friday",
                 "start_date": "ASAP",
                 "commitment_duration": "12 months",
@@ -88,7 +118,7 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "None",
                 "other_support": "Transportation",
-                "additional_info": "Excited to help!"
+                "referral_source": "Word of mouth"
             }
         ]
 
@@ -159,14 +189,24 @@ class TestFormSubmissionProcessing:
         test_db.add(existing_confirmation)
         test_db.commit()
 
-        # Mock form submissions
+        # Mock form submissions (using new form structure)
         mock_submissions = [
             {
-                "full_name": "New Volunteer",
-                "email": "new@example.com",
-                "phone": "1111111111",
-                "position": "Teacher",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "new@example.com",
+                "score": "85",
+                "first_name": "New",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport.jpg",
+                "headshot_upload": "https://example.com/headshot.jpg",
+                "social_media_link": "https://facebook.com/newvolunteer",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 1111111111",
+                "position_interest": "Teacher",
                 "availability": "Monday",
                 "start_date": "12/01/2024",
                 "commitment_duration": "6 months",
@@ -175,7 +215,7 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "referral_source": "Facebook"
             }
         ]
 
@@ -254,13 +294,23 @@ class TestFormSubmissionProcessing:
             assert len(confirmation_records) == 1  # Only the original one
 
     def test_create_new_volunteer_object(self):
-        """Test the create_new_volunteer_object function"""
+        """Test the create_new_volunteer_object function with new form structure"""
         submission = {
-            "full_name": "Test Volunteer",
-            "email": "test@example.com",
-            "phone": "1234567890",
-            "position": "Teacher, TA",
+            "applicant_status": "ACCEPTED",
+            "timestamp": "12/01/2024 10:00:00",
+            "email_address": "test@example.com",
+            "score": "85",
+            "first_name": "Test",
+            "last_name": "Volunteer",
+            "passport_id_number": "123456789",
+            "passport_expiry_date": "12/31/2030",
+            "date_of_birth": "01/01/1990",
+            "passport_upload": "https://example.com/passport.jpg",
+            "headshot_upload": "https://example.com/headshot.jpg",
+            "social_media_link": "https://facebook.com/testvolunteer",
             "location": "Ho Chi Minh City",
+            "phone_number": "+84 1234567890",
+            "position_interest": "Teacher, TA",
             "availability": "Monday, Tuesday, Wednesday",
             "start_date": "12/01/2024",
             "commitment_duration": "6 months",
@@ -269,14 +319,14 @@ class TestFormSubmissionProcessing:
             "teaching_certificate": "Yes",
             "vietnamese_speaking": "Fluent",
             "other_support": "Transportation, Materials",
-            "additional_info": "Excited to help!"
+            "referral_source": "Facebook"
         }
         
         volunteer = create_new_volunteer_object(submission)
         
         assert volunteer.name == "Test Volunteer"
         assert volunteer.email == "test@example.com"
-        assert volunteer.phone == "1234567890"
+        assert volunteer.phone == "+84 1234567890"
         assert volunteer.positions == ["Teacher", "TA"]
         assert volunteer.location == "Ho Chi Minh City"
         assert volunteer.availability == ["Monday", "Tuesday", "Wednesday"]
@@ -287,17 +337,28 @@ class TestFormSubmissionProcessing:
         assert volunteer.teaching_certificate == "Yes"
         assert volunteer.vietnamese_proficiency == "Fluent"
         assert volunteer.additional_support == ["Transportation", "Materials"]
-        assert volunteer.additional_info == "Excited to help!"
+        assert "Social Media: https://facebook.com/testvolunteer" in volunteer.additional_info
+        assert "Referral Source: Facebook" in volunteer.additional_info
         assert volunteer.is_active == True
 
     def test_create_new_volunteer_object_with_asap_date(self):
         """Test create_new_volunteer_object with ASAP start date"""
         submission = {
-            "full_name": "Test Volunteer",
-            "email": "test@example.com",
-            "phone": "1234567890",
-            "position": "Teacher",
+            "applicant_status": "ACCEPTED",
+            "timestamp": "12/01/2024 10:00:00",
+            "email_address": "test@example.com",
+            "score": "85",
+            "first_name": "Test",
+            "last_name": "Volunteer",
+            "passport_id_number": "123456789",
+            "passport_expiry_date": "12/31/2030",
+            "date_of_birth": "01/01/1990",
+            "passport_upload": "https://example.com/passport.jpg",
+            "headshot_upload": "https://example.com/headshot.jpg",
+            "social_media_link": "https://facebook.com/testvolunteer",
             "location": "Ho Chi Minh City",
+            "phone_number": "+84 1234567890",
+            "position_interest": "Teacher",
             "availability": "Monday",
             "start_date": "ASAP",
             "commitment_duration": "6 months",
@@ -306,7 +367,7 @@ class TestFormSubmissionProcessing:
             "teaching_certificate": "No",
             "vietnamese_speaking": "Basic",
             "other_support": "",
-            "additional_info": ""
+            "referral_source": "Facebook"
         }
         
         volunteer = create_new_volunteer_object(submission)
@@ -318,11 +379,21 @@ class TestFormSubmissionProcessing:
     def test_create_new_volunteer_object_with_empty_fields(self):
         """Test create_new_volunteer_object with empty optional fields"""
         submission = {
-            "full_name": "Test Volunteer",
-            "email": "test@example.com",
-            "phone": "1234567890",
-            "position": "Teacher",
+            "applicant_status": "ACCEPTED",
+            "timestamp": "12/01/2024 10:00:00",
+            "email_address": "test@example.com",
+            "score": "85",
+            "first_name": "Test",
+            "last_name": "Volunteer",
+            "passport_id_number": "123456789",
+            "passport_expiry_date": "12/31/2030",
+            "date_of_birth": "01/01/1990",
+            "passport_upload": "https://example.com/passport.jpg",
+            "headshot_upload": "https://example.com/headshot.jpg",
+            "social_media_link": "",
             "location": "Ho Chi Minh City",
+            "phone_number": "+84 1234567890",
+            "position_interest": "Teacher",
             "availability": "Monday",
             "start_date": "12/01/2024",
             "commitment_duration": "6 months",
@@ -331,25 +402,37 @@ class TestFormSubmissionProcessing:
             "teaching_certificate": "No",
             "vietnamese_speaking": "Basic",
             "other_support": "",
-            "additional_info": ""
+            "referral_source": ""
         }
         
         volunteer = create_new_volunteer_object(submission)
         
         assert volunteer.experience_details == ""
         assert volunteer.additional_support == []
-        assert volunteer.additional_info == ""
+        # With new form structure, additional_info contains social media and referral source
+        assert "Social Media: " in volunteer.additional_info
+        assert "Referral Source: " in volunteer.additional_info
 
     def test_form_submission_with_database_error(self, client, test_db):
         """Test handling of database errors during form submission processing"""
-        # Mock form submissions
+        # Mock form submissions (using new form structure)
         mock_submissions = [
             {
-                "full_name": "Test Volunteer",
-                "email": "test@example.com",
-                "phone": "1234567890",
-                "position": "Teacher",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "test@example.com",
+                "score": "85",
+                "first_name": "Test",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport.jpg",
+                "headshot_upload": "https://example.com/headshot.jpg",
+                "social_media_link": "https://facebook.com/testvolunteer",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 1234567890",
+                "position_interest": "Teacher",
                 "availability": "Monday",
                 "start_date": "12/01/2024",
                 "commitment_duration": "6 months",
@@ -358,7 +441,7 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "referral_source": "Facebook"
             }
         ]
 
@@ -402,14 +485,24 @@ class TestFormSubmissionProcessing:
 
     def test_form_submission_without_processing(self, client, test_db):
         """Test form submission retrieval without processing new volunteers"""
-        # Mock form submissions
+        # Mock form submissions (using new form structure)
         mock_submissions = [
             {
-                "full_name": "Test Volunteer",
-                "email": "test@example.com",
-                "phone": "1234567890",
-                "position": "Teacher",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "test@example.com",
+                "score": "85",
+                "first_name": "Test",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport.jpg",
+                "headshot_upload": "https://example.com/headshot.jpg",
+                "social_media_link": "https://facebook.com/testvolunteer",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 1234567890",
+                "position_interest": "Teacher",
                 "availability": "Monday",
                 "start_date": "12/01/2024",
                 "commitment_duration": "6 months",
@@ -418,7 +511,7 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "referral_source": "Facebook"
             }
         ]
 
@@ -442,14 +535,24 @@ class TestFormSubmissionProcessing:
 
     def test_email_communication_logging_for_new_volunteers(self, client, test_db):
         """Test that email communications are properly logged for new volunteers"""
-        # Mock form submissions
+        # Mock form submissions (using new form structure)
         mock_submissions = [
             {
-                "full_name": "Test Volunteer",
-                "email": "test@example.com",
-                "phone": "1234567890",
-                "position": "Teacher",
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "test@example.com",
+                "score": "85",
+                "first_name": "Test",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport.jpg",
+                "headshot_upload": "https://example.com/headshot.jpg",
+                "social_media_link": "https://facebook.com/testvolunteer",
                 "location": "Ho Chi Minh City",
+                "phone_number": "+84 1234567890",
+                "position_interest": "Teacher",
                 "availability": "Monday",
                 "start_date": "12/01/2024",
                 "commitment_duration": "6 months",
@@ -458,7 +561,7 @@ class TestFormSubmissionProcessing:
                 "teaching_certificate": "No",
                 "vietnamese_speaking": "Basic",
                 "other_support": "",
-                "additional_info": ""
+                "referral_source": "Facebook"
             }
         ]
 
@@ -484,4 +587,307 @@ class TestFormSubmissionProcessing:
                 
                 # The email service should have logged the communication
                 # This is tested in the email service tests, but we can verify the volunteer exists
-                assert volunteer.email == "test@example.com" 
+                assert volunteer.email == "test@example.com"
+
+    def test_status_filtering_only_processes_accepted_submissions(self, client, test_db):
+        """Test that only submissions with STATUS = 'ACCEPTED' are processed"""
+        # Mock form submissions with different statuses (using new form structure)
+        mock_submissions = [
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "accepted@example.com",
+                "score": "85",
+                "first_name": "Accepted",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport1.jpg",
+                "headshot_upload": "https://example.com/headshot1.jpg",
+                "social_media_link": "https://facebook.com/acceptedvolunteer",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 1111111111",
+                "position_interest": "Teacher",
+                "availability": "Monday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Facebook"
+            },
+            {
+                "applicant_status": "PENDING",
+                "timestamp": "12/01/2024 11:00:00",
+                "email_address": "pending@example.com",
+                "score": "75",
+                "first_name": "Pending",
+                "last_name": "Volunteer",
+                "passport_id_number": "987654321",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport2.jpg",
+                "headshot_upload": "https://example.com/headshot2.jpg",
+                "social_media_link": "https://linkedin.com/pendingvolunteer",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 2222222222",
+                "position_interest": "Teacher",
+                "availability": "Tuesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Instagram"
+            },
+            {
+                "applicant_status": "REJECTED",
+                "timestamp": "12/01/2024 12:00:00",
+                "email_address": "rejected@example.com",
+                "score": "60",
+                "first_name": "Rejected",
+                "last_name": "Volunteer",
+                "passport_id_number": "456789123",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport3.jpg",
+                "headshot_upload": "https://example.com/headshot3.jpg",
+                "social_media_link": "https://facebook.com/rejectedvolunteer",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 3333333333",
+                "position_interest": "Teacher",
+                "availability": "Wednesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Facebook"
+            },
+            {
+                "applicant_status": "",
+                "timestamp": "12/01/2024 13:00:00",
+                "email_address": "nostatus@example.com",
+                "score": "70",
+                "first_name": "No Status",
+                "last_name": "Volunteer",
+                "passport_id_number": "789123456",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport4.jpg",
+                "headshot_upload": "https://example.com/headshot4.jpg",
+                "social_media_link": "https://facebook.com/nostatusvolunteer",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 4444444444",
+                "position_interest": "Teacher",
+                "availability": "Thursday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Word of mouth"
+            }
+        ]
+
+        # Mock the sheets service
+        with patch('app.routers.admin.sheets_service') as mock_sheets:
+            mock_sheets.get_signup_form_submissions.return_value = mock_submissions
+            
+            # Mock the email service
+            with patch('app.routers.admin.email_service') as mock_email:
+                mock_email.send_confirmation_emails.return_value = None
+                
+                # Call the function
+                response = client.get("/admin/forms/submissions?process_new=true")
+                
+                assert response.status_code == 200
+                result = response.json()
+                
+                # Should return success with status filtering info
+                assert result["status"] == "success"
+                assert "4 form submissions" in result["message"]
+                assert "1 accepted, 3 non-accepted" in result["message"]
+                
+                # Check the details
+                assert result["details"]["submissions_retrieved"] == 4
+                assert result["details"]["accepted_submissions"] == 1
+                assert result["details"]["non_accepted_submissions"] == 3
+                assert result["details"]["new_submissions_found"] == 1
+                assert result["details"]["volunteers_created"] == 1
+                
+                # Check database state - only the accepted volunteer should be created
+                all_volunteers = test_db.query(VolunteerModel).all()
+                assert len(all_volunteers) == 1
+                
+                # Verify only the accepted volunteer was added
+                accepted_volunteer = test_db.query(VolunteerModel).filter_by(email="accepted@example.com").first()
+                assert accepted_volunteer is not None
+                assert accepted_volunteer.name == "Accepted Volunteer"
+                
+                # Verify other volunteers were not added
+                pending_volunteer = test_db.query(VolunteerModel).filter_by(email="pending@example.com").first()
+                rejected_volunteer = test_db.query(VolunteerModel).filter_by(email="rejected@example.com").first()
+                nostatus_volunteer = test_db.query(VolunteerModel).filter_by(email="nostatus@example.com").first()
+                
+                assert pending_volunteer is None
+                assert rejected_volunteer is None
+                assert nostatus_volunteer is None 
+
+    def test_empty_email_submissions_are_filtered_out(self, client, test_db):
+        """Test that submissions with empty email addresses are filtered out and not counted"""
+        # Mock form submissions including some with empty emails (using new form structure)
+        mock_submissions = [
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 10:00:00",
+                "email_address": "valid@example.com",
+                "score": "85",
+                "first_name": "Valid",
+                "last_name": "Volunteer",
+                "passport_id_number": "123456789",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport1.jpg",
+                "headshot_upload": "https://example.com/headshot1.jpg",
+                "social_media_link": "https://facebook.com/validvolunteer",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 1111111111",
+                "position_interest": "Teacher",
+                "availability": "Monday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Facebook"
+            },
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 11:00:00",
+                "email_address": "",  # Empty email
+                "score": "75",
+                "first_name": "Empty",
+                "last_name": "Email",
+                "passport_id_number": "987654321",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport2.jpg",
+                "headshot_upload": "https://example.com/headshot2.jpg",
+                "social_media_link": "https://facebook.com/emptyemail",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 2222222222",
+                "position_interest": "Teacher",
+                "availability": "Tuesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Instagram"
+            },
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 12:00:00",
+                "email_address": "   ",  # Whitespace-only email
+                "score": "80",
+                "first_name": "Whitespace",
+                "last_name": "Email",
+                "passport_id_number": "456789123",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport3.jpg",
+                "headshot_upload": "https://example.com/headshot3.jpg",
+                "social_media_link": "https://facebook.com/whitespaceemail",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 3333333333",
+                "position_interest": "Teacher",
+                "availability": "Wednesday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Facebook"
+            },
+            {
+                "applicant_status": "ACCEPTED",
+                "timestamp": "12/01/2024 13:00:00",
+                "email_address": "another@example.com",
+                "score": "90",
+                "first_name": "Another",
+                "last_name": "Valid",
+                "passport_id_number": "789123456",
+                "passport_expiry_date": "12/31/2030",
+                "date_of_birth": "01/01/1990",
+                "passport_upload": "https://example.com/passport4.jpg",
+                "headshot_upload": "https://example.com/headshot4.jpg",
+                "social_media_link": "https://facebook.com/anothervalid",
+                "location": "Ho Chi Minh City",
+                "phone_number": "+84 4444444444",
+                "position_interest": "Teacher",
+                "availability": "Thursday",
+                "start_date": "12/01/2024",
+                "commitment_duration": "6 months",
+                "teaching_experience": "None",
+                "experience_details": "",
+                "teaching_certificate": "No",
+                "vietnamese_speaking": "Basic",
+                "other_support": "",
+                "referral_source": "Word of mouth"
+            }
+        ]
+
+        # Mock the sheets service to return our test submissions
+        with patch('app.routers.admin.sheets_service') as mock_sheets:
+            mock_sheets.get_signup_form_submissions.return_value = mock_submissions
+            
+            # Mock the email service
+            with patch('app.routers.admin.email_service') as mock_email:
+                mock_email.send_confirmation_emails.return_value = None
+                
+                # Call the function
+                response = client.get("/admin/forms/submissions?process_new=true")
+                
+                assert response.status_code == 200
+                result = response.json()
+                
+                # Should only process 2 valid submissions (excluding empty/whitespace emails)
+                assert result["status"] == "success"
+                assert "2 form submissions" in result["message"]
+                assert "2 accepted, 0 non-accepted" in result["message"]
+                
+                # Check the details
+                assert result["details"]["submissions_retrieved"] == 2
+                assert result["details"]["accepted_submissions"] == 2
+                assert result["details"]["non_accepted_submissions"] == 0
+                assert result["details"]["new_submissions_found"] == 2
+                assert result["details"]["volunteers_created"] == 2
+                
+                # Check database state - only the valid volunteers should be created
+                all_volunteers = test_db.query(VolunteerModel).all()
+                assert len(all_volunteers) == 2
+                
+                # Verify only the valid volunteers were added
+                valid_emails = [v.email for v in all_volunteers]
+                assert "valid@example.com" in valid_emails
+                assert "another@example.com" in valid_emails
+                
+                # Verify empty email volunteers were not added
+                assert "" not in valid_emails
+                assert "   " not in valid_emails 

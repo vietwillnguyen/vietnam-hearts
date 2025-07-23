@@ -2,16 +2,18 @@
 """
 Scheduler API Test Script for Vietnam Hearts
 
-This script tests the scheduler API endpoints using Google Cloud authentication.
-It uses the service account: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
+This script tests the scheduler API endpoints using either:
+1. gcloud authentication (for public API endpoints)
+2. Supabase authentication (for admin endpoints)
 
 Usage:
-    python tests/test_api.py [endpoint_name]
+    python tests/test_api.py [endpoint_name] [--auth-type=gcloud|supabase]
     
 Examples:
     python tests/test_api.py health
     python tests/test_api.py all
     python tests/test_api.py send-confirmation-emails
+    python tests/test_api.py admin-dashboard --auth-type=supabase
 """
 
 import os
@@ -20,6 +22,7 @@ import json
 import time
 import requests
 import subprocess
+import argparse
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
@@ -33,10 +36,11 @@ load_dotenv()
 class SchedulerAPITester:
     """Test class for scheduler API endpoints"""
     
-    def __init__(self):
-        self.base_url = os.getenv("API_BASE_URL", "http://localhost:8080")
+    def __init__(self, auth_type: str = "gcloud"):
+        self.base_url = os.getenv("API_BASE_URL", "https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app")
         self.service_account = "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com"
-        self.api_prefix = "/api"
+        self.api_prefix = "/admin"
+        self.auth_type = auth_type
         self.session = requests.Session()
         
         # Configure session headers
@@ -49,15 +53,26 @@ class SchedulerAPITester:
         print(f"Base URL: {self.base_url}")
         print(f"Service Account: {self.service_account}")
         print(f"API Prefix: {self.api_prefix}")
+        print(f"Auth Type: {auth_type}")
         print("=" * 60)
     
     def get_auth_token(self) -> Optional[str]:
+        """
+        Get authentication token using either gcloud or Supabase
+        Returns OIDC token for gcloud or JWT token for Supabase
+        """
+        if self.auth_type == "supabase":
+            return self._get_supabase_token()
+        else:
+            return self._get_gcloud_token()
+    
+    def _get_gcloud_token(self) -> Optional[str]:
         """
         Get authentication token using gcloud CLI
         Returns OIDC token for the service account
         """
         try:
-            print("🔑 Getting authentication token...")
+            print("🔑 Getting gcloud authentication token...")
             
             # Try using service account credentials file first
             credentials_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
@@ -90,11 +105,11 @@ class SchedulerAPITester:
             
             token = result.stdout.strip()
             if token:
-                print("✅ Authentication token obtained successfully")
+                print("✅ gcloud authentication token obtained successfully")
                 print(f"   Audience: {self.base_url}")
                 return token
             else:
-                print("❌ Failed to get authentication token")
+                print("❌ Failed to get gcloud authentication token")
                 return None
                 
         except subprocess.CalledProcessError as e:
@@ -108,15 +123,109 @@ class SchedulerAPITester:
             print("5. Set GOOGLE_APPLICATION_CREDENTIALS to your service account key file")
             return None
         except Exception as e:
-            print(f"❌ Unexpected error getting token: {e}")
+            print(f"❌ Unexpected error getting gcloud token: {e}")
             return None
     
-    def make_request(self, endpoint: str, method: str = "POST", data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def _get_supabase_token(self) -> Optional[str]:
+        """
+        Get authentication token using Supabase service role key
+        Returns JWT token for the service account
+        """
+        try:
+            print("🔑 Getting Supabase authentication token...")
+            
+            # For service accounts, we can use the service role key directly
+            # or create a JWT token using the service account email
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if not service_role_key:
+                print("❌ SUPABASE_SERVICE_ROLE_KEY not set")
+                return None
+            
+            # Return the service role key directly for Supabase native authentication
+            print("✅ Supabase service role key obtained successfully")
+            return service_role_key
+        except Exception as e:
+            print(f"❌ Unexpected error getting Supabase token: {e}")
+            return None
+    
+    def make_request(self, endpoint: str, method: str = "POST", data: Dict[str, Any] = None, use_auth: bool = True) -> Dict[str, Any]:
         """
         Make authenticated request to scheduler endpoint
         
         Args:
             endpoint: Endpoint name (e.g., 'health', 'send-confirmation-emails')
+            method: HTTP method (GET, POST)
+            data: Request data for POST requests
+            use_auth: Whether to include authentication headers
+            
+        Returns:
+            Response data as dictionary
+        """
+        # Get authentication token if needed
+        if use_auth:
+            token = self.get_auth_token()
+            if not token:
+                return {"error": "Failed to get authentication token"}
+            
+            # For Supabase auth, use apikey header instead of Authorization
+            if self.auth_type == "supabase":
+                self.session.headers["apikey"] = token
+                # Remove any existing Authorization header
+                self.session.headers.pop("Authorization", None)
+            else:
+                # For gcloud auth, use Authorization header
+                self.session.headers["Authorization"] = f"Bearer {token}"
+                # Remove any existing apikey header
+                self.session.headers.pop("apikey", None)
+        else:
+            # Remove all auth headers for public endpoints
+            self.session.headers.pop("Authorization", None)
+            self.session.headers.pop("apikey", None)
+        
+        # Build URL
+        url = f"{self.base_url}{self.api_prefix}/{endpoint}"
+        
+        try:
+            print(f"\n🌐 Making {method} request to: {url}")
+            print(f"🔍 Request Headers: {dict(self.session.headers)}")
+            time.sleep(1)
+            if method.upper() == "GET":
+                response = self.session.get(url)
+            elif method.upper() == "POST":
+                response = self.session.post(url, json=data or {})
+            else:
+                return {"error": f"Unsupported method: {method}"}
+            
+            print(f"📊 Response Status: {response.status_code}")
+            
+            # Try to parse JSON response
+            try:
+                response_data = response.json()
+                print(f"📄 Response Data: {json.dumps(response_data, indent=2)}")
+                return response_data
+            except json.JSONDecodeError:
+                print(f"📄 Response Text: {response.text}")
+                return {"status_code": response.status_code, "text": response.text}
+                
+        except requests.exceptions.ConnectionError:
+            error_msg = f"❌ Connection error: Could not connect to {self.base_url}"
+            print(error_msg)
+            return {"error": error_msg}
+        except requests.exceptions.Timeout:
+            error_msg = "❌ Request timeout"
+            print(error_msg)
+            return {"error": error_msg}
+        except Exception as e:
+            error_msg = f"❌ Request failed: {str(e)}"
+            print(error_msg)
+            return {"error": error_msg}
+    
+    def make_admin_request(self, endpoint: str, method: str = "GET", data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Make authenticated request to admin endpoint
+        
+        Args:
+            endpoint: Admin endpoint name (e.g., 'dashboard', 'schedule-status')
             method: HTTP method (GET, POST)
             data: Request data for POST requests
             
@@ -131,11 +240,11 @@ class SchedulerAPITester:
         # Set authorization header
         self.session.headers["Authorization"] = f"Bearer {token}"
         
-        # Build URL
-        url = f"{self.base_url}{self.api_prefix}/{endpoint}"
+        # Build URL for admin endpoints
+        url = f"{self.base_url}/admin/{endpoint}"
         
         try:
-            print(f"\n🌐 Making {method} request to: {url}")
+            print(f"\n🌐 Making {method} request to admin endpoint: {url}")
             time.sleep(1)
             if method.upper() == "GET":
                 response = self.session.get(url)
@@ -173,7 +282,7 @@ class SchedulerAPITester:
         print("\n🏥 Testing Health Check Endpoint")
         print("-" * 40)
         
-        result = self.make_request("health", method="GET")
+        result = self.make_request("health", method="GET", use_auth=True)
         
         if "error" in result:
             print(f"❌ Health check failed: {result['error']}")
@@ -193,7 +302,7 @@ class SchedulerAPITester:
         print("\n📧 Testing Send Confirmation Emails Endpoint")
         print("-" * 40)
         
-        result = self.make_request("send-confirmation-emails")
+        result = self.make_request("send-confirmation-emails", use_auth=True)
         
         if "error" in result:
             print(f"❌ Send confirmation emails failed: {result['error']}")
@@ -212,7 +321,7 @@ class SchedulerAPITester:
         print("\n🔄 Testing Sync Volunteers Endpoint")
         print("-" * 40)
         
-        result = self.make_request("sync-volunteers")
+        result = self.make_request("sync-volunteers", use_auth=True)
         
         if "error" in result:
             print(f"❌ Sync volunteers failed: {result['error']}")
@@ -234,7 +343,7 @@ class SchedulerAPITester:
         print("\n📅 Testing Send Weekly Reminders Endpoint")
         print("-" * 40)
         
-        result = self.make_request("send-weekly-reminders")
+        result = self.make_request("send-weekly-reminders", use_auth=True)
         
         if "error" in result:
             print(f"❌ Send weekly reminders failed: {result['error']}")
@@ -253,7 +362,7 @@ class SchedulerAPITester:
         print("\n🔄 Testing Rotate Schedule Endpoint")
         print("-" * 40)
         
-        result = self.make_request("rotate-schedule")
+        result = self.make_request("rotate-schedule", use_auth=True)
         
         if "error" in result:
             print(f"❌ Rotate schedule failed: {result['error']}")
@@ -265,6 +374,29 @@ class SchedulerAPITester:
             return True
         else:
             print(f"❌ Rotate schedule failed: {result}")
+            return False
+    
+    def test_admin_schedule_status(self) -> bool:
+        """Test the admin schedule status endpoint"""
+        print("\n📊 Testing Admin Schedule Status Endpoint")
+        print("-" * 40)
+        
+        result = self.make_admin_request("schedule-status", method="GET")
+        
+        if "error" in result:
+            print(f"❌ Admin schedule status failed: {result['error']}")
+            return False
+        
+        if result.get("status") == "success":
+            print("✅ Admin schedule status passed!")
+            details = result.get("details", {})
+            print(f"   Total sheets: {details.get('total_sheets', 0)}")
+            print(f"   Visible sheets: {details.get('visible_sheets', 0)}")
+            print(f"   Hidden sheets: {details.get('hidden_sheets', 0)}")
+            print(f"   Display weeks: {details.get('display_weeks_count', 0)}")
+            return True
+        else:
+            print(f"❌ Admin schedule status failed: {result}")
             return False
     
     def test_all_endpoints(self) -> Dict[str, bool]:
@@ -292,6 +424,11 @@ class SchedulerAPITester:
         
         results["rotate_schedule"] = self.test_rotate_schedule()
         
+        # Test admin endpoints if using Supabase auth
+        if self.auth_type == "supabase":
+            time.sleep(1)
+            results["admin_schedule_status"] = self.test_admin_schedule_status()
+        
         # Print summary
         print("\n📊 Test Results Summary")
         print("=" * 60)
@@ -314,21 +451,17 @@ class SchedulerAPITester:
 
 def main():
     """Main function to run tests"""
-    if len(sys.argv) < 2:
-        print("Usage: python test_api.py [endpoint_name]")
-        print("\nAvailable endpoints:")
-        print("  health                    - Health check")
-        print("  send-confirmation-emails  - Send confirmation emails")
-        print("  sync-volunteers          - Sync volunteers from Google Sheets")
-        print("  send-weekly-reminders    - Send weekly reminder emails")
-        print("  rotate-schedule          - Rotate schedule sheets")
-        print("  all                      - Test all endpoints")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Test Vietnam Hearts API endpoints")
+    parser.add_argument("endpoint", help="Endpoint to test")
+    parser.add_argument("--auth-type", choices=["gcloud", "supabase"], default="gcloud",
+                       help="Authentication type to use (default: gcloud)")
     
-    endpoint = sys.argv[1].lower()
+    args = parser.parse_args()
+    endpoint = args.endpoint.lower()
+    auth_type = args.auth_type
     
     # Create tester instance
-    tester = SchedulerAPITester()
+    tester = SchedulerAPITester(auth_type=auth_type)
     
     # Run tests based on endpoint
     if endpoint == "all":
@@ -343,9 +476,14 @@ def main():
         tester.test_send_weekly_reminders()
     elif endpoint == "rotate-schedule":
         tester.test_rotate_schedule()
+    elif endpoint == "admin-schedule-status":
+        if auth_type != "supabase":
+            print("❌ Admin endpoints require Supabase authentication. Use --auth-type=supabase")
+            sys.exit(1)
+        tester.test_admin_schedule_status()
     else:
         print(f"❌ Unknown endpoint: {endpoint}")
-        print("Available endpoints: health, send-confirmation-emails, sync-volunteers, send-weekly-reminders, rotate-schedule, all")
+        print("Available endpoints: health, send-confirmation-emails, sync-volunteers, send-weekly-reminders, rotate-schedule, admin-schedule-status, all")
         sys.exit(1)
 
 

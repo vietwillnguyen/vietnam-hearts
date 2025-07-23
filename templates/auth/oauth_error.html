@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Error - Vietnam Hearts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background: #0056b3;
+            color: white;
+            text-decoration: none;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">❌</div>
+        <h1 class="error">Authentication Error</h1>
+        <p><strong>Error:</strong> {{ error }}</p>
+        {% if error_description %}
+        <p><strong>Description:</strong> {{ error_description }}</p>
+        {% endif %}
+        <a href="/" class="btn">Return to Home</a>
+    </div>
+</body>
+</html> 

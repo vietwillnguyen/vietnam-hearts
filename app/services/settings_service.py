@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict, List
 from app.models import Setting
 from datetime import datetime, timezone
+from app.utils.sheet_utils import validate_google_sheets_url
 
 
 def get_setting(db: Session, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -126,15 +127,11 @@ def initialize_default_settings(db: Session) -> None:
             "value": "true",
             "description": "If false, weekly reminder emails will be disabled globally"
         },
-        "SCHEDULE_SIGNUP_LINK": {
-            "value": "",
-            "description": "Link for volunteers to sign up for teaching schedules"
-        },
-        "FACEBOOK_MESSENGER_LINK": {
+        "INVITE_LINK_FACEBOOK_MESSENGER": {
             "value": "",
             "description": "Link to Facebook Messenger group or chat"
         },
-        "DISCORD_INVITE_LINK": {
+        "INVITE_LINK_DISCORD": {
             "value": "",
             "description": "Discord invite link for the community"
         },
@@ -150,25 +147,17 @@ def initialize_default_settings(db: Session) -> None:
             "value": "",
             "description": "Link to Facebook page"
         },
-        "SCHEDULE_SHEET_ID": {
+        "SCHEDULE_SHEETS_LINK": {
             "value": "",
-            "description": "Google Sheets ID for the schedule spreadsheet"
+            "description": "Google Sheets URL for the schedule spreadsheet. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)"
         },
-        "NEW_SIGNUPS_SHEET_ID": {
+        "NEW_SIGNUPS_RESPONSES_LINK": {
             "value": "",
-            "description": "Google Sheets ID for new volunteer signups"
-        },
-        "GOOGLE_SCHEDULE_RANGE": {
-            "value": "B7:G11",
-            "description": "Range in the schedule sheet to read data from"
-        },
-        "GOOGLE_SIGNUPS_RANGE": {
-            "value": "A2:R",
-            "description": "Range in the signups sheet to read data from"
+            "description": "Google Sheets URL for new volunteer signups. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)"
         },
         "SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT": {
             "value": "4",
-            "description": "Number of weeks to display in the schedule sheets"
+            "description": "The default number of weeks to display in the schedule sheets"
         }
     }
     

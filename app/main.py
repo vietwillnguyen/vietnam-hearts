@@ -8,7 +8,7 @@ API documentation available at /docs and /redoc
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from .utils.logging_config import get_logger, get_log_file_path, print_log_paths
-from .database import init_database, get_db
+from .database import create_tables, get_db
 from .config import (
     API_URL,
     ENVIRONMENT,
@@ -16,10 +16,9 @@ from .config import (
 )
 from app.utils.config_helper import ConfigHelper
 import os
-from .routers.admin import admin_router  # Keep import but control usage
-from .routers.api import api_router
-from .routers.public import public_router
-from app.routers.oauth import oauth_router
+from app.routers.admin import admin_router
+from app.routers.public import public_router
+from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
 
 # Configure logging
@@ -39,7 +38,7 @@ async def lifespan(app: FastAPI):
         logger.info(f"- DATABASE_URL={DATABASE_URL}")
         logger.info(f"- LOGS_DIR={get_log_file_path()}")
         logger.info("-" * 50)
-        
+
         # Log the actual log file paths
         logger.info("📁 Log file locations:")
         print_log_paths()
@@ -66,20 +65,18 @@ async def lifespan(app: FastAPI):
         logger.info("Configuration validated successfully")
 
         # Initialize database
-        init_database()
+        create_tables()
         logger.info("✅ Database initialized")
 
         # Now we can safely access database settings
         try:
             db = next(get_db())
-            dry_run = ConfigHelper.get_dry_run(db)
-            dry_run_email = ConfigHelper.get_dry_run_email_recipient(db)
-            logger.info(f"- DRY_RUN={dry_run}")
-            if dry_run:
-                logger.info(f"- DRY_RUN_EMAIL_RECIPIENT={dry_run_email}")
+            logger.info(f"- DRY_RUN={ConfigHelper.get_dry_run(db)}")
+            logger.info(f"- DRY_RUN_EMAIL_RECIPIENT={ConfigHelper.get_dry_run_email_recipient(db)}")
         except Exception as e:
             logger.warning(f"Could not read dry run settings from database: {e}")
             logger.info("- DRY_RUN=Unknown (database not accessible)")
+            logger.info("- DRY_RUN_EMAIL_RECIPIENT=Unknown (database not accessible)")
 
         # Start API server
         logger.info("✅ API server started successfully")
@@ -99,20 +96,27 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Vietnam Hearts Scheduler API",
     description="RESTful API for volunteer management and automated scheduling",
-    version="1.1.3",
+    version="2.0.0",
     docs_url=None if os.getenv("ENVIRONMENT") == "production" else "/docs",
     redoc_url=None if os.getenv("ENVIRONMENT") == "production" else "/redoc",
     lifespan=lifespan,
 )
 
 # Routers
-app.include_router(oauth_router)
+app.include_router(auth_router)
+logger.info("Authentication endpoints enabled")
 
 # Conditionally include admin router
 if ENVIRONMENT == "development":
     app.include_router(admin_router)
     logger.info("Admin endpoints enabled")
 
-app.include_router(api_router)
 app.include_router(public_router)
 app.include_router(settings_router)
+
+# Root route redirects to home page
+@app.get("/")
+async def root():
+    """Redirect root to home page"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/public/", status_code=302)

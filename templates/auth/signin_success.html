@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign In Successful - Vietnam Hearts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+        }
+        .success {
+            color: #28a745;
+        }
+        .loading {
+            color: #007bff;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✅</div>
+        <h1 class="success">Sign In Successful!</h1>
+        <p>Welcome to Vietnam Hearts, <strong>{{ user_name or user_email }}</strong>!</p>
+        
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Setting up your session...</p>
+        </div>
+    </div>
+    
+    <script>
+        // Store tokens in localStorage
+        localStorage.setItem('access_token', '{{ access_token }}');
+        localStorage.setItem('refresh_token', '{{ refresh_token }}');
+        localStorage.setItem('user_email', '{{ user_email }}');
+        localStorage.setItem('user_name', '{{ user_name or "" }}');
+        
+        // Clear any previous error messages
+        localStorage.removeItem('auth_error');
+        
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+            window.location.href = '/admin/dashboard';
+        }, 2000);
+    </script>
+</body>
+</html> 
