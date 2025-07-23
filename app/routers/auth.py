@@ -203,7 +203,7 @@ async def list_users(current_admin: Dict[str, Any] = Depends(get_current_admin_u
     """
     try:
         # This is a simplified implementation
-        # In production, you might want to implement pagination and filtering
+        # TODO: In production, you might want to implement pagination and filtering
         from supabase import create_client
         from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
         

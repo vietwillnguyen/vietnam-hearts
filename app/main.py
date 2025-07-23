@@ -106,11 +106,7 @@ app = FastAPI(
 app.include_router(auth_router)
 logger.info("Authentication endpoints enabled")
 
-# Conditionally include admin router
-if ENVIRONMENT == "development":
-    app.include_router(admin_router)
-    logger.info("Admin endpoints enabled")
-
+app.include_router(admin_router)
 app.include_router(public_router)
 app.include_router(settings_router)
 
