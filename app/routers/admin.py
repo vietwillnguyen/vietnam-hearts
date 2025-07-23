@@ -12,13 +12,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
-import os
+from typing import List, Dict, Any
 import asyncio
 import functools
-import traceback
-from contextlib import contextmanager
-from jinja2 import Template
 
 from app.database import get_db, get_db_session
 from app.models import (
@@ -32,8 +28,7 @@ from app.services.classes_config import CLASS_CONFIG
 from app.utils.logging_config import get_api_logger
 from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
-from app.utils.retry_utils import log_ssl_error, safe_api_call
-from app.utils.sheet_utils import validate_google_sheets_url
+from app.utils.retry_utils import log_ssl_error
 from app.services.supabase_auth import get_current_admin_user
 
 logger = get_api_logger()
@@ -643,8 +638,6 @@ def send_confirmation_email_to_volunteer(
         success = email_service.send_confirmation_email(db, volunteer)
 
         if success:
-            # REMOVED: Update Google Sheets to reflect the confirmation was sent
-            # Database is now the source of truth; no write-back to Sheets.
             return {
                 "status": "success",
                 "message": f"Confirmation email sent successfully to {volunteer.email}",
@@ -1408,7 +1401,6 @@ async def admin_health_check():
         }
 
 
-# Constants for sheet data structure (moved from api.py)
 HEADER_ROW = 0
 TEACHER_ROW = 1
 ASSISTANT_ROW = 2

@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_NAME="vietnam-hearts-automations"
 IMAGE_NAME="vietnam-hearts-automation"
-VERSION="1.1.2"
+VERSION="v2.0.0"
 GCR_PROJECT_ID="refined-vector-457419-n6"  # Change this to your GCP project ID
 GCR_REGION="europe-west1"  # Change this to your preferred region
 GCR_HOSTNAME="gcr.io"
@@ -300,7 +300,7 @@ run_container() {
     run_cmd="$run_cmd -v $(pwd)/secrets:/app/secrets"
     
     # Add the image
-    run_cmd="$run_cmd ${IMAGE_NAME}:latest"
+    run_cmd="$run_cmd ${IMAGE_NAME}:${VERSION}"
     
     print_status "Running container with command:"
     echo "  $run_cmd"

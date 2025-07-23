@@ -294,10 +294,12 @@ def get_health(db: Session = Depends(get_db)):
             db_status = "unhealthy"
             logger.error(f"Database health check failed: {str(e)}")
 
+        from app.main import app
+        version = app.version
         return {
             "status": "healthy",
+            "version": version,
             "timestamp": datetime.now().isoformat(),
-            "version": "1.1.4",
             "environment": ENVIRONMENT,
             "dry_run": ConfigHelper.get_dry_run(db),
             "services": {
