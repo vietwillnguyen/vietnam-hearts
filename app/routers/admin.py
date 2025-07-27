@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import asyncio
 import functools
+from jinja2 import Template
 
 from app.database import get_db, get_db_session
 from app.models import (
