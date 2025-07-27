@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Vietnam Hearts Scheduler API",
     description="RESTful API for volunteer management and automated scheduling",
-    version="2.0.0",
+    version="2.0.1",
     docs_url=None if os.getenv("ENVIRONMENT") == "production" else "/docs",
     redoc_url=None if os.getenv("ENVIRONMENT") == "production" else "/redoc",
     lifespan=lifespan,

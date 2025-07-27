@@ -1,5 +1,9 @@
 CHANGELOG:
 
+## Version 2.0.1
+
+- Fix: template import error, caused emails to not be able to to be sent.
+
 ## Version 2.0.0
 
 - Add: Authentication: only those with supabase service role key OR admins can make calls to the API. 
