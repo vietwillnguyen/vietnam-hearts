@@ -1,5 +1,9 @@
 CHANGELOG:
 
+## Version 2.0.2
+
+- Fix: rotate schedule error.
+
 ## Version 2.0.1
 
 - Fix: template import error, caused emails to not be able to to be sent.

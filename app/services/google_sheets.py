@@ -446,9 +446,9 @@ class GoogleSheetsService:
         """
         try:
             sheet_title = f"Schedule {sheet_date.strftime('%m/%d')}"
-            sheet_id = ConfigHelper.get_schedule_sheet_id(db)
-            sheet_metadata = self.sheet.get(spreadsheetId=sheet_id).execute()
-            sheet_id = next(
+            spreadsheet_id = ConfigHelper.get_schedule_sheet_id(db)
+            sheet_metadata = self.sheet.get(spreadsheetId=spreadsheet_id).execute()
+            individual_sheet_id = next(
                 (
                     s["properties"]["sheetId"]
                     for s in sheet_metadata["sheets"]
@@ -456,20 +456,20 @@ class GoogleSheetsService:
                 ),
                 None,
             )
-            if not sheet_id:
+            if not individual_sheet_id:
                 raise ValueError(f"Sheet {sheet_title} not found")
 
             # Update blue header (assuming it's cell C1)
             blue_header_range = f"{sheet_title}!C1"
             self.sheet.values().update(
-                spreadsheetId=sheet_id,
+                spreadsheetId=spreadsheet_id,
                 range=blue_header_range,
                 valueInputOption="USER_ENTERED",
                 body={"values": [[sheet_title]]},
             ).execute()
 
             self.sheet.values().update(
-                spreadsheetId=sheet_id,
+                spreadsheetId=spreadsheet_id,
                 range=f"{sheet_title}!B1",
                 valueInputOption="USER_ENTERED",
                 body={
@@ -489,12 +489,12 @@ class GoogleSheetsService:
                     f"{sheet_title}!{start_cell}:G{start_cell[1:]}"  # e.g., B7:G7
                 )
                 # Fetch the current values to preserve the first column
-                values = self.get_range_from_sheet(db, sheet_id, header_range)
+                values = self.get_range_from_sheet(db, spreadsheet_id, header_range)
                 if values and len(values) > 0:
                     header_row = values[0]
                     new_header = [header_row[0]] + dates
                     self.sheet.values().update(
-                        spreadsheetId=sheet_id,
+                        spreadsheetId=spreadsheet_id,
                         range=header_range,
                         valueInputOption="USER_ENTERED",
                         body={"values": [new_header]},

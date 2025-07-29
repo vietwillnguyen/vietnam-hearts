@@ -64,16 +64,9 @@ class EmailService:
             # Generate and save token if it doesn't exist
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
 
-        # Try to get the base unsubscribe link from database settings
-        base_url = None
-        if hasattr(config, 'get_email_preferences_link'):
-            base_url = config.get_email_preferences_link(db)
-        if not base_url:
-            # Fallback to API_URL if not set in DB
-            from app.config import API_URL
-            base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
-        else:
-            base_url = base_url.rstrip("/")
+        # Use API_URL for the unsubscribe link
+        from app.config import API_URL
+        base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
         logger.info(
             f"Unsubscribe link: {base_url}?token={volunteer.email_unsubscribe_token}"
         )
@@ -375,8 +368,8 @@ class EmailService:
             email_type: Type of email being sent (e.g., "custom", "reminder", "newsletter")
         """
         try:
-            # DRY_RUN logic
-            if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
+            # DRY_RUN logic - only check if db is provided
+            if db is not None and config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database")
                 email_comm = EmailCommunicationModel(
                     volunteer_id=volunteer_id,

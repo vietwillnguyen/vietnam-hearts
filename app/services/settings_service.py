@@ -24,6 +24,8 @@ def get_setting(db: Session, key: str, default: Optional[str] = None) -> Optiona
     Returns:
         The setting value or default if not found
     """
+    if db is None:
+        return default
     setting = db.query(Setting).filter(Setting.key == key).first()
     return setting.value if setting else default
 
