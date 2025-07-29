@@ -144,7 +144,7 @@
             <strong>Current Status:</strong> {{ subscribed_status }}
         </div>
 
-        <form method="POST" action="/public/unsubscribe?token={{ token }}" class="preferences-form">
+        <form method="POST" action="/unsubscribe?token={{ token }}" class="preferences-form">
             <div class="preference-option">
                 <input type="radio" id="weekly_reminders" name="unsubscribe_type" value="weekly_reminders" 
                        {% if unsubscribe_type == "weekly_reminders" %}checked{% endif %}>

@@ -1569,7 +1569,7 @@ async def send_weekly_reminder_emails(
 
             if ConfigHelper.get_dry_run(db):
                 logger.info(
-                    "DRY_RUN is enabled, sending emails to dry run email recipient"
+                    "DRY_RUN is enabled, sending emails to dry run email recipient only"
                 )
                 dry_run_volunteer = (
                     db.query(VolunteerModel)
@@ -1638,6 +1638,7 @@ async def send_weekly_reminder_emails(
                     db.commit()
 
                 first_name = db_volunteer.name.split()[0] if db_volunteer.name else "Volunteer"
+                from jinja2 import Template
                 html_body = Template(email_service.reminder_template).render(
                     first_name=first_name,
                     class_tables=[ct['table_html'] for ct in class_tables],

@@ -1,12 +1,12 @@
 from app.models import EmailCommunication as EmailCommunicationModel
 
 class TestUpdateEmailPreferences:
-    """Test the POST /public/unsubscribe endpoint"""
+    """Test the POST /unsubscribe endpoint"""
     
     def test_unsubscribe_weekly_reminders(self, client, test_db, mock_volunteer):
         """Test unsubscribing from weekly reminders only"""
         response = client.post(
-            f"/public/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
+            f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
             data={"unsubscribe_type": "weekly_reminders"}
         )
         
@@ -31,7 +31,7 @@ class TestUpdateEmailPreferences:
     def test_unsubscribe_all_emails(self, client, test_db, mock_volunteer):
         """Test unsubscribing from all emails"""
         response = client.post(
-            f"/public/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
+            f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
             data={"unsubscribe_type": "all_emails"}
         )
         
@@ -56,7 +56,7 @@ class TestUpdateEmailPreferences:
     def test_resubscribe_all_emails(self, client, test_db, mock_inactive_volunteer):
         """Test resubscribing to all emails"""
         response = client.post(
-            f"/public/unsubscribe?token={mock_inactive_volunteer.email_unsubscribe_token}",
+            f"/unsubscribe?token={mock_inactive_volunteer.email_unsubscribe_token}",
             data={"unsubscribe_type": "resubscribe"}
         )
         
@@ -81,7 +81,7 @@ class TestUpdateEmailPreferences:
     def test_invalid_unsubscribe_type(self, client, mock_volunteer):
         """Test handling of invalid unsubscribe type"""
         response = client.post(
-            f"/public/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
+            f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
             data={"unsubscribe_type": "invalid_type"}
         )
         
@@ -91,7 +91,7 @@ class TestUpdateEmailPreferences:
     def test_post_with_invalid_token(self, client):
         """Test POST request with invalid token"""
         response = client.post(
-            "/public/unsubscribe?token=invalid_token",
+            "/unsubscribe?token=invalid_token",
             data={"unsubscribe_type": "all_emails"}
         )
         
@@ -101,7 +101,7 @@ class TestUpdateEmailPreferences:
     def test_post_without_token(self, client):
         """Test POST request without token"""
         response = client.post(
-            "/public/unsubscribe",
+            "/unsubscribe",
             data={"unsubscribe_type": "all_emails"}
         )
         

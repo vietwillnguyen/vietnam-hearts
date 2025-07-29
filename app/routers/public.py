@@ -41,9 +41,7 @@ async def home_page(request: Request):
 
 
 # Unsubscribe endpoints (public)
-@public_router.get(
-    "/unsubscribe", response_class=HTMLResponse
-)
+@public_router.get("/unsubscribe", response_class=HTMLResponse)
 def unsubscribe_volunteer_page(
     request: Request, token: str, db: Session = Depends(get_db)
 ):
@@ -107,9 +105,7 @@ def unsubscribe_volunteer_page(
         )
 
 
-@public_router.post(
-    "/unsubscribe", response_class=HTMLResponse
-)
+@public_router.post("/unsubscribe", response_class=HTMLResponse)
 def update_email_preferences(
     request: Request,
     token: str,

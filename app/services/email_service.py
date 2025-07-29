@@ -66,7 +66,7 @@ class EmailService:
 
         # Use API_URL for the unsubscribe link
         from app.config import API_URL
-        base_url = f"{API_URL.rstrip('/')}/public/unsubscribe"
+        base_url = f"{API_URL.rstrip('/')}/unsubscribe"
         logger.info(
             f"Unsubscribe link: {base_url}?token={volunteer.email_unsubscribe_token}"
         )
