@@ -37,7 +37,11 @@ async def home_page(request: Request):
     
     Returns the main landing page with login functionality.
     """
-    return templates.TemplateResponse("home.html", {"request": request})
+    from app.config import APPLICATION_VERSION
+    return templates.TemplateResponse("home.html", {
+        "request": request,
+        "version": APPLICATION_VERSION
+    })
 
 
 # Unsubscribe endpoints (public)
@@ -290,11 +294,10 @@ def get_health(db: Session = Depends(get_db)):
             db_status = "unhealthy"
             logger.error(f"Database health check failed: {str(e)}")
 
-        from app.main import app
-        version = app.version
+        from app.config import APPLICATION_VERSION
         return {
             "status": "healthy",
-            "version": version,
+            "version": APPLICATION_VERSION,
             "timestamp": datetime.now().isoformat(),
             "environment": ENVIRONMENT,
             "dry_run": ConfigHelper.get_dry_run(db),

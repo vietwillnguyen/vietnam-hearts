@@ -270,6 +270,8 @@ async def admin_dashboard(
         from app.services.settings_service import get_all_settings
         settings = get_all_settings(db)
 
+        from app.config import APPLICATION_VERSION
+        
         return templates.TemplateResponse(
             request,
             "admin/dashboard.html",
@@ -279,6 +281,7 @@ async def admin_dashboard(
                 "total_emails": len(email_data),
                 "emails": email_data,
                 "settings": settings,
+                "version": APPLICATION_VERSION,
             },
         )
 

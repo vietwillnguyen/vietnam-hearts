@@ -1,5 +1,10 @@
 CHANGELOG:
 
+## Version 2.0.3
+
+- Fix: endpoint for unsubscribe. no more /public prefix.
+- Add: version number to home and dashboard page
+
 ## Version 2.0.2
 
 - Fix: rotate schedule error.

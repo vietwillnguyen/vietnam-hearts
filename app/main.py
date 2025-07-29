@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from .utils.logging_config import get_logger, get_log_file_path, print_log_paths
 from .database import create_tables, get_db
 from .config import (
+    APPLICATION_VERSION,
     API_URL,
     ENVIRONMENT,
     DATABASE_URL,
@@ -96,7 +97,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Vietnam Hearts Scheduler API",
     description="RESTful API for volunteer management and automated scheduling",
-    version="2.0.1",
+    version=APPLICATION_VERSION,
     docs_url=None if os.getenv("ENVIRONMENT") == "production" else "/docs",
     redoc_url=None if os.getenv("ENVIRONMENT") == "production" else "/redoc",
     lifespan=lifespan,
@@ -104,7 +105,7 @@ app = FastAPI(
 
 # Routers
 app.include_router(auth_router)
-logger.info("Authentication endpoints enabled")
+logger.info("Authentication endpoints enabled.")
 
 app.include_router(admin_router)
 app.include_router(public_router)
@@ -115,4 +116,4 @@ app.include_router(settings_router)
 async def root():
     """Redirect root to home page"""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/public/", status_code=302)
+    return RedirectResponse(url="/", status_code=302)
