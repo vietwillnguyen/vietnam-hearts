@@ -453,7 +453,7 @@ def main():
     """Main function to run tests"""
     parser = argparse.ArgumentParser(description="Test Vietnam Hearts API endpoints")
     parser.add_argument("endpoint", help="Endpoint to test")
-    parser.add_argument("--auth-type", choices=["gcloud", "supabase"], default="gcloud",
+    parser.add_argument("--auth-type", choices=["gcloud", "supabase"], default="supabase",
                        help="Authentication type to use (default: gcloud)")
     
     args = parser.parse_args()
