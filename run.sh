@@ -146,7 +146,7 @@ validate_env_file() {
             
             required_vars=(
                 "GMAIL_APP_PASSWORD"
-                "SCHEDULE_SHEETS_LINK"
+                "SCHEDULE_SIGNUP_LINK"
                 "EMAIL_PREFERENCES_LINK"
                 "INVITE_LINK_FACEBOOK_MESSENGER"
                 "INVITE_LINK_DISCORD"

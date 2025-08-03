@@ -461,7 +461,7 @@
                                    id="{{ setting.key }}" 
                                    name="{{ setting.key }}" 
                                    value="{{ setting.value }}"
-                                   placeholder="{% if setting.key == 'SCHEDULE_SHEETS_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SHEETS_LINK/edit{% elif setting.key == 'NEW_SIGNUPS_RESPONSES_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit{% else %}Enter value for {{ setting.key }}{% endif %}">
+                                   placeholder="{% if setting.key == 'SCHEDULE_SIGNUP_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SIGNUP_LINK/edit{% elif setting.key == 'NEW_SIGNUPS_RESPONSES_LINK' %}https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit{% else %}Enter value for {{ setting.key }}{% endif %}">
                             {% endif %}
                             
                             {% if setting.description %}
@@ -1347,7 +1347,7 @@
 
         // Add validation to Google Sheets URL fields
         document.addEventListener('DOMContentLoaded', function() {
-            const sheetFields = ['SCHEDULE_SHEETS_LINK', 'NEW_SIGNUPS_RESPONSES_LINK'];
+            const sheetFields = ['SCHEDULE_SIGNUP_LINK', 'NEW_SIGNUPS_RESPONSES_LINK'];
             
             sheetFields.forEach(fieldId => {
                 const field = document.getElementById(fieldId);
@@ -1383,13 +1383,12 @@
                 'DRY_RUN': 'false',
                 'DRY_RUN_EMAIL_RECIPIENT': '',
                 'WEEKLY_REMINDERS_ENABLED': 'true',
-                'SCHEDULE_SHEETS_LINK': '',
                 'INVITE_LINK_FACEBOOK_MESSENGER': '',
                 'INVITE_LINK_DISCORD': '',
                 'ONBOARDING_GUIDE_LINK': '',
                 'INSTAGRAM_LINK': '',
                 'FACEBOOK_PAGE_LINK': '',
-                'SCHEDULE_SHEETS_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SHEETS_LINK/edit',
+                'SCHEDULE_SIGNUP_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SCHEDULE_SIGNUP_LINK/edit',
                 'NEW_SIGNUPS_RESPONSES_LINK': 'https://docs.google.com/spreadsheets/d/YOUR_SIGNUPS_SHEET_ID/edit',
                 'SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT': '4'
             };

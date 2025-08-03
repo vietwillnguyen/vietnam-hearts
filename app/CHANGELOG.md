@@ -1,5 +1,10 @@
 CHANGELOG:
 
+## Version 2.0.4
+
+- Fix: reminder link in weekly reminder emails 
+
+
 ## Version 2.0.3
 
 - Fix: endpoint for unsubscribe. no more /public prefix.

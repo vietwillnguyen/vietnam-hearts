@@ -15,7 +15,7 @@ In the admin dashboard settings, you can now configure Google Sheets using eithe
 
 ### Required Settings
 
-1. **SCHEDULE_SHEETS_LINK**: The Google Sheets URL for the schedule spreadsheet
+1. **SCHEDULE_SIGNUP_LINK**: The Google Sheets URL for the schedule spreadsheet
 2. **NEW_SIGNUPS_RESPONSES_LINK**: The Google Sheets URL for new volunteer signups
 
 ### How to Find Your Sheet ID

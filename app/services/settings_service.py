@@ -149,7 +149,7 @@ def initialize_default_settings(db: Session) -> None:
             "value": "",
             "description": "Link to Facebook page"
         },
-        "SCHEDULE_SHEETS_LINK": {
+        "SCHEDULE_SIGNUP_LINK": {
             "value": "",
             "description": "Google Sheets URL for the schedule spreadsheet. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)"
         },

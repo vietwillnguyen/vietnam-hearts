@@ -43,7 +43,7 @@ class ConfigHelper:
         """Get the schedule signup link from database settings"""
         if db is None:
             return default
-        return get_setting(db, "SCHEDULE_SHEETS_LINK", default) or default
+        return get_setting(db, "SCHEDULE_SIGNUP_LINK", default) or default
     
     @staticmethod
     def get_invite_link_facebook_messenger(db: Session, default: str = "") -> str:
@@ -85,7 +85,7 @@ class ConfigHelper:
         """Get the schedule sheet ID from database settings"""
         if db is None:
             return default
-        value = get_setting(db, "SCHEDULE_SHEETS_LINK", default) or default
+        value = get_setting(db, "SCHEDULE_SIGNUP_LINK", default) or default
         # Extract sheet ID if it's a full URL
         sheet_id = extract_sheet_id_from_url(value)
         return sheet_id if sheet_id else value

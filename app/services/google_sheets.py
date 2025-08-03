@@ -81,7 +81,7 @@ class GoogleSheetsService:
         if db:
             # Use database settings if available
             if not ConfigHelper.get_schedule_sheet_id(db):
-                errors.append("SCHEDULE_SHEETS_LINK setting is required")
+                errors.append("SCHEDULE_SIGNUP_LINK setting is required")
             
             if not ConfigHelper.get_new_signups_sheet_id(db):
                 errors.append("NEW_SIGNUPS_RESPONSES_LINK setting is required")

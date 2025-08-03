@@ -970,7 +970,7 @@ def validate_configuration(db: Session = Depends(get_db)):
         # Check required Google Sheets settings
         schedule_sheet_id = ConfigHelper.get_schedule_sheet_id(db)
         if not schedule_sheet_id:
-            missing_settings.append("SCHEDULE_SHEETS_LINK")
+            missing_settings.append("SCHEDULE_SIGNUP_LINK")
         
         new_signups_sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
         if not new_signups_sheet_id:
