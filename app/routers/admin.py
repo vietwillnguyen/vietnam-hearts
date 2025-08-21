@@ -434,14 +434,28 @@ def get_signup_form_submissions(
             )
             logger.info(f"Found {len(existing_emails)} existing emails in database")
             
-            # Filter new submissions - only process those with STATUS = 'ACCEPTED'
+            # Filter new submissions - only process those with STATUS = 'ACCEPTED' and valid email addresses
             new_submissions = [
                 sub for sub in submissions 
-                if sub["email_address"] not in existing_emails and sub.get("applicant_status", "").upper() == "ACCEPTED"
+                if (sub["email_address"] not in existing_emails and 
+                    sub.get("applicant_status", "").upper() == "ACCEPTED" and
+                    sub.get("email_address", "").strip())  # Filter out empty/whitespace emails
             ]
+            
+            # Calculate filtered counts for valid submissions (excluding empty emails)
+            valid_accepted_submissions = len([sub for sub in submissions 
+                if (sub.get("applicant_status", "").upper() == "ACCEPTED" and 
+                    sub.get("email_address", "").strip())])
+            valid_non_accepted_submissions = len([sub for sub in submissions 
+                if (sub.get("applicant_status", "").upper() != "ACCEPTED" and 
+                    sub.get("email_address", "").strip())])
+            
+            # Check if there are any empty emails that need filtering
+            has_empty_emails = any(not sub.get("email_address", "").strip() for sub in submissions)
             
             # Log statistics about status filtering
             logger.info(f"Status filtering: {total_submissions} total submissions, {accepted_submissions} accepted, {non_accepted_submissions} non-accepted")
+            logger.info(f"After email validation: {valid_accepted_submissions} valid accepted, {valid_non_accepted_submissions} valid non-accepted")
             
             # Log details about non-accepted submissions for transparency
             if non_accepted_submissions > 0:
@@ -517,17 +531,31 @@ def get_signup_form_submissions(
                 }
             }
         else:
-            return {
-                "status": "success",
-                "message": f"Retrieved {len(submissions)} form submissions ({accepted_submissions} accepted, {non_accepted_submissions} non-accepted)",
-                "data": submissions,
-                "details": {
+            # Use filtered counts for the message when processing new submissions and there are empty emails
+            if process_new and has_empty_emails:
+                message = f"Retrieved {valid_accepted_submissions} form submissions ({valid_accepted_submissions} accepted, {valid_non_accepted_submissions} non-accepted)"
+                details = {
+                    "submissions_retrieved": valid_accepted_submissions,
+                    "accepted_submissions": valid_accepted_submissions,
+                    "non_accepted_submissions": valid_non_accepted_submissions,
+                    "new_submissions_found": len(new_submissions),
+                    "volunteers_created": len(new_volunteers)
+                }
+            else:
+                message = f"Retrieved {len(submissions)} form submissions ({accepted_submissions} accepted, {non_accepted_submissions} non-accepted)"
+                details = {
                     "submissions_retrieved": len(submissions),
                     "accepted_submissions": accepted_submissions,
                     "non_accepted_submissions": non_accepted_submissions,
                     "new_submissions_found": len(new_submissions),
                     "volunteers_created": len(new_volunteers)
                 }
+            
+            return {
+                "status": "success",
+                "message": message,
+                "data": submissions,
+                "details": details
             }
             
     except ssl.SSLEOFError as e:
@@ -1401,12 +1429,6 @@ async def admin_health_check():
         }
 
 
-HEADER_ROW = 0
-TEACHER_ROW = 1
-ASSISTANT_ROW = 2
-MIN_REQUIRED_ROWS = 3
-
-
 def build_class_table(class_name, config, sheet_service, db):
     """Build HTML table for a specific class, with Day/Teacher/Assistant(s)/Status columns"""
     try:
@@ -1420,6 +1442,7 @@ def build_class_table(class_name, config, sheet_service, db):
                 "has_data": False,
             }
         class_data = sheet_service.get_schedule_range(db, sheet_range)
+        MIN_REQUIRED_ROWS = 3
         if not class_data or len(class_data) < MIN_REQUIRED_ROWS:
             return {
                 "class_name": class_name,
@@ -1429,8 +1452,14 @@ def build_class_table(class_name, config, sheet_service, db):
 
         # Transpose data: columns are days, rows are header/teacher/assistant
         # class_data: [header_row, teacher_row, assistant_row]
+        HEADER_ROW = 0
+        TEACHER_ROW = 1
+        HEAD_ASSISTANT_ROW = 2
+        ASSISTANT_ROW = 3
+        
         days = class_data[HEADER_ROW][1:]  # skip first col (label)
         teachers = class_data[TEACHER_ROW][1:]
+        head_assistants = class_data[HEAD_ASSISTANT_ROW][1:]
         assistants = class_data[ASSISTANT_ROW][1:]
 
         # Table header
@@ -1439,12 +1468,14 @@ def build_class_table(class_name, config, sheet_service, db):
         table_html += "<thead><tr style='background-color: #f0f0f0;'>"
         table_html += "<th style='padding: 8px; text-align: center;'>Day</th>"
         table_html += "<th style='padding: 8px; text-align: center;'>Teacher</th>"
+        table_html += "<th style='padding: 8px; text-align: center;'>Head Assistant</th>"
         table_html += "<th style='padding: 8px; text-align: center;'>Assistant(s)</th>"
         table_html += "<th style='padding: 8px; text-align: center;'>Status</th>"
         table_html += "</tr></thead><tbody>"
 
         for i, day in enumerate(days):
             teacher = teachers[i] if i < len(teachers) else ""
+            head_assistant = head_assistants[i] if i < len(head_assistants) else ""
             assistant = assistants[i] if i < len(assistants) else ""
             # Status logic
             status = ""

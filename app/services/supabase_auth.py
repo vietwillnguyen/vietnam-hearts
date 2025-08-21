@@ -5,11 +5,9 @@ Handles Google OAuth sign-in, user management, and session handling
 for the Vietnam Hearts application.
 """
 
-import os
 from typing import Optional, Dict, Any
 from supabase import create_client, Client
-from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer
+from fastapi import HTTPException, Depends, Header
 from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, API_URL
 from app.utils.logging_config import get_logger
 
@@ -17,16 +15,10 @@ logger = get_logger("supabase_auth")
 
 # Initialize Supabase client
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-    logger.warning("Supabase URL or ANON_KEY not configured. Authentication will not work.")
+    logger.error("Supabase URL or ANON_KEY not configured. Authentication service cannot start.")
     supabase: Client = None
 else:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-
-# Security scheme for JWT tokens
-security = HTTPBearer()
-
-# Custom security scheme for service role keys
-from fastapi import Header
 
 
 class SupabaseAuthService:
@@ -89,8 +81,11 @@ class SupabaseAuthService:
             
             # Check if Supabase is properly configured
             if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-                self.logger.warning("Supabase not configured, using mock response")
-                return self._get_mock_response(code)
+                self.logger.error("Supabase not configured. Authentication service unavailable.")
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Authentication service not properly configured"
+                )
             
             # Use the correct Supabase API for exchanging the code
             try:
@@ -105,7 +100,10 @@ class SupabaseAuthService:
                 # Handle different response types
                 if isinstance(response, str):
                     self.logger.error(f"Received string response instead of session object: {response}")
-                    return self._get_mock_response(code)
+                    raise HTTPException(
+                        status_code=500, 
+                        detail="Invalid response from authentication service"
+                    )
                 
                 # Handle AuthResponse object (which has both user and session attributes)
                 if hasattr(response, 'user') and hasattr(response, 'session'):
@@ -149,45 +147,33 @@ class SupabaseAuthService:
                 else:
                     self.logger.error(f"Unexpected response format from Supabase: {response}")
                     self.logger.error(f"Response attributes: {dir(response)}")
-                    return self._get_mock_response(code)
+                    raise HTTPException(
+                        status_code=500, 
+                        detail="Unexpected response format from authentication service"
+                    )
                     
             except AttributeError as attr_error:
                 self.logger.error(f"Attribute error in Supabase response: {str(attr_error)}")
                 self.logger.error(f"This might be due to the response being a string or having unexpected structure")
-                self.logger.info("Falling back to mock response")
-                return self._get_mock_response(code)
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Invalid response structure from authentication service"
+                )
                 
             except Exception as supabase_error:
                 self.logger.error(f"Supabase authentication error: {str(supabase_error)}")
                 self.logger.error(f"Error type: {type(supabase_error)}")
-                self.logger.info("Falling back to mock response")
-                return self._get_mock_response(code)
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Authentication service error: {str(supabase_error)}"
+                )
             
+        except HTTPException:
+            # Re-raise HTTP exceptions
+            raise
         except Exception as e:
             self.logger.error(f"Failed to handle auth callback: {str(e)}")
             raise HTTPException(status_code=400, detail=f"Failed to complete sign-in: {str(e)}")
-    
-    def _get_mock_response(self, code: str) -> Dict[str, Any]:
-        """Get mock authentication response for testing"""
-        mock_user = {
-            "id": "mock-user-id",
-            "email": "test@example.com",
-            "name": "Test User",
-            "avatar_url": None,
-            "email_verified": True
-        }
-        
-        mock_session = {
-            "access_token": "mock-access-token-" + code[:8],
-            "refresh_token": "mock-refresh-token-" + code[:8],
-            "expires_at": "2024-12-31T23:59:59Z"
-        }
-        
-        return {
-            "user": mock_user,
-            "session": mock_session,
-            "message": "Successfully signed in with Google (mock response)"
-        }
     
     async def get_current_user_from_apikey(self, apikey: str) -> Dict[str, Any]:
         """
@@ -223,14 +209,13 @@ class SupabaseAuthService:
             Dict containing user information
         """
         try:
-            # For testing, check if it's a mock token
-            if token.startswith("mock-access-token-"):
-                return self._get_mock_user()
-            
             # Check if Supabase is properly configured
             if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-                self.logger.warning("Supabase not configured, using mock user")
-                return self._get_mock_user()
+                self.logger.error("Supabase not configured. Authentication service unavailable.")
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Authentication service not properly configured"
+                )
             
             # Real Supabase authentication (for production)
             try:
@@ -254,30 +239,23 @@ class SupabaseAuthService:
                     "email": user.email,
                     "name": user.user_metadata.get("full_name", "") if hasattr(user, 'user_metadata') and user.user_metadata else None,
                     "avatar_url": user.user_metadata.get("avatar_url") if hasattr(user, 'user_metadata') and user.user_metadata else None,
-                    "email_verified": user.email_confirmed_at is not None if hasattr(user, 'email_confirmed_at') else False,
+                    "email_verified": user.email_confirmed_at is not None if hasattr(user, 'email_confirmed_at') and user.email_confirmed_at else False,
                     "created_at": user.created_at.isoformat() if hasattr(user, 'created_at') and user.created_at else None,
                     "last_sign_in": user.last_sign_in_at.isoformat() if hasattr(user, 'last_sign_in_at') and user.last_sign_in_at else None
                 }
             except Exception as supabase_error:
                 self.logger.error(f"Supabase get_user error: {str(supabase_error)}")
-                self.logger.info("Falling back to mock user")
-                return self._get_mock_user()
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Authentication service error: {str(supabase_error)}"
+                )
             
+        except HTTPException:
+            # Re-raise HTTP exceptions
+            raise
         except Exception as e:
             self.logger.error(f"Failed to get current user from token: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid authentication token")
-    
-    def _get_mock_user(self) -> Dict[str, Any]:
-        """Get mock user for testing"""
-        return {
-            "id": "mock-user-id",
-            "email": "test@example.com",
-            "name": "Test User",
-            "avatar_url": None,
-            "email_verified": True,
-            "created_at": "2024-01-01T00:00:00Z",
-            "last_sign_in": "2024-01-01T00:00:00Z"
-        }
     
     def _is_service_role_key(self, token: str) -> bool:
         """Check if the token is a valid service role key"""
@@ -310,18 +288,20 @@ class SupabaseAuthService:
             self.logger.error(f"Failed to validate service role key: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid service role key")
     
-    async def sign_out(self, access_token: str) -> Dict[str, str]:
+    async def sign_out(self, access_token: Optional[str] = None) -> Dict[str, str]:
         """
         Sign out the current user
         
         Args:
-            access_token: User's access token
+            access_token: Optional access token to sign out specific session
             
         Returns:
             Dict containing success message
         """
         try:
             # Sign out the user
+            # If access_token is provided, we can use it for more specific sign out
+            # For now, we'll use the general sign_out method
             self.supabase.auth.sign_out()
             
             self.logger.info("User signed out successfully")
@@ -424,10 +404,6 @@ class SupabaseAuthService:
             
             # Fallback to environment variable
             from app.config import ADMIN_EMAILS
-            
-            # For testing, allow mock user to be admin
-            if user_email == "test@example.com":
-                return True
             
             self.logger.info(f"Checking {user_email} against ADMIN_EMAILS: {ADMIN_EMAILS}")
             return user_email in ADMIN_EMAILS

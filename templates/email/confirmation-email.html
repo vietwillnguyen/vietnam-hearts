@@ -1,62 +1,105 @@
-<div style="font-family: Arial, sans-serif; color: #000000;">
+<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #222; background: #fafbfc; padding: 32px 0;">
+  <!-- Banner image at the top -->
+  <div style="text-align: center; margin-bottom: 24px;">
+    <img src="cid:banner_image" alt="Vietnam Hearts Banner" style="width: 100%; max-width: 540px; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />
+  </div>
+  
+  <div style="max-width: 540px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 36px 32px 28px 32px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="font-size: 2em; margin: 0; color: #e63946; letter-spacing: 1px;">Vietnam Hearts</h1>
+      <div style="font-size: 1.2em; color: #555;">❤️🇻🇳</div>
+    </div>
 
-  <p>Hello {{UserFullName}},</p>
+    <p style="font-size: 1.1em; margin-bottom: 0.5em;">Hello <strong>{{UserFullName}}</strong>,</p>
 
-  <p>Welcome to <strong>Vietnam Hearts</strong>! ❤️🇻🇳</p>
+    <p style="margin-top: 0;">Welcome to <strong>Vietnam Hearts</strong>! We're so glad you've joined us.</p>
 
-  <p>We have reviewed your application and would like to give you the next steps!</p>
+    <div style="margin: 28px 0 18px 0; border-left: 4px solid #e63946; padding-left: 16px;">
+      <p style="margin: 0; font-weight: 500;">We've reviewed your application and here are your next steps:</p>
+    </div>
 
-  <p><strong>Your Next Steps:</strong></p>
-  <ol>
-    <li>
-      Join our <strong>Discord</strong> community for all important updates, support, and to connect with other volunteers → 
-      <a href="{{ INVITE_LINK_DISCORD }}" target="_blank">Join Discord</a>.
-      <br>
-      If you need any help or have questions, just ask in Discord and our team will support you!
-    </li>
-    <li>
-      We also have a <strong>Facebook Messenger Chat</strong> for general communication (note: it can be a bit disorganized). 
-      If you'd like to join, you can use this link: 
-      <a href="{{ INVITE_LINK_FACEBOOK_MESSENGER }}" target="_blank">Join Facebook chat</a>.
-      <br>
-      If you have trouble joining, please ask for help in Discord.
-    </li>
-    <li>
-      Read our <strong>Onboarding Information</strong> before your first class → 
-      <a href="{{ ONBOARDING_GUIDE_LINK }}" target="_blank">
-        Read our onboarding guide here!
+    <ol style="padding-left: 22px; margin-bottom: 24px;">
+      <li style="margin-bottom: 16px;">
+        <span style="font-weight: 500; color: #222;">Join our <span style="color: #5865F2;">Discord</span> community</span> for updates, support, and to connect with other volunteers.<br>
+        <a href="{{ INVITE_LINK_DISCORD }}" style="color: #5865F2; text-decoration: underline;" target="_blank">Join Discord</a>
+        <div style="font-size: 0.97em; color: #555; margin-top: 4px;">
+          Need help? Just ask in Discord and our team will support you!
+        </div>
+      </li>
+      <li style="margin-bottom: 16px;">
+        <span style="font-weight: 500; color: #222;">Join our Facebook Messenger Chat</span> for general communication 
+        <span style="color: #e67e22;">(it can be a bit disorganized)</span>.<br>
+        <a href="{{ INVITE_LINK_FACEBOOK_MESSENGER }}" style="color: #1877f2; text-decoration: underline;" target="_blank">Join Facebook chat</a>
+        <div style="font-size: 0.97em; color: #555; margin-top: 4px;">
+          Trouble joining? Please ask for help in Discord.
+        </div>
+      </li>
+      <li style="margin-bottom: 16px;">
+        <span style="font-weight: 500; color: #222;">Read our Onboarding Guide</span> before your first class.<br>
+        <a href="{{ ONBOARDING_GUIDE_LINK }}" style="color: #e63946; text-decoration: underline;" target="_blank">
+          Read our onboarding guide here!
+        </a>
+      </li>
+      <li style="margin-bottom: 16px;">
+        <span style="font-weight: 500; color: #222;">Sign up for teaching as a Teacher or TA</span> on any open slot.<br>
+        <span style="color: #555;">If you're new to teaching, we recommend starting as a TA.</span><br>
+        <a href="{{ SCHEDULE_SIGNUP_LINK }}" style="color: #457b9d; text-decoration: underline;" target="_blank">
+          Volunteer Schedule Sheet
+        </a>
+      </li>
+      <li style="margin-bottom: 16px;">
+        <span style="font-weight: 500; color: #222;">Introduce yourself in <span style="color: #5865F2;">#general</span> on Discord</span> and let us know which day you'll be teaching!<br>
+        <span style="color: #555;">This helps us get to know you and prepare for your first day.</span>
+      </li>
+      <li>
+        <span style="font-weight: 500; color: #222;">Follow our socials!</span><br>
+        <span style="font-size: 1.1em;">
+          📸 <a href="{{ INSTAGRAM_LINK }}" style="color: #e1306c; text-decoration: underline;" target="_blank">Instagram</a> &nbsp;|&nbsp;
+          👍 <a href="{{ FACEBOOK_PAGE_LINK }}" style="color: #1877f2; text-decoration: underline;" target="_blank">Facebook</a>
+        </span>
+      </li>
+    </ol>
+
+    <div style="background: #f8f9fa; border-radius: 8px; padding: 18px 18px 12px 18px; margin-bottom: 22px; border-left: 4px solid #457b9d;">
+      <p style="margin: 0 0 8px 0; font-weight: 600; color: #222;">
+        <span style="color: #457b9d;">Important Note About Our Teaching Location:</span>
+      </p>
+      <p style="margin: 0; color: #444;">
+        We work with a school in <strong>Binh Thanh, Ho Chi Minh City</strong>.<br>
+        <span style="color: #e63946; font-weight: 500;">
+          For safety reasons, we keep the school's exact location private until you have signed up for a slot on the schedule.
+        </span><br>
+        Once you've completed onboarding, just <strong>ask in our <a href="{{ INVITE_LINK_DISCORD }}" style="color: #5865F2; text-decoration: underline;" target="_blank">Discord Group Chat</a></strong> for the location and the day you will come in.
+      </p>
+    </div>
+
+    <div style="background: #f1f8e9; border-radius: 8px; padding: 16px 18px 10px 18px; margin-bottom: 22px; border-left: 4px solid #43a047;">
+      <p style="margin: 0 0 8px 0; font-weight: 600; color: #222;">
+        Have more questions, or want to get more involved? 👀
+      </p>
+      <p style="margin: 0; color: #444;">
+        We're a small group of volunteers, and there's no official onboarding or orientation.<br>
+        Drop us a message in <strong>#general</strong> on Discord—<br>
+        we'd love to answer your questions or just chat!
+      </p>
+    </div>
+
+    <p style="margin-top: 24px; font-size: 1.08em;">Thanks so much for signing up. We're looking forward to meeting you!</p>
+
+    <p style="margin-top: 0; font-weight: 600; color: #e63946;">
+      Love without limit,<br>
+      <span style="color: #222;">Vietnam Hearts</span>
+    </p>
+
+    <!-- Field day goodbye image at the bottom -->
+    <div style="text-align: center; margin-top: 24px;">
+      <img src="cid:field_day_image" alt="Field Day Goodbye" style="width: 100%; max-width: 400px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+    </div>
+
+    <p style="font-size: 12px; color: #888; margin-top: 36px; text-align: center;">
+      <a href="{{ EMAIL_PREFERENCES_LINK }}" style="color: #888; text-decoration: underline;" target="_blank">
+        Manage your email preferences
       </a>
-    </li>
-    <li>
-      Sign up for teaching as a <strong>Teacher or TA</strong> on any open slot. Unless you have teaching experience before, we recommend you sign up as TA first. → 
-      <a href="{{ SCHEDULE_SIGNUP_LINK }}" target="_blank">
-        Volunteer Schedule Sheet
-      </a>
-    </li>
-    <li>
-      Send a message in the <strong>#general</strong> channel on Discord introducing yourself and letting us know which day you'll be teaching! This helps us get to know you and prepare for your first day.
-    </li>
-    <li>
-      If you haven't already, follow our socials! →<br>
-      📸 <a href="{{ INSTAGRAM_LINK }}" target="_blank">Instagram</a><br>
-      👍 <a href="{{ FACEBOOK_PAGE_LINK }}" target="_blank">Facebook</a>
-    </li>
-  </ol>
-
-  <p><strong>Important Note About Our Teaching Location:</strong><br>
-  We work with a school in <strong>Binh Thanh, Ho Chi Minh City</strong>, serving underserved communities and children. 
-  <strong>For safety reasons, we keep the school's exact location private until a person has signed up for a slot on the schedule</strong>
-  Once you're done with the onboarding steps, just <strong>ask in our <a href="{{ INVITE_LINK_DISCORD }}" target="_blank">Discord Group Chat</a></strong> for the location and the day you will come in.</p>
-
-  <p><strong>Have more questions, or looking to get more involved? 👀</strong><br>
-  Drop us a message in Discord, we'd love to talk!
-
-  <p>Thanks so much for signing up, we are looking forward to meeting you!</p>
-
-  <p>Love without limit,<br><strong>Vietnam Hearts</strong></p>
-
-  <p style="font-size: 12px; color: gray; margin-top: 30px;">
-    <a href="{{ EMAIL_PREFERENCES_LINK }}" target="_blank">Manage your email preferences</a>
-  </p>
-
+    </p>
+  </div>
 </div>

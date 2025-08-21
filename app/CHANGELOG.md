@@ -1,5 +1,11 @@
 CHANGELOG:
 
+## Version 2.0.5
+
+- Fix: Supabase Auth usage of mock user
+- Fix: Weekly reminder emails to accomodate for head teaching assistant.
+- Add: cosmetic changes, add icon, favicon, etc.
+
 ## Version 2.0.4
 
 - Fix: reminder link in weekly reminder emails 
@@ -29,7 +35,7 @@ CHANGELOG:
 - Add: Dashboard configures different many settings
 - Add: Schedule Config now adjusts the schedule.
 - Update: Adjust emails content 
-- Update: Adjust schedulte templates for new Head Teaching Assistant
+- Update: Adjust schedule templates for new Head Teaching Assistant
 - Fix: 'Schedule Template' now is hidden during rotation of schedules
 
 ## Version 1.1.3

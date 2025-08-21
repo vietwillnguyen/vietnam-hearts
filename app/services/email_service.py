@@ -7,6 +7,7 @@ import smtplib
 import secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
@@ -160,10 +161,7 @@ class EmailService:
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
-                elif current_assistants > max_assistants:
-                    status = f"Over-Assigned ({current_assistants}/{max_assistants} assistants), entry for all volunteers may not be permitted, priority will be given to those who come first"
-                    bg_color = "#fff3cd"  # Yellow for over-assigned assistants
-                elif current_assistants == max_assistants:
+                elif current_assistants >= max_assistants:
                     status = f"✅ Fully Covered ({current_assistants}/{max_assistants} assistants)"
                     bg_color = "#d4edda"
                 else:
@@ -291,7 +289,43 @@ class EmailService:
             message["From"] = f"{self.sender_name} <{self.email_sender}>"
             message["To"] = to_email
             message["Subject"] = subject
-            message.attach(MIMEText(body, "html"))
+
+            # Create HTML part
+            html_part = MIMEText(body, "html")
+            message.attach(html_part)
+
+            # Attach images as embedded content
+            try:
+                # Banner image
+                banner_path = Path(__file__).parent.parent.parent / "public" / "banner.jpg"
+                if banner_path.exists():
+                    with open(banner_path, "rb") as f:
+                        banner_img = MIMEImage(f.read())
+                        banner_img.add_header("Content-ID", "<banner_image>")
+                        banner_img.add_header("Content-Disposition", "inline", filename="banner.jpg")
+                        message.attach(banner_img)
+
+                # Logo image
+                logo_path = Path(__file__).parent.parent.parent / "public" / "vietnam-hearts-logo.ico"
+                if logo_path.exists():
+                    with open(logo_path, "rb") as f:
+                        logo_img = MIMEImage(f.read())
+                        logo_img.add_header("Content-ID", "<logo_image>")
+                        logo_img.add_header("Content-Disposition", "inline", filename="vietnam-hearts-logo.ico")
+                        message.attach(logo_img)
+
+                # Field day goodbye image
+                field_day_path = Path(__file__).parent.parent.parent / "public" / "field-day-goodbye.png"
+                if field_day_path.exists():
+                    with open(field_day_path, "rb") as f:
+                        field_day_img = MIMEImage(f.read())
+                        field_day_img.add_header("Content-ID", "<field_day_image>")
+                        field_day_img.add_header("Content-Disposition", "inline", filename="field-day-goodbye.png")
+                        message.attach(field_day_img)
+
+            except Exception as e:
+                logger.warning(f"Failed to attach images to confirmation email: {str(e)}")
+                # Continue without images if attachment fails
 
             # Connect to SMTP server and send email
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:

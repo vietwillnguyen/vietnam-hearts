@@ -4,13 +4,24 @@
     <title>Vietnam Hearts - Volunteer Management</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Favicon using the Vietnam Hearts logo -->
+    <link rel="icon" type="image/png" href="/public/vietnam-hearts-logo.ico">
+    <link rel="shortcut icon" type="image/png" href="/public/vietnam-hearts-logo.ico">
+    
     <style>
         :root {
+            /* Enhanced color palette inspired by the banner and logo */
             --sage-green: #7a8c6b;
             --warm-beige: #f5f1e8;
             --warm-orange: #d4a574;
             --earth-brown: #8b7355;
             --light-cream: #faf8f3;
+            --deep-green: #5a6b4a;
+            --soft-coral: #e8b4a0;
+            --warm-yellow: #f0d8a8;
+            --muted-blue: #a8c4d8;
+            --rich-brown: #6b4f3a;
         }
         
         body {
@@ -21,7 +32,7 @@
             overflow-x: hidden;
         }
         
-        /* Decorative border elements */
+        /* Enhanced decorative border elements with new colors */
         body::before {
             content: '';
             position: fixed;
@@ -30,16 +41,16 @@
             right: 0;
             bottom: 0;
             background-image: 
-                radial-gradient(circle at 10% 20%, var(--sage-green) 2px, transparent 2px),
-                radial-gradient(circle at 90% 10%, var(--warm-orange) 3px, transparent 3px),
-                radial-gradient(circle at 20% 80%, var(--earth-brown) 2px, transparent 2px),
+                radial-gradient(circle at 10% 20%, var(--deep-green) 2px, transparent 2px),
+                radial-gradient(circle at 90% 10%, var(--soft-coral) 3px, transparent 3px),
+                radial-gradient(circle at 20% 80%, var(--rich-brown) 2px, transparent 2px),
                 radial-gradient(circle at 80% 90%, var(--sage-green) 2px, transparent 2px),
-                radial-gradient(circle at 50% 5%, var(--warm-orange) 1px, transparent 1px),
-                radial-gradient(circle at 5% 50%, var(--earth-brown) 1px, transparent 1px),
-                radial-gradient(circle at 95% 50%, var(--sage-green) 1px, transparent 1px),
-                radial-gradient(circle at 50% 95%, var(--warm-orange) 1px, transparent 1px);
+                radial-gradient(circle at 50% 5%, var(--warm-yellow) 1px, transparent 1px),
+                radial-gradient(circle at 5% 50%, var(--muted-blue) 1px, transparent 1px),
+                radial-gradient(circle at 95% 50%, var(--deep-green) 1px, transparent 1px),
+                radial-gradient(circle at 50% 95%, var(--soft-coral) 1px, transparent 1px);
             background-size: 100px 100px, 150px 150px, 80px 80px, 120px 120px, 200px 200px, 300px 300px, 250px 250px, 180px 180px;
-            opacity: 0.1;
+            opacity: 0.08;
             pointer-events: none;
             z-index: -1;
         }
@@ -48,46 +59,74 @@
             padding: 80px 0 60px;
             text-align: center;
             position: relative;
+            background: linear-gradient(135deg, rgba(245, 241, 232, 0.9) 0%, rgba(250, 248, 243, 0.9) 100%);
+            border-radius: 0 0 30px 30px;
+            margin-bottom: 40px;
+        }
+        
+        /* Banner image integration */
+        .hero-banner {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('/public/banner.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            opacity: 0.15;
+            z-index: -1;
+            border-radius: 0 0 30px 30px;
         }
         
         .logo-container {
             margin-bottom: 2rem;
+            position: relative;
+            z-index: 1;
         }
         
         .logo {
             font-size: 4rem;
             font-weight: 700;
-            color: var(--sage-green);
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            color: var(--deep-green);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.15);
             margin-bottom: 1rem;
             position: relative;
+            letter-spacing: 3px;
         }
         
         .hero-title {
             font-size: 2.5rem;
             font-weight: 600;
-            color: var(--sage-green);
+            color: var(--deep-green);
             margin-bottom: 1rem;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
             letter-spacing: 2px;
+            position: relative;
+            z-index: 1;
         }
         
         .hero-subtitle {
             font-size: 1.2rem;
-            color: var(--earth-brown);
+            color: var(--rich-brown);
             margin-bottom: 3rem;
             font-weight: 300;
+            position: relative;
+            z-index: 1;
         }
         
         .login-card {
-            background: var(--light-cream);
+            background: rgba(250, 248, 243, 0.95);
+            backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 40px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-            border: 2px solid rgba(122, 140, 107, 0.1);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            border: 2px solid rgba(122, 140, 107, 0.2);
             max-width: 500px;
             margin: 0 auto;
             position: relative;
+            z-index: 2;
         }
         
         .login-card::before {
@@ -96,13 +135,15 @@
             top: -15px;
             right: 20px;
             font-size: 2rem;
-            color: var(--warm-orange);
+            color: var(--soft-coral);
             background: var(--light-cream);
             padding: 0 10px;
+            border-radius: 50%;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .google-btn {
-            background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+            background: linear-gradient(135deg, var(--deep-green) 0%, var(--sage-green) 100%);
             color: white;
             border: none;
             padding: 15px 30px;
@@ -116,13 +157,13 @@
             width: 100%;
             transition: all 0.3s ease;
             text-decoration: none;
-            box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+            box-shadow: 0 4px 15px rgba(90, 107, 74, 0.3);
         }
         
         .google-btn:hover {
-            background: linear-gradient(135deg, #357abd 0%, #2d8f47 100%);
+            background: linear-gradient(135deg, var(--rich-brown) 0%, var(--deep-green) 100%);
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+            box-shadow: 0 6px 20px rgba(90, 107, 74, 0.4);
             color: white;
             text-decoration: none;
         }
@@ -130,46 +171,74 @@
         .features {
             margin-top: 80px;
             padding: 40px 0;
+            background: linear-gradient(135deg, var(--light-cream) 0%, var(--warm-beige) 100%);
+            border-radius: 30px;
         }
         
         .feature-card {
-            background: var(--light-cream);
+            background: rgba(250, 248, 243, 0.9);
+            backdrop-filter: blur(5px);
             border-radius: 15px;
             padding: 30px;
             margin: 20px 0;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            border: 1px solid rgba(122, 140, 107, 0.1);
-            transition: transform 0.3s ease;
+            border: 1px solid rgba(122, 140, 107, 0.15);
+            transition: all 0.3s ease;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .feature-card:hover::before {
+            left: 100%;
         }
         
         .feature-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
         
         .feature-icon {
             font-size: 2.5rem;
             margin-bottom: 1rem;
-            color: var(--sage-green);
+            color: var(--deep-green);
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover .feature-icon {
+            transform: scale(1.1);
         }
         
         .feature-card h4 {
-            color: var(--sage-green);
+            color: var(--deep-green);
             font-weight: 600;
             margin-bottom: 1rem;
         }
         
         .feature-card p {
-            color: var(--earth-brown);
+            color: var(--rich-brown);
             line-height: 1.6;
         }
         
         .footer {
             margin-top: 80px;
             padding: 40px 0;
-            color: var(--earth-brown);
+            color: var(--rich-brown);
             text-align: center;
             border-top: 1px solid rgba(122, 140, 107, 0.2);
+            background: linear-gradient(135deg, var(--warm-beige) 0%, var(--light-cream) 100%);
+            border-radius: 30px 30px 0 0;
         }
         
         .status-message {
@@ -180,40 +249,59 @@
         }
         
         .status-success {
-            background: #d4edda;
+            background: rgba(212, 237, 218, 0.9);
             color: #155724;
             border: 1px solid #c3e6cb;
         }
         
         .status-error {
-            background: #f8d7da;
+            background: rgba(248, 215, 218, 0.9);
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
         
         .text-muted {
-            color: var(--earth-brown) !important;
+            color: var(--rich-brown) !important;
         }
         
         .section-title {
-            color: var(--sage-green);
+            color: var(--deep-green);
             font-weight: 600;
             margin-bottom: 2rem;
             text-align: center;
+            position: relative;
         }
         
-        /* Organic decorative elements */
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background: linear-gradient(90deg, var(--soft-coral), var(--warm-yellow));
+            border-radius: 2px;
+        }
+        
+        /* Enhanced organic decorative elements */
         .organic-element {
             position: absolute;
-            opacity: 0.6;
+            opacity: 0.7;
             z-index: -1;
+            transition: all 0.3s ease;
+        }
+        
+        .organic-element:hover {
+            opacity: 1;
+            transform: scale(1.1);
         }
         
         .organic-element.top-left {
             top: 20px;
             left: 20px;
             font-size: 1.5rem;
-            color: var(--warm-orange);
+            color: var(--soft-coral);
         }
         
         .organic-element.top-right {
@@ -227,14 +315,14 @@
             bottom: 40px;
             left: 40px;
             font-size: 1rem;
-            color: var(--earth-brown);
+            color: var(--rich-brown);
         }
         
         .organic-element.bottom-right {
             bottom: 30px;
             right: 40px;
             font-size: 1.3rem;
-            color: var(--warm-orange);
+            color: var(--warm-yellow);
         }
         
         .loading {
@@ -242,6 +330,26 @@
         }
         .loading.show {
             display: inline-block;
+        }
+        
+        /* Responsive design improvements */
+        @media (max-width: 768px) {
+            .hero-section {
+                padding: 60px 0 40px;
+            }
+            
+            .logo {
+                font-size: 3rem;
+            }
+            
+            .hero-title {
+                font-size: 2rem;
+            }
+            
+            .login-card {
+                margin: 0 20px;
+                padding: 30px 20px;
+            }
         }
     </style>
 </head>
@@ -254,6 +362,9 @@
     
     <div class="container">
         <div class="hero-section">
+            <!-- Banner background -->
+            <div class="hero-banner"></div>
+            
             <div class="row">
                 <div class="col-lg-8 mx-auto">
                     <div class="logo-container">
@@ -265,7 +376,7 @@
                     </p>
                     
                     <div class="login-card">
-                        <h3 class="text-center mb-4" style="color: var(--sage-green);">
+                        <h3 class="text-center mb-4" style="color: var(--deep-green);">
                             <i class="fas fa-lock"></i> Admin Access
                         </h3>
                         <p class="text-muted text-center mb-4">

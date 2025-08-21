@@ -7,6 +7,7 @@ API documentation available at /docs and /redoc
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from .utils.logging_config import get_logger, get_log_file_path, print_log_paths
 from .database import create_tables, get_db
 from .config import (
@@ -102,6 +103,10 @@ app = FastAPI(
     redoc_url=None if os.getenv("ENVIRONMENT") == "production" else "/redoc",
     lifespan=lifespan,
 )
+
+# Mount static files
+app.mount("/public", StaticFiles(directory="public"), name="public")
+logger.info("Static files mounted at /public")
 
 # Routers
 app.include_router(auth_router)

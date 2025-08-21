@@ -2,6 +2,11 @@
 <html>
 <head>
     <title>Sign In Successful - Vietnam Hearts</title>
+    
+    <!-- Favicon using the Vietnam Hearts logo -->
+    <link rel="icon" type="image/png" href="/public/vietnam-hearts-logo.ico">
+    <link rel="shortcut icon" type="image/png" href="/public/vietnam-hearts-logo.ico">
+    
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -65,9 +70,7 @@
         localStorage.removeItem('auth_error');
         
         // Redirect to dashboard after a short delay
-        setTimeout(() => {
-            window.location.href = '/admin/dashboard';
-        }, 2000);
+        window.location.href = '/admin/dashboard';
     </script>
 </body>
 </html> 

@@ -1,5 +1,17 @@
-# Set your Supabase service role key
-export SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdmtjaHV1ZnV0aHJpcmxoZnJzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTcxMDIwNSwiZXhwIjoyMDY1Mjg2MjA1fQ.676mJsxA2GnJjvWRmWLBvFGz4sS6HcI0jjIZxUP4b-s"
+#!/bin/bash
+
+# Load Supabase service role key from .env
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+else
+  echo "[ERROR] .env file not found. Please create it and set SUPABASE_SERVICE_ROLE_KEY."
+  exit 1
+fi
+
+if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+  echo "[ERROR] SUPABASE_SERVICE_ROLE_KEY is not set in .env."
+  exit 1
+fi
 
 # Sync volunteers every 6 hours
 gcloud scheduler jobs create http sync-volunteers \
