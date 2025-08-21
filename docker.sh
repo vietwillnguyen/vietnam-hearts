@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_NAME="vietnam-hearts-automations"
 IMAGE_NAME="vietnam-hearts-automation"
-VERSION="v2.0.4"
+VERSION="v2.0.5"
 GCR_PROJECT_ID="refined-vector-457419-n6"  # Change this to your GCP project ID
 GCR_REGION="europe-west1"  # Change this to your preferred region
 GCR_HOSTNAME="gcr.io"

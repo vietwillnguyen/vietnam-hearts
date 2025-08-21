@@ -13,11 +13,10 @@ RUN pip install poetry
 # Set working directory
 WORKDIR /app
 
-# Copy poetry files
+# Copy everything needed for the build
 COPY pyproject.toml poetry.lock ./
-
-# Copy application code (needed for poetry install)
 COPY app/ ./app/
+COPY public/ ./public/
 
 # Configure Poetry to not create virtual environment (we're in a container)
 RUN poetry config virtualenvs.create false
@@ -43,8 +42,9 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
+# Copy application files from source (not from builder)
 COPY app/ ./app/
+COPY public/ ./public/
 COPY templates/ ./templates/
 COPY secrets/ ./secrets/
 
