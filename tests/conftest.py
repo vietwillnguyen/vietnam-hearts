@@ -6,13 +6,21 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from app.models import Base, Volunteer as VolunteerModel
 
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_supabase_dependencies():
+    """Mock Supabase dependencies to prevent import errors during testing"""
+    with patch("app.services.supabase_auth.supabase", MagicMock()), \
+         patch("app.services.supabase_auth.SupabaseAuthService.__init__", return_value=None), \
+         patch("app.services.supabase_auth.auth_service", MagicMock()):
+        yield
 
 @pytest.fixture(scope="session", autouse=True)
 def set_test_env():

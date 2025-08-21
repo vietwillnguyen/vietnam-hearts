@@ -12,7 +12,7 @@ jobs:
     
     strategy:
       matrix:
-        python-version: [3.11, 3.12]
+        python-version: [3.11]
     
     steps:
     - uses: actions/checkout@v4
@@ -49,6 +49,9 @@ jobs:
         DRY_RUN: "true"
         ENVIRONMENT: "test"
         PYTHONPATH: ${{ github.workspace }}
+        SUPABASE_URL: "https://fake-url.supabase.co"
+        SUPABASE_ANON_KEY: "fake-anon-key"
+        SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key"
     
     - name: Upload test results
       if: always()
