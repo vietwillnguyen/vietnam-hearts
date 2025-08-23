@@ -12,16 +12,33 @@ from app.models import (
     EmailCommunication as EmailCommunicationModel,
 )
 from app.services.google_sheets import sheets_service
+from app.services.messenger.webhook_handler import WebhookHandler
+from app.services.messenger.message_sender import MessageSender
+from app.services.messenger.mock_message_sender import MockMessageSender
 # from app.utils.auth import rate_limit  # Removed auth
 from app.utils.logging_config import get_api_logger
 from app.config import (
     ENVIRONMENT,
+    FACEBOOK_VERIFY_TOKEN,
+    FACEBOOK_ACCESS_TOKEN,
 )
 from datetime import datetime
 import os
 from app.utils.config_helper import ConfigHelper
 
 logger = get_api_logger()
+
+def get_message_sender():
+    """
+    Get the appropriate message sender based on environment.
+    Uses mock sender for development/testing to avoid Facebook API issues.
+    """
+    if ENVIRONMENT == "development" or ENVIRONMENT == "test":
+        logger.info("Using MockMessageSender for development/testing")
+        return MockMessageSender()
+    else:
+        logger.info("Using MessageSender for production")
+        return MessageSender()
 
 # Public router for unsubscribe and health
 public_router = APIRouter(prefix="", tags=["public"])
@@ -261,6 +278,151 @@ def update_email_preferences(
         )
 
 
+# Facebook Messenger Webhook endpoints
+@public_router.get("/webhook/messenger")
+async def verify_webhook(
+    mode: str = None,
+    verify_token: str = None,
+    challenge: str = None
+):
+    """
+    Facebook webhook verification endpoint
+    
+    This endpoint is called by Facebook to verify the webhook subscription.
+    Facebook sends a GET request with mode=subscribe, verify_token, and challenge.
+    """
+    if not FACEBOOK_VERIFY_TOKEN:
+        logger.error("FACEBOOK_VERIFY_TOKEN not configured")
+        return {"error": "Webhook not configured"}
+    
+    if mode == "subscribe" and verify_token == FACEBOOK_VERIFY_TOKEN:
+        logger.info("Webhook verified successfully")
+        return int(challenge) if challenge else "OK"
+    else:
+        logger.warning(f"Webhook verification failed: mode={mode}, token_match={verify_token == FACEBOOK_VERIFY_TOKEN}")
+        return {"error": "Verification failed"}
+
+
+@public_router.post("/webhook/messenger")
+async def handle_webhook(request: Request):
+    """
+    Facebook webhook message handling endpoint
+    
+    This endpoint receives all incoming messages and events from Facebook Messenger.
+    For Phase 1, it implements a simple echo functionality.
+    """
+    try:
+        # Parse the webhook payload
+        body = await request.json()
+        logger.info(f"Received webhook: {body}")
+        
+        # Verify this is a page event
+        if "object" in body and body["object"] == "page":
+            # Process each entry
+            for entry in body.get("entry", []):
+                for messaging_event in entry.get("messaging", []):
+                    await _process_messaging_event(messaging_event)
+            
+            return {"status": "success"}
+        else:
+            logger.warning(f"Invalid webhook object: {body.get('object', 'unknown')}")
+            return {"status": "error", "message": "Invalid webhook object"}
+            
+    except Exception as e:
+        logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+async def _process_messaging_event(event: dict):
+    """
+    Process individual messaging events from Facebook
+    
+    Args:
+        event: The messaging event from Facebook
+    """
+    try:
+        sender_id = event.get("sender", {}).get("id")
+        if not sender_id:
+            logger.warning("No sender ID in messaging event")
+            return
+        
+        # Handle different types of events
+        if "message" in event:
+            await _handle_message(sender_id, event["message"])
+        elif "postback" in event:
+            await _handle_postback(sender_id, event["postback"])
+        else:
+            logger.info(f"Unhandled event type: {list(event.keys())}")
+            
+    except Exception as e:
+        logger.error(f"Error processing messaging event: {str(e)}", exc_info=True)
+
+
+async def _handle_message(sender_id: str, message: dict):
+    """
+    Handle text messages from users
+    
+    Args:
+        sender_id: The sender's Facebook ID
+        message: The message object from Facebook
+    """
+    try:
+        if "text" in message:
+            text = message["text"]
+            logger.info(f"Received message from {sender_id}: {text}")
+            
+            # Phase 1: Simple echo functionality
+            response_text = f"Echo: {text}"
+            
+            # Get appropriate message sender (mock for dev, real for prod)
+            sender = get_message_sender()
+            logger.info(f"Message sender type: {type(sender).__name__}")
+            
+            success = sender.send_text_message(sender_id, response_text)
+            logger.info(f"Message send result: {success}")
+            
+            if success:
+                logger.info(f"Echo response sent to {sender_id}")
+            else:
+                logger.error(f"Failed to send echo response to {sender_id}")
+        else:
+            logger.info(f"Received non-text message from {sender_id}: {message}")
+            
+    except Exception as e:
+        logger.error(f"Error handling message: {str(e)}", exc_info=True)
+
+
+async def _handle_postback(sender_id: str, postback: dict):
+    """
+    Handle postback events (button clicks, etc.)
+    
+    Args:
+        sender_id: The sender's Facebook ID
+        postback: The postback object from Facebook
+    """
+    try:
+        payload = postback.get("payload", "")
+        logger.info(f"Received postback from {sender_id}: {payload}")
+        
+        # Phase 1: Simple acknowledgment
+        response_text = f"Postback received: {payload}"
+        
+        # Get appropriate message sender (mock for dev, real for prod)
+        sender = get_message_sender()
+        logger.info(f"Postback sender type: {type(sender).__name__}")
+        
+        success = sender.send_text_message(sender_id, response_text)
+        logger.info(f"Postback send result: {success}")
+        
+        if success:
+            logger.info(f"Postback acknowledgment sent to {sender_id}")
+        else:
+            logger.error(f"Failed to send postback acknowledgment to {sender_id}")
+            
+    except Exception as e:
+        logger.error(f"Error handling postback: {str(e)}", exc_info=True)
+
+
 # Health endpoint (public)
 @public_router.get(
     "/health", summary="Health check", description="Returns system health information"
@@ -310,6 +472,10 @@ def get_health(db: Session = Depends(get_db)):
                     else "PostgreSQL",
                 },
                 "google_sheets": {"status": sheets_status, "error": sheets_error},
+                "facebook_messenger": {
+                    "status": "healthy" if FACEBOOK_VERIFY_TOKEN and FACEBOOK_ACCESS_TOKEN else "unhealthy",
+                    "webhook_url": "/webhook/messenger"
+                },
             },
         }
     except Exception as e:
@@ -341,4 +507,83 @@ def test_sheets_connection(db: Session = Depends(get_db)):
         return {
             "status": "error",
             "message": f"Google Sheets test failed: {str(e)}"
+        }
+
+
+@public_router.get("/test-messenger")
+def test_messenger_configuration():
+    """Test Facebook Messenger configuration and connectivity"""
+    try:
+        # Check if required environment variables are set
+        config_status = {
+            "FACEBOOK_VERIFY_TOKEN": bool(FACEBOOK_VERIFY_TOKEN),
+            "FACEBOOK_ACCESS_TOKEN": bool(FACEBOOK_ACCESS_TOKEN),
+        }
+        
+        # Test message sender initialization (but don't fail if token is invalid)
+        sender = MessageSender()
+        page_info = None
+        page_info_error = None
+        
+        try:
+            page_info = sender.get_page_info()
+        except Exception as e:
+            page_info_error = str(e)
+            logger.warning(f"Could not get page info (token may be expired): {e}")
+        
+        return {
+            "status": "success",
+            "message": "Facebook Messenger configuration test",
+            "config": config_status,
+            "page_info": page_info,
+            "page_info_error": page_info_error,
+            "webhook_url": "/webhook/messenger",
+            "note": "Webhook will work for testing even with expired token"
+        }
+    except Exception as e:
+        logger.error(f"Facebook Messenger test failed: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Facebook Messenger test failed: {str(e)}"
+        }
+
+
+@public_router.get("/test-messenger-mock")
+def test_messenger_mock():
+    """Test Facebook Messenger webhook logic using mock sender (no Facebook API calls)"""
+    try:
+        # Use the helper function to get appropriate sender
+        sender = get_message_sender()
+        
+        # Test sending a message
+        success = sender.send_text_message("test_user_123", "Hello from mock sender!")
+        
+        # Get sent messages (if it's a mock sender)
+        sent_messages = []
+        if hasattr(sender, 'get_sent_messages'):
+            sent_messages = sender.get_sent_messages()
+        
+        # Test the mock sender directly to verify it's working
+        test_sender = MockMessageSender()
+        test_success = test_sender.send_text_message("direct_test_user", "Direct test message")
+        direct_messages = test_sender.get_sent_messages()
+        
+        return {
+            "status": "success",
+            "message": "Messenger test completed",
+            "message_sent": success,
+            "sent_messages": sent_messages,
+            "sender_type": type(sender).__name__,
+            "environment": ENVIRONMENT,
+            "direct_test": {
+                "success": test_success,
+                "messages": direct_messages
+            },
+            "note": f"Using {type(sender).__name__} - {'Mock sender for development' if 'Mock' in type(sender).__name__ else 'Real sender for production'}"
+        }
+    except Exception as e:
+        logger.error(f"Messenger test failed: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Messenger test failed: {str(e)}"
         }

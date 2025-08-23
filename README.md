@@ -85,10 +85,33 @@ The application uses the following environment variables (see `env.template` for
 - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON
 - `SERVICE_ACCOUNT_EMAIL` - Google service account email
 
+#### Facebook Messenger Integration
+- `FACEBOOK_VERIFY_TOKEN` - Custom verification token for webhook
+- `FACEBOOK_ACCESS_TOKEN` - Page access token for sending messages
+- `FACEBOOK_APP_ID` - Facebook app ID
+- `FACEBOOK_APP_SECRET` - Facebook app secret
+
 #### Optional
 - `PORT` - API server port (default: 8080)
 - `ENVIRONMENT` - Environment mode (development/production)
 - `DRY_RUN` - Enable dry run mode for testing
+
+### Facebook Messenger Setup
+
+1. **Create a Facebook App**:
+   - Go to [Facebook Developers](https://developers.facebook.com/)
+   - Create a new app or select existing one
+   - Add Messenger product to your app
+
+2. **Configure Webhook**:
+   - Set webhook URL to: `https://your-domain.com/webhook/messenger`
+   - Set verify token to match your `FACEBOOK_VERIFY_TOKEN`
+   - Subscribe to `messages` and `messaging_postbacks` events
+
+3. **Get Page Access Token**:
+   - Connect your Facebook page to the app
+   - Generate a page access token
+   - Set this as `FACEBOOK_ACCESS_TOKEN`
 
 ### Google Sheets Setup
 
@@ -212,6 +235,25 @@ poetry run pytest tests/test_form_submissions.py -v
 # Run with coverage
 poetry run pytest tests/ --cov=app --cov-report=html
 ```
+
+### Testing Facebook Messenger Webhook
+
+1. **Test Configuration**:
+   ```bash
+   # Check if your app is running
+   curl http://localhost:8080/test-messenger
+   ```
+
+2. **Test Webhook Verification** (Facebook will do this automatically):
+   ```bash
+   # Simulate Facebook's verification request
+   curl "http://localhost:8080/webhook/messenger?mode=subscribe&verify_token=YOUR_VERIFY_TOKEN&challenge=1234567890"
+   ```
+
+3. **Test Message Handling** (requires Facebook app setup):
+   - Set up your Facebook app with the webhook URL
+   - Send a message to your Facebook page
+   - Check logs for webhook processing
 
 ### GitHub Actions
 

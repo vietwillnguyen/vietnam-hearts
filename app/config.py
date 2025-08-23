@@ -51,6 +51,12 @@ ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAI
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
+# Facebook Configuration
+FACEBOOK_VERIFY_TOKEN = os.getenv("FACEBOOK_VERIFY_TOKEN")
+FACEBOOK_ACCESS_TOKEN = os.getenv("FACEBOOK_ACCESS_TOKEN")
+FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
+FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
+
 # Required Environment Variables (only in production)
 REQUIRED_ENV_VARS = [
     "GMAIL_APP_PASSWORD",  # Required for sending emails
@@ -59,6 +65,10 @@ REQUIRED_ENV_VARS = [
     "SERVICE_ACCOUNT_EMAIL",  # Required for Google Sheets access
     "SUPABASE_URL",  # Required for Supabase auth
     "SUPABASE_ANON_KEY",  # Required for Supabase auth
+    "FACEBOOK_VERIFY_TOKEN",  # Required for Facebook Messenger
+    "FACEBOOK_ACCESS_TOKEN",  # Required for Facebook Messenger
+    "FACEBOOK_APP_ID",  # Required for Facebook Messenger
+    "FACEBOOK_APP_SECRET",  # Required for Facebook Messenger
 ]
 
 
