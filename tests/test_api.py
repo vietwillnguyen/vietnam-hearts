@@ -37,7 +37,7 @@ class SchedulerAPITester:
     """Test class for scheduler API endpoints"""
     
     def __init__(self, auth_type: str = "gcloud"):
-        self.base_url = os.getenv("API_BASE_URL", "https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app")
+        self.base_url = os.getenv("API_URL", "https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app")
         self.service_account = "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com"
         self.api_prefix = "/admin"
         self.auth_type = auth_type
@@ -429,6 +429,11 @@ class SchedulerAPITester:
             time.sleep(1)
             results["admin_schedule_status"] = self.test_admin_schedule_status()
         
+        # Test bot endpoints
+        time.sleep(1)
+        bot_results = self.test_bot_endpoints()
+        results.update(bot_results)
+        
         # Print summary
         print("\n📊 Test Results Summary")
         print("=" * 60)
@@ -445,6 +450,120 @@ class SchedulerAPITester:
             print("🎉 All tests passed!")
         else:
             print("⚠️  Some tests failed. Check the output above for details.")
+        
+        return results
+
+    def test_bot_endpoints(self) -> Dict[str, bool]:
+        """Test bot-related endpoints"""
+        print("\n🤖 Testing Bot Endpoints")
+        print("-" * 40)
+        
+        results = {}
+        
+        # Test bot health check
+        print("\n🏥 Testing Bot Health Check")
+        result = self.make_request("bot/health", method="GET", use_auth=False)
+        if "error" not in result and result.get("status") == "healthy":
+            print("✅ Bot health check passed!")
+            services = result.get("services", {})
+            print(f"   Knowledge Base: {services.get('knowledge_base', 'unknown')}")
+            print(f"   Embeddings: {services.get('embeddings', 'unknown')}")
+            print(f"   Gemini: {services.get('gemini', 'unknown')}")
+            print(f"   Google Docs: {services.get('google_docs', 'unknown')}")
+            print(f"   Supabase: {services.get('supabase', 'unknown')}")
+            results["bot_health"] = True
+        else:
+            print(f"❌ Bot health check failed: {result}")
+            results["bot_health"] = False
+        
+        time.sleep(1)
+        
+        # Test bot chat functionality
+        print("\n💬 Testing Bot Chat")
+        chat_data = {
+            "message": "What qualifications do I need to volunteer?",
+            "user_id": "test_user_123"
+        }
+        result = self.make_request("bot/chat", method="POST", data=chat_data, use_auth=True)
+        if "error" not in result and result.get("response"):
+            print("✅ Bot chat passed!")
+            print(f"   Response: {result.get('response', 'No response')[:100]}...")
+            print(f"   Context Used: {result.get('context_used', 0)} chunks")
+            print(f"   Confidence: {result.get('confidence', 'unknown')}")
+            if result.get("note"):
+                print(f"   Note: {result.get('note')}")
+            results["bot_chat"] = True
+        else:
+            print(f"❌ Bot chat failed: {result}")
+            results["bot_chat"] = False
+        
+        time.sleep(1)
+        
+        # Test bot test endpoint
+        print("\n🧪 Testing Bot Test Endpoint")
+        test_data = {
+            "message": "Tell me about Vietnam Hearts teaching requirements"
+        }
+        result = self.make_request("bot/test", method="POST", data=test_data, use_auth=False)
+        if "error" not in result and result.get("status") == "success":
+            print("✅ Bot test passed!")
+            print(f"   Test Message: {result.get('test_message', 'No message')}")
+            print(f"   Response: {result.get('response', 'No response')[:100]}...")
+            print(f"   Context Used: {result.get('context_used', 0)} chunks")
+            results["bot_test"] = True
+        else:
+            print(f"❌ Bot test failed: {result}")
+            results["bot_test"] = False
+        
+        time.sleep(1)
+        
+        # Test document processing (if Supabase is available)
+        print("\n📄 Testing Document Processing")
+        doc_id = "11AKdzzkphTCDXyyNpxahWYG5d5pBeLpThvm0haVBw6k"
+        doc_data = {
+            "doc_id": doc_id,
+            "metadata": {
+                "title": "Teacher and TA Guide & Resources",
+                "type": "volunteer_guide",
+                "category": "teaching_resources"
+            }
+        }
+        
+        # Try to sync document (requires admin auth)
+        if self.auth_type == "supabase":
+            result = self.make_request("bot/knowledge-sync", method="POST", data=doc_data, use_auth=True)
+            if "error" not in result and result.get("status") == "success":
+                print("✅ Document sync passed!")
+                print(f"   Document ID: {doc_id}")
+                print(f"   Message: {result.get('message', 'No message')}")
+                results["document_sync"] = True
+            else:
+                print(f"❌ Document sync failed: {result}")
+                results["document_sync"] = False
+        else:
+            print("⚠️  Document sync requires Supabase authentication. Skipping...")
+            results["document_sync"] = False
+        
+        time.sleep(1)
+        
+        # Test knowledge status
+        print("\n📚 Testing Knowledge Status")
+        result = self.make_request("bot/knowledge-sync/status", method="GET", use_auth=True)
+        if "error" not in result and result.get("knowledge_service_available") == True:
+            print("✅ Knowledge status check passed!")
+            print(f"   Documents Count: {result.get('documents_count', 0)}")
+            print(f"   Embeddings Available: {result.get('embeddings_available', False)}")
+            print(f"   Gemini Available: {result.get('gemini_available', False)}")
+            print(f"   Supabase Available: {result.get('supabase_available', False)}")
+            print(f"   Document Service Available: {result.get('document_service_available', False)}")
+            if result.get("documents"):
+                print(f"   Documents: {len(result['documents'])} found")
+                for doc in result["documents"]:
+                    print(f"     - {doc.get('title', doc.get('id', 'Unknown'))}: {doc.get('chunks', 0)} chunks")
+            results["knowledge_status"] = True
+        else:
+            print(f"❌ Knowledge status check failed: {result}")
+            results["knowledge_status"] = False
         
         return results
 
@@ -481,9 +600,27 @@ def main():
             print("❌ Admin endpoints require Supabase authentication. Use --auth-type=supabase")
             sys.exit(1)
         tester.test_admin_schedule_status()
+    elif endpoint == "bot":
+        tester.test_bot_endpoints()
+    elif endpoint == "bot-health":
+        tester.test_bot_endpoints()
+    elif endpoint == "bot-chat":
+        tester.test_bot_endpoints()
+    elif endpoint == "bot-test":
+        tester.test_bot_endpoints()
+    elif endpoint == "document-sync":
+        if auth_type != "supabase":
+            print("❌ Document sync requires Supabase authentication. Use --auth-type=supabase")
+            sys.exit(1)
+        tester.test_bot_endpoints()
+    elif endpoint == "knowledge-status":
+        if auth_type != "supabase":
+            print("❌ Knowledge status requires Supabase authentication. Use --auth-type=supabase")
+            sys.exit(1)
+        tester.test_bot_endpoints()
     else:
         print(f"❌ Unknown endpoint: {endpoint}")
-        print("Available endpoints: health, send-confirmation-emails, sync-volunteers, send-weekly-reminders, rotate-schedule, admin-schedule-status, all")
+        print("Available endpoints: health, send-confirmation-emails, sync-volunteers, send-weekly-reminders, rotate-schedule, admin-schedule-status, all, bot, bot-health, bot-chat, bot-test, document-sync, knowledge-status")
         sys.exit(1)
 
 

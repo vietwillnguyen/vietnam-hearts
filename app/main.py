@@ -22,6 +22,7 @@ from app.routers.admin import admin_router
 from app.routers.public import public_router
 from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
+from app.routers.bot import bot_router
 
 # Configure logging
 logger = get_logger("main")
@@ -115,6 +116,8 @@ logger.info("Authentication endpoints enabled.")
 app.include_router(admin_router)
 app.include_router(public_router)
 app.include_router(settings_router)
+app.include_router(bot_router)
+logger.info("Bot endpoints enabled.")
 
 # Root route redirects to home page
 @app.get("/")

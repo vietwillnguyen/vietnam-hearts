@@ -7,6 +7,8 @@ Vietnam Hearts is a volunteer organization focused on teaching English to underp
 - Google Sheets integration for class scheduling
 - Knowledge base for FAQ responses
 
+- When debugging you can check logs/app.log for debugging the application
+
 ## Tech Stack
 - **Backend**: FastAPI/Flask (Python)
 - **Frontend**: TBD

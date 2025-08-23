@@ -91,6 +91,12 @@ The application uses the following environment variables (see `env.template` for
 - `FACEBOOK_APP_ID` - Facebook app ID
 - `FACEBOOK_APP_SECRET` - Facebook app secret
 
+#### AI & Knowledge Base
+- `GOOGLE_API_KEY` - Google API key for Gemini AI integration (free tier: 15 RPM, 1M tokens/day)
+- `SUPABASE_URL` - Supabase project URL for knowledge base storage
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for database operations
+- **Note**: Uses hybrid approach - Sentence Transformers for embeddings (free, local) + Gemini for chat responses
+
 #### Optional
 - `PORT` - API server port (default: 8080)
 - `ENVIRONMENT` - Environment mode (development/production)

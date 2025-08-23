@@ -15,6 +15,7 @@ from app.services.google_sheets import sheets_service
 from app.services.messenger.webhook_handler import WebhookHandler
 from app.services.messenger.message_sender import MessageSender
 from app.services.messenger.mock_message_sender import MockMessageSender
+from app.services.bot_service import BotService
 # from app.utils.auth import rate_limit  # Removed auth
 from app.utils.logging_config import get_api_logger
 from app.config import (
@@ -371,8 +372,16 @@ async def _handle_message(sender_id: str, message: dict):
             text = message["text"]
             logger.info(f"Received message from {sender_id}: {text}")
             
-            # Phase 1: Simple echo functionality
-            response_text = f"Echo: {text}"
+            # Phase 2: Use bot service for intelligent responses
+            try:
+                bot_service = BotService()
+                chat_result = await bot_service.chat(text)
+                response_text = chat_result["response"]
+                logger.info(f"Bot service response: {response_text[:100]}...")
+            except Exception as e:
+                logger.error(f"Bot service failed, falling back to echo: {e}")
+                # Fallback to simple echo if bot service fails
+                response_text = f"Echo: {text}"
             
             # Get appropriate message sender (mock for dev, real for prod)
             sender = get_message_sender()
@@ -382,9 +391,9 @@ async def _handle_message(sender_id: str, message: dict):
             logger.info(f"Message send result: {success}")
             
             if success:
-                logger.info(f"Echo response sent to {sender_id}")
+                logger.info(f"Response sent to {sender_id}")
             else:
-                logger.error(f"Failed to send echo response to {sender_id}")
+                logger.error(f"Failed to send response to {sender_id}")
         else:
             logger.info(f"Received non-text message from {sender_id}: {message}")
             
