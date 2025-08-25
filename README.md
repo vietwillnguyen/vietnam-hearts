@@ -27,7 +27,7 @@ A comprehensive scheduling and communication system for Vietnam Hearts volunteer
 Run the setup script to automatically configure your environment:
 
 ```bash
-./setup.sh
+./scripts/setup-dev-env.sh
 ```
 
 This will:
@@ -55,7 +55,7 @@ nano .env
 ./run.sh
 
 # With custom environment file
-./run.sh -e .env.production
+./run.sh -e .env.prod
 
 # In dry-run mode (no emails sent)
 ./run.sh -d
@@ -170,7 +170,7 @@ The application uses the following environment variables (see `env.template` for
 ./run.sh -E production -w 4
 
 # Use production environment file
-./run.sh -e .env.production -E production
+./run.sh -e .env.prod -E production
 ```
 
 ### API Endpoints
@@ -183,7 +183,7 @@ Once running, the API will be available at:
 
 ## Scripts
 
-### `setup.sh`
+### `setup-dev-env.sh`
 Initial setup script that:
 - Checks dependencies
 - Installs Python packages
@@ -223,7 +223,7 @@ vietnam-hearts/
 ├── secrets/               # Credentials (not in git)
 ├── env.template           # Environment template
 ├── run.sh                 # Application runner
-├── setup.sh               # Setup script
+├── setup-dev-env.sh               # Setup script
 └── pyproject.toml         # Poetry configuration
 ```
 

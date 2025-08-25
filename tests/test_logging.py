@@ -28,7 +28,7 @@ def test_logs_appear_console_and_file():
     logger.info("API server started successfully")
     
     print("\n=== Test Complete ===")
-    print("Check both console output above and the log file at ./logs/app.log")
+    print("Check both console output above and the log file at ./app/logs/app.log")
 
 if __name__ == "__main__":
     test_logs_appear_console_and_file() 

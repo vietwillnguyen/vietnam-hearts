@@ -7,7 +7,7 @@ from pathlib import Path
 SEPARATE_LOG_FILES = os.getenv("SEPARATE_LOG_FILES", "false").lower() == "true"
 
 # Log directory and format
-LOGS_DIR = Path("logs")  # Logs are written to: ./logs/ (relative to project root)
+LOGS_DIR = Path("app/logs")  # Logs are written to: ./logs/ (relative to project root)
 LOGS_DIR.mkdir(exist_ok=True)
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

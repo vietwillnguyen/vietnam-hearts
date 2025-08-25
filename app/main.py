@@ -106,8 +106,8 @@ app = FastAPI(
 )
 
 # Mount static files
-app.mount("/public", StaticFiles(directory="public"), name="public")
-logger.info("Static files mounted at /public")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+logger.info("Static files mounted at /static")
 
 # Routers
 app.include_router(auth_router)

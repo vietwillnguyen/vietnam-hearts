@@ -73,7 +73,7 @@ docker-compose*
 
 # Scripts
 run.sh
-setup.sh
+setup-dev-env.sh
 docker-*.sh
 
 # Temporary files

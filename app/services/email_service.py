@@ -297,7 +297,7 @@ class EmailService:
             # Attach images as embedded content
             try:
                 # Banner image
-                banner_path = Path(__file__).parent.parent.parent / "public" / "banner.jpg"
+                banner_path = Path(__file__).parent.parent.parent / "static" / "banner.jpg"
                 if banner_path.exists():
                     with open(banner_path, "rb") as f:
                         banner_img = MIMEImage(f.read())
@@ -306,7 +306,7 @@ class EmailService:
                         message.attach(banner_img)
 
                 # Logo image
-                logo_path = Path(__file__).parent.parent.parent / "public" / "vietnam-hearts-logo.ico"
+                logo_path = Path(__file__).parent.parent.parent / "static" / "vietnam-hearts-logo.ico"
                 if logo_path.exists():
                     with open(logo_path, "rb") as f:
                         logo_img = MIMEImage(f.read())
@@ -315,7 +315,7 @@ class EmailService:
                         message.attach(logo_img)
 
                 # Field day goodbye image
-                field_day_path = Path(__file__).parent.parent.parent / "public" / "field-day-goodbye.png"
+                field_day_path = Path(__file__).parent.parent.parent / "static" / "field-day-goodbye.png"
                 if field_day_path.exists():
                     with open(field_day_path, "rb") as f:
                         field_day_img = MIMEImage(f.read())

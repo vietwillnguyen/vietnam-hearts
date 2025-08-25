@@ -21,7 +21,7 @@ GCR_REGION="europe-west1"  # Change this to your preferred region
 GCR_HOSTNAME="gcr.io"
 
 # Default values
-ENV_FILE=".env"
+ENV_FILE="../.env"
 PORT="8080"
 CONTAINER_NAME="vietnam-hearts-container"
 NETWORK_NAME="vietnam-hearts-network"
