@@ -9,8 +9,6 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict, List
 from app.models import Setting
 from datetime import datetime, timezone
-from app.utils.sheet_utils import validate_google_sheets_url
-
 
 def get_setting(db: Session, key: str, default: Optional[str] = None) -> Optional[str]:
     """

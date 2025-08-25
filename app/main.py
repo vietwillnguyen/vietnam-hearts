@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
             "📖 API Documentation will be available at: %s/docs", API_URL
         )
         logger.info(
-            "🔍 Health check available at: %s/public/health", API_URL
+            "🔍 Health check available at: %s/health", API_URL
         )
         logger.info("⏹️  Press Ctrl+C to stop the server")
 

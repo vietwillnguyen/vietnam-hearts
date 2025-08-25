@@ -5,7 +5,7 @@ Test script to verify logging configuration works for both console and file outp
 
 from app.utils.logging_config import get_logger, print_log_paths
 
-def test_logging():
+def test_logs_appear_console_and_file():
     """Test that logs appear in both console and file."""
     print("=== Testing Logging Configuration ===")
     
@@ -31,4 +31,4 @@ def test_logging():
     print("Check both console output above and the log file at ./logs/app.log")
 
 if __name__ == "__main__":
-    test_logging() 
+    test_logs_appear_console_and_file() 

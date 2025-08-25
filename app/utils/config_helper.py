@@ -15,7 +15,7 @@ from app.config import (
     EMAIL_SENDER,
     GMAIL_APP_PASSWORD,
     GOOGLE_APPLICATION_CREDENTIALS,
-    TEMPLATE_PATH,
+    EMAIL_TEMPLATES_PATH,
 )
 from app.services.settings_service import get_setting
 from app.utils.sheet_utils import extract_sheet_id_from_url, format_google_sheets_url
@@ -36,7 +36,7 @@ class ConfigHelper:
     EMAIL_SENDER = EMAIL_SENDER
     GMAIL_APP_PASSWORD = GMAIL_APP_PASSWORD
     GOOGLE_APPLICATION_CREDENTIALS = GOOGLE_APPLICATION_CREDENTIALS
-    TEMPLATE_PATH = TEMPLATE_PATH
+    EMAIL_TEMPLATES_PATH = EMAIL_TEMPLATES_PATH
     
     @staticmethod
     def get_schedule_signup_link(db: Session, default: str = "") -> str:

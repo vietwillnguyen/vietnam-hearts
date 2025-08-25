@@ -1,10 +1,14 @@
 """
 Admin API endpoints for manual control and monitoring
 
-These endpoints provide admin functionality for:
+These endpoints provide core admin functionality for:
 - Manual triggers (weekly reminders, schedule rotation)
 - Monitoring and statistics
 - Volunteer and email management
+- User and permission management
+- System health monitoring
+
+Bot-specific admin functions are handled in the separate bot router (/admin/bot/*).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -33,6 +37,9 @@ from app.utils.retry_utils import log_ssl_error
 from app.services.supabase_auth import get_current_admin_user
 
 logger = get_api_logger()
+
+# Admin router - Core administrative functions
+# Bot-specific admin functions are in the separate bot router (/admin/bot/*)
 admin_router = APIRouter(
     prefix="/admin",
     tags=["admin"],
@@ -1375,58 +1382,7 @@ async def get_all_admins(current_admin: Dict[str, Any] = Depends(get_current_adm
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@admin_router.get("/health")
-async def admin_health_check():
-    """Health check for admin system"""
-    try:
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
-        from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-        
-        health_status = {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
-            "supabase_client_initialized": supabase is not None,
-            "admin_service_available": False,
-            "database_accessible": False
-        }
-        
-        # Test admin service initialization
-        try:
-            admin_service = AdminUserService(supabase)
-            health_status["admin_service_available"] = True
-            
-            # Test database connection with timeout
-            try:
-                await asyncio.wait_for(
-                    admin_service.is_admin("test@example.com"),
-                    timeout=5.0
-                )
-                health_status["database_accessible"] = True
-            except asyncio.TimeoutError:
-                health_status["database_accessible"] = False
-                health_status["status"] = "degraded"
-                health_status["error"] = "Database connection timeout"
-            except Exception as e:
-                health_status["database_accessible"] = False
-                health_status["status"] = "degraded"
-                health_status["error"] = f"Database connection error: {str(e)}"
-                
-        except Exception as e:
-            health_status["admin_service_available"] = False
-            health_status["status"] = "unhealthy"
-            health_status["error"] = f"Admin service error: {str(e)}"
-        
-        return health_status
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}", exc_info=True)
-        return {
-            "status": "unhealthy",
-            "timestamp": datetime.now().isoformat(),
-            "error": str(e)
-        }
+# Removed duplicate health endpoint - consolidated into main health check below
 
 
 def build_class_table(class_name, config, sheet_service, db):
@@ -1777,39 +1733,128 @@ async def rotate_schedule_sheets(
 
 
 @admin_router.get("/health")
-def health_check(db: Session = Depends(get_db), current_admin: Dict[str, Any] = Depends(get_current_admin_user)):
-    """Health check endpoint for admin API"""
+async def comprehensive_health_check(
+    db: Session = Depends(get_db), 
+    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """
+    Comprehensive health check endpoint for all admin services
+    
+    Consolidates health checks for:
+    - Database connectivity
+    - Google Sheets integration
+    - Email service
+    - Admin user service
+    - Bot service (knowledge base, embeddings, etc.)
+    
+    Replaces separate health endpoints from bot and admin routers.
+    """
     try:
-        # Test database connection
-        db.execute("SELECT 1")
-        
-        # Test Google Sheets connection
-        sheets_status = "unknown"
-        try:
-            sheets_service.get_current_schedule_dates(db)
-            sheets_status = "connected"
-        except Exception as e:
-            sheets_status = f"error: {str(e)}"
-        
-        # Test email service
-        email_status = "unknown"
-        try:
-            # Just test if the service is initialized
-            email_service.get_reminder_subject(datetime.now().date(), datetime.now().date())
-            email_status = "available"
-        except Exception as e:
-            email_status = f"error: {str(e)}"
-        
-        return {
+        health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "database": "connected",
-            "google_sheets": sheets_status,
-            "email_service": email_status,
-            "environment": ENVIRONMENT
+            "environment": ENVIRONMENT,
+            "services": {}
         }
+        
+        # Test database connection
+        try:
+            db.execute("SELECT 1")
+            health_status["services"]["database"] = "connected"
+        except Exception as e:
+            health_status["services"]["database"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+        
+        # Test Google Sheets connection
+        try:
+            sheets_service.get_current_schedule_dates(db)
+            health_status["services"]["google_sheets"] = "connected"
+        except Exception as e:
+            health_status["services"]["google_sheets"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+        
+        # Test email service
+        try:
+            email_service.get_reminder_subject(datetime.now().date(), datetime.now().date())
+            health_status["services"]["email_service"] = "available"
+        except Exception as e:
+            health_status["services"]["email_service"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+        
+        # Test admin service
+        try:
+            from app.services.admin_user_service import AdminUserService
+            from app.services.supabase_auth import supabase
+            from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+            
+            admin_service_available = False
+            supabase_configured = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+            supabase_client_initialized = supabase is not None
+            
+            if supabase_configured and supabase_client_initialized:
+                admin_service = AdminUserService(supabase)
+                # Test with timeout
+                try:
+                    await asyncio.wait_for(
+                        admin_service.is_admin("test@example.com"),
+                        timeout=5.0
+                    )
+                    admin_service_available = True
+                except asyncio.TimeoutError:
+                    admin_service_available = False
+                except Exception:
+                    admin_service_available = False
+            
+            health_status["services"]["admin_service"] = {
+                "available": admin_service_available,
+                "supabase_configured": supabase_configured,
+                "supabase_client_initialized": supabase_client_initialized
+            }
+            
+            if not admin_service_available:
+                health_status["status"] = "degraded"
+                
+        except Exception as e:
+            health_status["services"]["admin_service"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+        
+        # Test bot service if available
+        try:
+            from app.services.bot_service import BotService
+            bot_service = BotService()
+            bot_status = await bot_service.get_knowledge_status()
+            
+            health_status["services"]["bot_service"] = {
+                "knowledge_base": bot_status["knowledge_service_available"],
+                "embeddings": bot_status["embeddings_available"],
+                "gemini": bot_status["gemini_available"],
+                "google_docs": bot_status["document_service_available"],
+                "supabase": bot_status["supabase_available"],
+                "documents_count": bot_status["documents_count"]
+            }
+            
+            # Check if any bot service is down
+            if not any([
+                bot_status["knowledge_service_available"],
+                bot_status["embeddings_available"],
+                bot_status["gemini_available"]
+            ]):
+                health_status["status"] = "degraded"
+                
+        except Exception as e:
+            health_status["services"]["bot_service"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+        
+        # Determine overall status
+        if health_status["status"] == "healthy" and any(
+            "error" in str(service) for service in health_status["services"].values()
+        ):
+            health_status["status"] = "degraded"
+        
+        return health_status
+        
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}", exc_info=True)
+        logger.error(f"Comprehensive health check failed: {str(e)}", exc_info=True)
         return {
             "status": "unhealthy",
             "timestamp": datetime.now().isoformat(),

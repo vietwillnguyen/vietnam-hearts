@@ -97,15 +97,13 @@ Vietnam Hearts is a volunteer organization focused on teaching English to underp
 - Use configuration classes for settings management
 
 ## Vietnam Hearts Specific Context
+- Safety and privacy are priorities (don't expose exact locations publicly)
 - Classes are held in Binh Thanh, Ho Chi Minh City
 - Volunteer roles include Teachers, Teaching Assistants, and Non-Teaching roles
 - No formal teaching certificate required
 - Focus on English education for underprivileged children
-- Safety and privacy are priorities (don't expose exact locations publicly)
 
 ## When suggesting improvements:
 - Consider cost implications (API usage, hosting)
 - Think about non-technical team members who need to use admin features
-- Prioritize user experience for volunteers
-- Consider the Vietnamese context and cultural sensitivity
 - Always suggest sustainable, maintainable solutions

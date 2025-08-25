@@ -43,16 +43,16 @@ class EmailService:
         self.unsubscribe_link = None  # Will be loaded per request
 
         # Load HTML templates
-        templates_dir = Path(__file__).parent.parent.parent / "templates" / "email"
+        templates_dir = config.EMAIL_TEMPLATES_PATH
 
         # Welcome email template
-        welcome_template_path = templates_dir / "confirmation-email.html"
-        with open(welcome_template_path, "r") as f:
+        welcome_EMAIL_TEMPLATES_PATH = config.EMAIL_TEMPLATES_PATH / "confirmation-email.html"
+        with open(welcome_EMAIL_TEMPLATES_PATH, "r") as f:
             self.welcome_template = f.read()
 
         # Weekly reminder template
-        reminder_template_path = templates_dir / "weekly-reminder-email.html"
-        with open(reminder_template_path, "r") as f:
+        reminder_EMAIL_TEMPLATES_PATH = config.EMAIL_TEMPLATES_PATH / "weekly-reminder-email.html"
+        with open(reminder_EMAIL_TEMPLATES_PATH, "r") as f:
             self.reminder_template = f.read()
 
     def generate_unsubscribe_token(self) -> str:

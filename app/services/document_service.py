@@ -36,7 +36,7 @@ class DocumentService:
                 GOOGLE_APPLICATION_CREDENTIALS,
                 scopes=['https://www.googleapis.com/auth/drive.readonly']
             )
-            return build('drive', 'v3', credentials=credentials)
+            return build('drive', 'v3', credentials=credentials, cache_discovery=False)
         except Exception as e:
             logger.error(f"Failed to create Drive service: {e}")
             raise
@@ -48,7 +48,7 @@ class DocumentService:
                 GOOGLE_APPLICATION_CREDENTIALS,
                 scopes=['https://www.googleapis.com/auth/documents.readonly']
             )
-            return build('docs', 'v1', credentials=credentials)
+            return build('docs', 'v1', credentials=credentials, cache_discovery=False)
         except Exception as e:
             logger.error(f"Failed to create Docs service: {e}")
             raise

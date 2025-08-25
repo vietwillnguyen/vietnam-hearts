@@ -39,7 +39,7 @@ GOOGLE_APPLICATION_CREDENTIALS = Path(
 )
 
 # Email Templates
-TEMPLATE_PATH = PROJECT_ROOT / "templates" / "email" / "weekly-reminder-email.html"
+EMAIL_TEMPLATES_PATH = PROJECT_ROOT / "templates" / "email"
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -65,10 +65,13 @@ REQUIRED_ENV_VARS = [
     "SERVICE_ACCOUNT_EMAIL",  # Required for Google Sheets access
     "SUPABASE_URL",  # Required for Supabase auth
     "SUPABASE_ANON_KEY",  # Required for Supabase auth
+    "SUPABASE_SERVICE_ROLE_KEY",  # Required for Supabase auth
     "FACEBOOK_VERIFY_TOKEN",  # Required for Facebook Messenger
     "FACEBOOK_ACCESS_TOKEN",  # Required for Facebook Messenger
     "FACEBOOK_APP_ID",  # Required for Facebook Messenger
     "FACEBOOK_APP_SECRET",  # Required for Facebook Messenger
+    "EMAIL_SENDER",  # Required for sending emails
+    "EMAIL_TEMPLATES_PATH",  # Required for sending emails
 ]
 
 

@@ -437,7 +437,9 @@ async def _handle_postback(sender_id: str, postback: dict):
     "/health", summary="Health check", description="Returns system health information"
 )
 def get_health(db: Session = Depends(get_db)):
-    """Get system health information"""
+    """
+    Get system health information, including database, Google Sheets, Facebook Messenger, and bot service.
+    """
     try:
         # Test Google Sheets connection
         sheets_status = "unknown"
@@ -457,7 +459,6 @@ def get_health(db: Session = Depends(get_db)):
         total_volunteers = 0
         total_emails = 0
         db_status = "healthy"
-        
         try:
             total_volunteers = db.query(VolunteerModel).count()
             total_emails = db.query(EmailCommunicationModel).count()
@@ -465,9 +466,35 @@ def get_health(db: Session = Depends(get_db)):
             db_status = "unhealthy"
             logger.error(f"Database health check failed: {str(e)}")
 
+        # Bot service health check
+        bot_status = "unknown"
+        bot_error = None
+        try:
+            from app.routers.bot import get_bot_service
+            bot_service = get_bot_service()
+            # Try a lightweight check, e.g., check if bot service is initialized and can respond to a ping
+            if hasattr(bot_service, "health_check"):
+                bot_health = bot_service.health_check()
+                if bot_health.get("status") == "healthy":
+                    bot_status = "healthy"
+                else:
+                    bot_status = "unhealthy"
+                    bot_error = bot_health.get("error")
+            else:
+                # Fallback: check if bot_service is not None
+                if bot_service is not None:
+                    bot_status = "healthy"
+                else:
+                    bot_status = "unhealthy"
+                    bot_error = "Bot service not initialized"
+        except Exception as e:
+            bot_status = "unhealthy"
+            bot_error = str(e)
+            logger.error(f"Bot service health check failed: {str(e)}")
+
         from app.config import APPLICATION_VERSION
         return {
-            "status": "healthy",
+            "status": "healthy" if db_status == "healthy" and sheets_status == "healthy" and bot_status == "healthy" else "unhealthy",
             "version": APPLICATION_VERSION,
             "timestamp": datetime.now().isoformat(),
             "environment": ENVIRONMENT,
@@ -484,6 +511,10 @@ def get_health(db: Session = Depends(get_db)):
                 "facebook_messenger": {
                     "status": "healthy" if FACEBOOK_VERIFY_TOKEN and FACEBOOK_ACCESS_TOKEN else "unhealthy",
                     "webhook_url": "/webhook/messenger"
+                },
+                "bot_service": {
+                    "status": bot_status,
+                    "error": bot_error,
                 },
             },
         }

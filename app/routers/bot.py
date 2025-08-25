@@ -1,22 +1,27 @@
 """
 Bot API endpoints for Vietnam Hearts chatbot
 
-Provides chat functionality and document management for the knowledge base.
+Provides bot functionality including:
+- Public chatbot interactions (/admin/bot/chat)
+- Admin-only knowledge base management (/admin/bot/*)
+- Bot service testing and monitoring
+
+The chat endpoint is public for external integrations, while knowledge base management requires admin privileges.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services.bot_service import BotService
-from app.services.supabase_auth import get_current_user, get_current_admin_user
+from app.services.supabase_auth import get_current_admin_user
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
-# Bot router
-bot_router = APIRouter(prefix="/admin/bot", tags=["bot","admin"])
+# Bot router - Bot-specific admin functions for knowledge base and chatbot management
+bot_router = APIRouter(prefix="/admin/bot", tags=["bot", "admin"])
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -69,19 +74,20 @@ def get_bot_service() -> BotService:
         logger.error(f"Failed to initialize Supabase client for bot service: {e}")
         return BotService(None)
 
+# Public chat endpoint - no authentication required
 @bot_router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    bot_service: BotService = Depends(get_bot_service),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    bot_service: BotService = Depends(get_bot_service)
 ):
     """
     Chat with the Vietnam Hearts bot
     
     Send a message and get an intelligent response based on the knowledge base.
+    This is a public endpoint for chatbot interactions.
     """
     try:
-        logger.info(f"Chat request from user: {current_user.get('email', 'anonymous') if current_user else 'anonymous'}")
+        logger.info(f"Chat request received from public user")
         
         # Process the chat message
         result = await bot_service.chat(request.message, request.user_context)
@@ -111,28 +117,45 @@ async def sync_documents(
 ):
     """
     Admin endpoint to sync Google Docs to knowledge base
-    
+
     Requires admin privileges to sync documents and update the knowledge base.
+    Also attempts to fetch the document name from Google Drive using the document ID.
     """
     try:
-        logger.info(f"Document sync request from admin: {current_user.get('email')} for doc: {request.doc_id}")
-        
+        logger.info(f"Document sync request from: {current_user.get('email')} for doc: {request.doc_id}")
+
         # Sync the document
         result = await bot_service.sync_documents(request.doc_id, request.metadata)
-        
+
+        document_name: str = ""
+        # Try to fetch the document name from Google Drive if possible
+        try:
+            # Access the document_service from bot_service
+            document_service = getattr(bot_service, "document_service", None)
+            if document_service and hasattr(document_service, "drive_service") and document_service.drive_service:
+                drive_service = document_service.drive_service
+                file = drive_service.files().get(fileId=request.doc_id, fields="name").execute()
+                document_name = file.get("name", "")
+                logger.info(f"Fetched document name for {request.doc_id}: {document_name}")
+            else:
+                logger.warning("Document service or drive service not available, cannot fetch document name.")
+        except Exception as doc_name_exc:
+            logger.error(f"Failed to fetch document name for {request.doc_id}: {doc_name_exc}")
+
         if result["status"] == "success":
             response = SyncDocumentResponse(
                 status="success",
                 message=result["message"],
                 doc_id=result["doc_id"],
                 chunks=result["chunks"],
-                embeddings=result["embeddings"]
+                embeddings=result["embeddings"],
+                document_name=document_name if document_name else None
             )
-            logger.info(f"Document {request.doc_id} synced successfully")
+            logger.info(f"Document {request.doc_id} synced successfully (name: {document_name})")
             return response
         else:
             raise HTTPException(status_code=400, detail=result["message"])
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -170,7 +193,7 @@ async def get_knowledge_status(
         logger.error(f"Knowledge status error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get knowledge status: {str(e)}")
 
-@bot_router.get("/admin/documents")
+@bot_router.get("/documents")
 async def list_available_documents(
     folder_id: Optional[str] = None,
     bot_service: BotService = Depends(get_bot_service),
@@ -196,36 +219,7 @@ async def list_available_documents(
         logger.error(f"Document list error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
 
-@bot_router.get("/health")
-async def bot_health(
-    bot_service: BotService = Depends(get_bot_service)
-):
-    """
-    Check bot service health
-    
-    Public endpoint to verify the bot service is working.
-    """
-    try:
-        status = await bot_service.get_knowledge_status()
-        
-        return {
-            "status": "healthy",
-            "services": {
-                "knowledge_base": status["knowledge_service_available"],
-                "embeddings": status["embeddings_available"],
-                "gemini": status["gemini_available"],
-                "google_docs": status["document_service_available"],
-                "supabase": status["supabase_available"]
-            },
-            "documents": status["documents_count"]
-        }
-        
-    except Exception as e:
-        logger.error(f"Bot health check error: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+# Bot health check removed - consolidated into main admin health endpoint at /admin/health
 
 # Test endpoint for development
 @bot_router.post("/test")

@@ -1,41 +1,5 @@
 """
 Google Sheets Integration Service
-
-This service handles:
-1. Reading form submissions from Google Sheets
-2. Processing and validating form data
-3. Converting form submissions to volunteer records
-4. Managing schedule sheet rotation and visibility
-
-NEW FORM STRUCTURE (Updated 2024):
-The form now includes the following columns:
-1. Applicant Status
-2. Timestamp
-3. Email Address
-4. Score
-5. First Name (as it appears on passport/ID)
-6. Last Name (as it appears on passport/ID)
-7. Passport/ID number
-8. Passport/ID expiry date
-9. Date of birth MM/DD/YYYY
-10. Passport upload link
-11. Headshot upload link
-12. Facebook/LinkedIn profile link
-13. Where are you from?
-14. Phone number (with region code)
-15. Position interested in
-16. Availability
-17. When would you like to start?
-18. Commitment duration
-19. Teaching experience
-20. Experience details
-21. Teaching certificate
-22. Vietnamese speaking ability
-23. Other support ways
-24. How did you hear about us?
-
-Note: Personal information (passport details, uploads) is collected but not stored in the database
-for privacy and security reasons.
 """
 
 import os
@@ -127,8 +91,8 @@ class GoogleSheetsService:
                 )
                 logger.info(f"Using file-based Google credentials from {GOOGLE_APPLICATION_CREDENTIALS}")
 
-            # Build service
-            self._service = build("sheets", "v4", credentials=creds)
+            # Build service with modern parameters to avoid file_cache warnings
+            self._service = build("sheets", "v4", credentials=creds, cache_discovery=False)
             self._sheet = self._service.spreadsheets()
             self._initialized = True
             logger.info(f"Google Sheets service initialized successfully with service account email: {creds.service_account_email}")
