@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import asyncio
 import functools
-from jinja2 import Template
+
 
 from app.database import get_db, get_db_session
 from app.models import (
@@ -46,7 +46,7 @@ admin_router = APIRouter(
 )
 
 # Initialize templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="templates/web")
 
 
 def timeout_handler(timeout_seconds: float = 30.0):
@@ -1628,8 +1628,7 @@ async def send_weekly_reminder_emails(
                     db.commit()
 
                 first_name = db_volunteer.name.split()[0] if db_volunteer.name else "Volunteer"
-                from jinja2 import Template
-                html_body = Template(email_service.reminder_template).render(
+                html_body = email_service.email_env.get_template("weekly-reminder-email.html").render(
                     first_name=first_name,
                     class_tables=[ct['table_html'] for ct in class_tables],
                     SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",

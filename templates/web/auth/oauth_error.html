@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Access Verification Failed - Vietnam Hearts</title>
+    <title>Authentication Error - Vietnam Hearts</title>
     
     <!-- Favicon using the Vietnam Hearts logo -->
-    <link rel="icon" type="image/png" href="/public/vietnam-hearts-logo.ico">
-    <link rel="shortcut icon" type="image/png" href="/public/vietnam-hearts-logo.ico">
+    <link rel="icon" type="image/png" href="/static/vietnam-hearts-logo.ico">
+    <link rel="shortcut icon" type="image/png" href="/static/vietnam-hearts-logo.ico">
     
     <style>
         body {
@@ -48,22 +48,13 @@
 </head>
 <body>
     <div class="container">
-        <div class="icon">⚠️</div>
-        <h1 class="error">Access Verification Failed</h1>
-        <p><strong>Unable to verify your admin access.</strong></p>
-        <p>{{ error_message }}</p>
-        <p>Please contact the system administrator for assistance.</p>
-        <a href="/" class="btn">Return to Home Page</a>
+        <div class="icon">❌</div>
+        <h1 class="error">Authentication Error</h1>
+        <p><strong>Error:</strong> {{ error }}</p>
+        {% if error_description %}
+        <p><strong>Description:</strong> {{ error_description }}</p>
+        {% endif %}
+        <a href="/" class="btn">Return to Home</a>
     </div>
-    
-    <script>
-        // Store error message in localStorage for the home page to display
-        localStorage.setItem('auth_error', '{{ error_message }}');
-        
-        // Redirect to home page after 5 seconds
-        setTimeout(() => {
-            window.location.href = '/';
-        }, 5000);
-    </script>
 </body>
 </html> 

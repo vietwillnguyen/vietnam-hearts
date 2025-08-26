@@ -18,7 +18,7 @@ logger = get_logger("auth_router")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # Initialize templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="templates/web")
 
 
 class SignInRequest(BaseModel):

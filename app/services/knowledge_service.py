@@ -34,9 +34,9 @@ class KnowledgeService:
     def _get_gemini_client(self) -> Optional[genai.GenerativeModel]:
         """Get Gemini client for chat responses"""
         try:
-            api_key = os.getenv("GOOGLE_API_KEY")
+            api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
-                logger.warning("GOOGLE_API_KEY not set - chat responses will use fallback")
+                logger.warning("GEMINI_API_KEY not set - chat responses will use fallback")
                 return None
             
             genai.configure(api_key=api_key)

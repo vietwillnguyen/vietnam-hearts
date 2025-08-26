@@ -19,44 +19,63 @@ FALLBACK_CLASS_CONFIG = {
 def get_class_config(db: Session) -> Dict[str, Dict[str, Any]]:
     """
     Get class configuration from Google Sheets 'Config' tab
-    
+
     Args:
         db: Database session for configuration
-        
+
     Returns:
         Dict mapping grade names to their configuration
     """
     try:
         # Import here to avoid circular import
         from app.services.google_sheets import sheets_service
-        
+
         # Read from the 'Config' tab, starting at A1
         # Expected columns: Grade, SheetRange, Time, Room, Max Assistants, Notes
-        config_data = sheets_service.get_range_from_sheet(db, ConfigHelper.get_schedule_sheet_id(db), "Schedule Config!A2:F")
-        
+        config_data = sheets_service.get_range_from_sheet(
+            db,
+            ConfigHelper.get_schedule_sheet_id(db),
+            "Schedule Config!A2:F"
+        )
+
         if not config_data:
             logger.warning("No configuration data found in Google Sheets, using fallback config")
             return FALLBACK_CLASS_CONFIG
-        
+
         class_config = {}
         for row in config_data:
-            if len(row) >= 6 and row[0].strip():  # Ensure we have at least 6 columns and grade is not empty
+            # Ensure we have at least 6 columns and grade is not empty
+            if len(row) >= 6 and row[0].strip():
                 grade = row[0].strip()
+                # Determine max_assistants: if not specified or blank, set to None (no limit)
+                max_assistants = None
+                if len(row) > 4 and row[4].strip().isdigit():
+                    max_assistants = int(row[4])
+                elif len(row) > 4 and row[4].strip() == "":
+                    max_assistants = None
+                elif len(row) > 4 and row[4].strip():
+                    # If not a digit but not blank, log a warning and set to None
+                    logger.warning(f"Invalid max_assistants value '{row[4]}' for grade '{grade}', treating as no limit")
+                    max_assistants = None
+                # If column missing, also treat as no limit
+                elif len(row) <= 4:
+                    max_assistants = None
+
                 class_config[grade] = {
                     "sheet_range": row[1].strip() if len(row) > 1 and row[1].strip() else "",
                     "time": row[2].strip() if len(row) > 2 and row[2].strip() else "",
                     "room": row[3].strip() if len(row) > 3 and row[3].strip() else "",
-                    "max_assistants": int(row[4]) if len(row) > 4 and row[4].strip().isdigit() else 4,
+                    "max_assistants": max_assistants,
                     "notes": row[5].strip() if len(row) > 5 and row[5].strip() else ""
                 }
-        
+
         if not class_config:
             logger.warning("No valid configuration data found in Google Sheets, using fallback config")
             return FALLBACK_CLASS_CONFIG
-        
+
         logger.info(f"Loaded {len(class_config)} class configurations from Google Sheets")
         return class_config
-        
+
     except Exception as e:
         logger.error(f"Failed to load class configuration from Google Sheets: {str(e)}", exc_info=True)
         logger.info("Using fallback configuration")

@@ -45,7 +45,7 @@ def get_message_sender():
 public_router = APIRouter(prefix="", tags=["public"])
 
 # Initialize templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="templates/web")
 
 
 @public_router.get("/", response_class=HTMLResponse)

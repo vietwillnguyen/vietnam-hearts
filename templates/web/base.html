@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Vietnam Hearts{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/vietnam-hearts-logo.ico">
+    <link rel="shortcut icon" type="image/png" href="/static/vietnam-hearts-logo.ico">
+    
+    <!-- Common CSS -->
+    <style>
+        :root {
+            --sage-green: #7a8c6b;
+            --warm-beige: #f5f1e8;
+            --warm-orange: #d4a574;
+            --earth-brown: #8b7355;
+            --light-cream: #faf8f3;
+            --deep-green: #5a6b4a;
+            --soft-coral: #e8b4a0;
+            --warm-yellow: #f0d8a8;
+            --muted-blue: #a8c4d8;
+            --rich-brown: #6b4f3a;
+        }
+        
+        body {
+            background: var(--warm-beige);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* Decorative background pattern */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 10% 20%, var(--deep-green) 2px, transparent 2px),
+                radial-gradient(circle at 90% 10%, var(--soft-coral) 3px, transparent 3px),
+                radial-gradient(circle at 20% 80%, var(--rich-brown) 2px, transparent 2px),
+                radial-gradient(circle at 80% 90%, var(--sage-green) 2px, transparent 2px),
+                radial-gradient(circle at 50% 5%, var(--warm-yellow) 1px, transparent 1px),
+                radial-gradient(circle at 5% 50%, var(--muted-blue) 1px, transparent 1px),
+                radial-gradient(circle at 95% 50%, var(--deep-green) 1px, transparent 1px),
+                radial-gradient(circle at 50% 95%, var(--soft-coral) 1px, transparent 1px);
+            background-size: 100px 100px, 150px 150px, 80px 80px, 120px 120px, 200px 200px, 300px 300px, 250px 250px, 180px 180px;
+            opacity: 0.08;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            color: var(--deep-green) !important;
+        }
+        
+        .btn-primary {
+            background-color: var(--sage-green);
+            border-color: var(--sage-green);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--deep-green);
+            border-color: var(--deep-green);
+        }
+        
+        .card {
+            border: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 12px;
+        }
+        
+        .footer {
+            background: var(--deep-green);
+            color: white;
+            padding: 2rem 0;
+            margin-top: auto;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-heart text-danger"></i> Vietnam Hearts
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    {% if current_user %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="/admin/dashboard">Dashboard</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/auth/logout">Logout</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="/auth/login">Login</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container-fluid">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Vietnam Hearts</h5>
+                    <p>Teaching English to underprivileged children in Vietnam</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p>&copy; 2024 Vietnam Hearts. All rights reserved.</p>
+                    <p>Version: {{ version if version else '1.0.0' }}</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

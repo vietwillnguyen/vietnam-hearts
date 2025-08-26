@@ -1,14 +1,10 @@
-<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #222; background: #fafbfc; padding: 32px 0;">
+{% extends "base_email.html" %}
+
+{% block email_content %}
   <!-- Banner image at the top -->
   <div style="text-align: center; margin-bottom: 24px;">
     <img src="cid:banner_image" alt="Vietnam Hearts Banner" style="width: 100%; max-width: 540px; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />
   </div>
-  
-  <div style="max-width: 540px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 36px 32px 28px 32px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="font-size: 2em; margin: 0; color: #e63946; letter-spacing: 1px;">Vietnam Hearts</h1>
-      <div style="font-size: 1.2em; color: #555;">❤️🇻🇳</div>
-    </div>
 
     <p style="font-size: 1.1em; margin-bottom: 0.5em;">Hello <strong>{{UserFullName}}</strong>,</p>
 
@@ -95,11 +91,4 @@
     <div style="text-align: center; margin-top: 24px;">
       <img src="cid:field_day_image" alt="Field Day Goodbye" style="width: 100%; max-width: 400px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
     </div>
-
-    <p style="font-size: 12px; color: #888; margin-top: 36px; text-align: center;">
-      <a href="{{ EMAIL_PREFERENCES_LINK }}" style="color: #888; text-decoration: underline;" target="_blank">
-        Manage your email preferences
-      </a>
-    </p>
-  </div>
-</div>
+{% endblock %}

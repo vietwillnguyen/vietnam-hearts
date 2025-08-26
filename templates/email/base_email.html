@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vietnam Hearts</title>
+    <style>
+        /* Email-safe CSS - inline styles for maximum compatibility */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #222;
+            background: #fafbfc;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        
+        .email-container {
+            max-width: 540px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            overflow: hidden;
+        }
+        
+        .email-header {
+            text-align: center;
+            padding: 24px 32px;
+            background: linear-gradient(135deg, #e63946 0%, #d62b3a 100%);
+            color: white;
+        }
+        
+        .email-header h1 {
+            margin: 0;
+            font-size: 2em;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        
+        .email-body {
+            padding: 32px;
+        }
+        
+        .email-footer {
+            background: #f8f9fa;
+            padding: 24px 32px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #e63946;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 8px 4px;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+        }
+        
+        .info-box {
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+        }
+        
+        .success-box {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+        }
+        
+        .social-links {
+            margin: 16px 0;
+        }
+        
+        .social-links a {
+            color: #6c757d;
+            text-decoration: none;
+            margin: 0 8px;
+        }
+        
+        .social-links a:hover {
+            color: #e63946;
+        }
+        
+        .unsubscribe-link {
+            font-size: 12px;
+            color: #6c757d;
+            text-decoration: none;
+        }
+        
+        .unsubscribe-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="email-header">
+            <h1>Vietnam Hearts</h1>
+            <div style="font-size: 1.2em; margin-top: 8px;">❤️🇻🇳</div>
+        </div>
+        
+        <!-- Body -->
+        <div class="email-body">
+            {% block email_content %}{% endblock %}
+        </div>
+        
+        <!-- Footer -->
+        <div class="email-footer">
+            <div class="social-links">
+                <a href="{{ INSTAGRAM_LINK|default('#') }}" target="_blank">📸 Instagram</a>
+                <a href="{{ FACEBOOK_PAGE_LINK|default('#') }}" target="_blank">👍 Facebook</a>
+                <a href="{{ INVITE_LINK_DISCORD|default('#') }}" target="_blank">💬 Discord</a>
+            </div>
+            
+            <p style="margin: 16px 0 8px 0; color: #6c757d;">
+                Love without limit,<br>
+                <strong>Vietnam Hearts Team</strong>
+            </p>
+            
+            {% if EMAIL_PREFERENCES_LINK %}
+            <p style="margin: 8px 0;">
+                <a href="{{ EMAIL_PREFERENCES_LINK }}" class="unsubscribe-link" target="_blank">
+                    Manage email preferences
+                </a>
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

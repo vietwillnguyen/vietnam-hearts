@@ -18,7 +18,7 @@ from app.models import (
 )
 from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import config
-from jinja2 import Template
+from jinja2 import Template, Environment, FileSystemLoader
 
 logger = get_api_logger()
 
@@ -44,6 +44,9 @@ class EmailService:
 
         # Load HTML templates
         templates_dir = config.EMAIL_TEMPLATES_PATH
+
+        # Create Jinja2 environment for email templates
+        self.email_env = Environment(loader=FileSystemLoader(str(templates_dir)))
 
         # Welcome email template
         welcome_EMAIL_TEMPLATES_PATH = config.EMAIL_TEMPLATES_PATH / "confirmation-email.html"
@@ -88,7 +91,7 @@ class EmailService:
         try:
             sheet_range = config.get("sheet_range")
             class_time = config.get("time", "")
-            max_assistants = config.get("max_assistants", 4)  # Default to 3 if not specified
+            max_assistants = config.get("max_assistants", None)  # Default to 3 if not specified
             
             if not sheet_range:
                 logger.error(f"No sheet_range configured for class {class_name}")
@@ -136,7 +139,7 @@ class EmailService:
                     assistant_list = [a.strip() for a in assistant.split(',') if a.strip()]
                     current_assistants = len(assistant_list)
                 
-                # Status logic with max assistants enforcement
+                # Status logic with max assistants enforcement, including "no limit" case
                 status = ""
                 bg_color = ""
                 teacher_lower = teacher.strip().lower() if teacher else ""
@@ -161,6 +164,10 @@ class EmailService:
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
+                elif max_assistants is None:
+                    # No limit on assistants
+                    status = f"✅ {current_assistants} assistant(s) signed up - No limit, TA's welcome to join"
+                    bg_color = "#d4edda"
                 elif current_assistants >= max_assistants:
                     status = f"✅ Fully Covered ({current_assistants}/{max_assistants} assistants)"
                     bg_color = "#d4edda"
@@ -225,7 +232,8 @@ class EmailService:
         from app.utils.config_helper import ConfigHelper
 
         # Render template with class tables and all variables
-        html_body = Template(self.reminder_template).render(
+        template = self.email_env.get_template("weekly-reminder-email.html")
+        html_body = template.render(
             first_name=first_name,
             class_tables=[ct['table_html'] for ct in class_tables],
             SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
@@ -273,7 +281,7 @@ class EmailService:
             }
 
             # Render template with variables
-            template = Template(self.welcome_template)
+            template = self.email_env.get_template("confirmation-email.html")
             body = template.render(**template_vars)
 
             subject = self.welcome_email_subject

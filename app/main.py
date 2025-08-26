@@ -27,7 +27,6 @@ from app.routers.bot import bot_router
 # Configure logging
 logger = get_logger("main")
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
