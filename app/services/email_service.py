@@ -308,7 +308,7 @@ class EmailService:
                 banner_path = Path(__file__).parent.parent.parent / "static" / "banner.jpg"
                 if banner_path.exists():
                     with open(banner_path, "rb") as f:
-                        banner_img = MIMEImage(f.read())
+                        banner_img = MIMEImage(f.read(), _subtype="jpeg")
                         banner_img.add_header("Content-ID", "<banner_image>")
                         banner_img.add_header("Content-Disposition", "inline", filename="banner.jpg")
                         message.attach(banner_img)
@@ -317,7 +317,7 @@ class EmailService:
                 logo_path = Path(__file__).parent.parent.parent / "static" / "vietnam-hearts-logo.ico"
                 if logo_path.exists():
                     with open(logo_path, "rb") as f:
-                        logo_img = MIMEImage(f.read())
+                        logo_img = MIMEImage(f.read(), _subtype="x-icon")
                         logo_img.add_header("Content-ID", "<logo_image>")
                         logo_img.add_header("Content-Disposition", "inline", filename="vietnam-hearts-logo.ico")
                         message.attach(logo_img)
@@ -326,7 +326,7 @@ class EmailService:
                 field_day_path = Path(__file__).parent.parent.parent / "static" / "field-day-goodbye.png"
                 if field_day_path.exists():
                     with open(field_day_path, "rb") as f:
-                        field_day_img = MIMEImage(f.read())
+                        field_day_img = MIMEImage(f.read(), _subtype="png")
                         field_day_img.add_header("Content-ID", "<field_day_image>")
                         field_day_img.add_header("Content-Disposition", "inline", filename="field-day-goodbye.png")
                         message.attach(field_day_img)

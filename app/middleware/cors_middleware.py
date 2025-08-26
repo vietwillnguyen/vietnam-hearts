@@ -27,19 +27,16 @@ def setup_cors(app: FastAPI) -> None:
         allowed_origins = [
             "http://localhost:3000",      # React dev server
             "http://localhost:8080",      # FastAPI dev server
-            "http://127.0.0.1:3000",     # Alternative localhost
-            "http://127.0.0.1:8080",     # Alternative localhost
+            "http://127.0.0.1:3000",      # Alternative localhost
+            "http://127.0.0.1:8080",      # Alternative localhost
             "http://localhost:8080",      # Alternative port
-            "http://127.0.0.1:8080",     # Alternative port
+            "http://127.0.0.1:8080",      # Alternative port
             API_URL,
         ]
         logger.info("🔓 CORS configured for development - allowing localhost origins")
     else:
         # Production origins - restrict to your actual domains
         allowed_origins = [
-            "https://yourdomain.com",           # Replace with your actual domain
-            "https://www.yourdomain.com",       # Replace with your actual domain
-            "https://admin.yourdomain.com",     # Replace with your admin subdomain
             API_URL,                            # Your API URL
         ]
         logger.info("🔒 CORS configured for production - restricting to allowed origins")
