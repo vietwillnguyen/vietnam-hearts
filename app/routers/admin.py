@@ -38,11 +38,10 @@ from app.services.supabase_auth import get_current_admin_user
 
 logger = get_api_logger()
 
-# Fully protected admin router
+# Admin router - authentication handled by middleware
 admin_router = APIRouter(
     prefix="/admin",
-    tags=["admin"],
-    dependencies=[Depends(get_current_admin_user)]
+    tags=["admin"]
 )
 
 # Initialize templates
@@ -252,7 +251,43 @@ async def admin_dashboard(
     db: Session = Depends(get_db),
 ):
     """Admin dashboard to view volunteers and email logs"""
+    
+    # Check for authentication token in cookies or query params for HTML pages
+    token = None
+    
+    # Try to get token from various sources
+    if "authorization" in request.headers:
+        auth_header = request.headers["authorization"]
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    elif "x-auth-token" in request.headers:
+        token = request.headers["x-auth-token"]
+    elif "token" in request.query_params:
+        token = request.query_params["token"]
+    
+    # If no token found, try to get from cookies (for session-based auth)
+    if not token:
+        token = request.cookies.get("access_token")
+    
+    # Validate the token
+    if not token:
+        # Redirect to login page for HTML requests
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/?error=Authentication required", status_code=302)
+    
     try:
+        # Validate the token and check admin access
+        from app.services.supabase_auth import auth_service
+        
+        # Get user from token
+        user = await auth_service.get_current_user_from_token(token)
+        
+        # Check if user is admin
+        is_admin = await auth_service.is_admin(user["email"])
+        if not is_admin:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/?error=Admin access required", status_code=302)
+        
         # Get volunteer data
         volunteers = db.query(VolunteerModel).all()
         volunteer_data = get_volunteer_summary(volunteers)
@@ -294,9 +329,9 @@ async def admin_dashboard(
 
     except Exception as e:
         logger.error(f"Failed to render admin dashboard: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to render admin dashboard: {str(e)}"
-        )
+        # Redirect to login page on error
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/?error=Authentication failed", status_code=302)
 
 
 @admin_router.get("/reminder-stats")

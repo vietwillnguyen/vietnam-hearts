@@ -60,17 +60,59 @@
     </div>
     
     <script>
+        console.log('Signin success page loaded');
+        console.log('Template variables:', {
+            user_email: '{{ user_email }}',
+            user_name: '{{ user_name or "" }}',
+            access_token: '{{ access_token }}',
+            refresh_token: '{{ refresh_token }}'
+        });
+        
         // Store tokens in localStorage
         localStorage.setItem('access_token', '{{ access_token }}');
         localStorage.setItem('refresh_token', '{{ refresh_token }}');
         localStorage.setItem('user_email', '{{ user_email }}');
         localStorage.setItem('user_name', '{{ user_name or "" }}');
         
+        // Also set a cookie for session-based authentication
+        document.cookie = `access_token={{ access_token }}; path=/; max-age=3600; SameSite=Lax`;
+        
+        console.log('Tokens stored in localStorage and cookies');
+        
         // Clear any previous error messages
         localStorage.removeItem('auth_error');
         
-        // Redirect to dashboard after a short delay
-        window.location.href = '/admin/dashboard';
+        // Verify tokens were stored correctly
+        const accessToken = localStorage.getItem('access_token');
+        const refreshToken = localStorage.getItem('refresh_token');
+        
+        console.log('Retrieved tokens from localStorage:', {
+            accessToken: accessToken ? accessToken.substring(0, 20) + '...' : 'null',
+            refreshToken: refreshToken ? refreshToken.substring(0, 20) + '...' : 'null'
+        });
+        
+        if (!accessToken || !refreshToken) {
+            console.error('Failed to store authentication tokens');
+            localStorage.setItem('auth_error', 'Failed to store authentication tokens');
+            // Show error and don't redirect
+            document.querySelector('.loading').innerHTML = `
+                <div style="color: #dc3545;">❌</div>
+                <p style="color: #dc3545;">Authentication failed. Please try again.</p>
+                <p style="font-size: 12px; color: #666;">Debug: access_token=${accessToken ? 'present' : 'missing'}, refresh_token=${refreshToken ? 'present' : 'missing'}</p>
+                <button onclick="window.location.href='/auth/login'" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    Try Again
+                </button>
+            `;
+        } else {
+            console.log('Authentication tokens stored successfully');
+            
+            // Add a small delay to ensure localStorage is fully updated
+            console.log('Waiting 500ms before redirect...');
+            setTimeout(() => {
+                console.log('Redirecting to dashboard...');
+                window.location.href = '/admin/dashboard';
+            }, 500);
+        }
     </script>
 </body>
 </html> 

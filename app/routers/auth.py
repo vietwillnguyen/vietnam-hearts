@@ -126,6 +126,11 @@ async def auth_callback(
             )
         
         # User is admin, show success page
+        logger.info(f"Rendering success page for {user_email}")
+        logger.info(f"Session data: {result.get('session', {})}")
+        logger.info(f"Access token present: {'access_token' in result.get('session', {})}")
+        logger.info(f"Refresh token present: {'refresh_token' in result.get('session', {})}")
+        
         return templates.TemplateResponse(
             "auth/signin_success.html",
             {

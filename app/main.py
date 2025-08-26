@@ -23,6 +23,7 @@ from app.routers.public import public_router
 from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
 from app.routers.bot import bot_router
+from datetime import datetime
 
 # Configure logging
 logger = get_logger("main")
@@ -103,6 +104,10 @@ app = FastAPI(
     redoc_url=None if os.getenv("ENVIRONMENT") == "production" else "/redoc",
     lifespan=lifespan,
 )
+
+# Setup all middleware
+from .middleware import setup_middleware
+setup_middleware(app)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
