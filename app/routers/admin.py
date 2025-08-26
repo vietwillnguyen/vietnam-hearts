@@ -38,11 +38,11 @@ from app.services.supabase_auth import get_current_admin_user
 
 logger = get_api_logger()
 
-# Admin router - Core administrative functions
-# Bot-specific admin functions are in the separate bot router (/admin/bot/*)
+# Fully protected admin router
 admin_router = APIRouter(
     prefix="/admin",
     tags=["admin"],
+    dependencies=[Depends(get_current_admin_user)]
 )
 
 # Initialize templates
