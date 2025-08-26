@@ -165,6 +165,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return "public"
         elif path.startswith("/bot"):
             return "bot"
+        elif path == "/" or path.startswith("/unsubscribe"):
+            return "public"  # Root and unsubscribe endpoints are public
         else:
             return "default"
     

@@ -28,13 +28,18 @@ def setup_middleware(app: FastAPI) -> None:
     4. CORS (innermost)
     """
     
+    # Setup CORS first (FastAPI built-in middleware) - should be early to handle preflight requests
+    setup_cors(app)
+    
     # Add custom middleware classes (excluding auth to avoid conflicts)
+    # Order matters - middleware is executed in the order it's added:
+    # 1. Error handling (outermost)
+    # 2. Rate limiting
+    # 3. Logging
+    # 4. CORS (already added above)
     app.add_middleware(ErrorHandlingMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(LoggingMiddleware)
-    
-    # Setup CORS (FastAPI built-in middleware)
-    setup_cors(app)
     
     # Log middleware setup
     from app.utils.logging_config import get_logger

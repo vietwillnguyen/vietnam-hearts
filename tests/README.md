@@ -6,7 +6,7 @@ This directory contains test scripts for the Vietnam Hearts Scheduler API endpoi
 
 - `test_api.py` - Main test script for scheduler API endpoints
 - `test_db.py` - Database connection test script
-- `requirements.txt` - Python dependencies for tests
+- `requirements.txt` - poetry run Python dependencies for tests
 
 ## Prerequisites
 
@@ -26,18 +26,6 @@ gcloud config set project refined-vector-457419
 
 # Verify your configuration
 gcloud config list
-```
-
-### 2. Python Dependencies
-
-Install the required Python packages:
-
-```bash
-# From the tests directory
-pip install -r requirements.txt
-
-# Or from the project root
-pip install -r tests/requirements.txt
 ```
 
 ### 3. Environment Variables
@@ -65,33 +53,33 @@ DATABASE_URL=your_database_url_here
 
 ```bash
 # Test health check endpoint
-python tests/test_api.py health
+poetry run python tests/test_api.py health
 
 # Test send confirmation emails
-python tests/test_api.py send-confirmation-emails
+poetry run python tests/test_api.py send-confirmation-emails
 
 # Test sync volunteers
-python tests/test_api.py sync-volunteers
+poetry run python tests/test_api.py sync-volunteers
 
 # Test send weekly reminders
-python tests/test_api.py send-weekly-reminders
+poetry run python tests/test_api.py send-weekly-reminders
 
 # Test rotate schedule
-python tests/test_api.py rotate-schedule
+poetry run python tests/test_api.py rotate-schedule
 ```
 
 ### Test All Endpoints
 
 ```bash
 # Test all scheduler endpoints
-python tests/test_api.py all
+poetry run python tests/test_api.py all
 ```
 
 ### Database Connection Test
 
 ```bash
 # Test database connectivity
-python tests/test_db.py
+poetry run python tests/test_db.py
 ```
 
 ## Available Endpoints

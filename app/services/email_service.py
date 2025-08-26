@@ -91,7 +91,7 @@ class EmailService:
         try:
             sheet_range = config.get("sheet_range")
             class_time = config.get("time", "")
-            max_assistants = config.get("max_assistants", None)  # Default to 3 if not specified
+            max_assistants = config.get("max_assistants", 3)  # Default to 3 if not specified
             
             if not sheet_range:
                 logger.error(f"No sheet_range configured for class {class_name}")

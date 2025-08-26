@@ -5,13 +5,18 @@ class TestUpdateEmailPreferences:
     
     def test_unsubscribe_weekly_reminders(self, client, test_db, mock_volunteer):
         """Test unsubscribing from weekly reminders only"""
+        print(f"Testing with volunteer token: {mock_volunteer.email_unsubscribe_token}")
+        print(f"Volunteer in DB: {test_db.query(type(mock_volunteer)).filter_by(email_unsubscribe_token=mock_volunteer.email_unsubscribe_token).first()}")
+        
         response = client.post(
             f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
-            data={"unsubscribe_type": "weekly_reminders"}
+            files={"unsubscribe_type": (None, "weekly_reminders")}
         )
         
+        print(f"Response status: {response.status_code}")
+        print(f"Response text: {response.text[:500]}")
+        
         assert response.status_code == 200
-        print(response.text)
         assert "unsubscribed from weekly reminders" in response.text
         
         # Check database state
@@ -32,7 +37,7 @@ class TestUpdateEmailPreferences:
         """Test unsubscribing from all emails"""
         response = client.post(
             f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
-            data={"unsubscribe_type": "all_emails"}
+            files={"unsubscribe_type": (None, "all_emails")}
         )
         
         assert response.status_code == 200
@@ -57,7 +62,7 @@ class TestUpdateEmailPreferences:
         """Test resubscribing to all emails"""
         response = client.post(
             f"/unsubscribe?token={mock_inactive_volunteer.email_unsubscribe_token}",
-            data={"unsubscribe_type": "resubscribe"}
+            files={"unsubscribe_type": (None, "resubscribe")}
         )
         
         assert response.status_code == 200
@@ -82,7 +87,7 @@ class TestUpdateEmailPreferences:
         """Test handling of invalid unsubscribe type"""
         response = client.post(
             f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
-            data={"unsubscribe_type": "invalid_type"}
+            files={"unsubscribe_type": (None, "invalid_type")}
         )
         
         # Should return an error or redirect to error page
@@ -92,9 +97,10 @@ class TestUpdateEmailPreferences:
         """Test POST request with invalid token"""
         response = client.post(
             "/unsubscribe?token=invalid_token",
-            data={"unsubscribe_type": "all_emails"}
+            files={"unsubscribe_type": (None, "all_emails")}
         )
         
+        # The endpoint returns 400 for invalid tokens
         assert response.status_code == 400
         assert "Invalid or expired unsubscribe link" in response.text
     

@@ -55,6 +55,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             # Process the request
             response = await call_next(request)
             
+            # Add request ID to response headers
+            response.headers["X-Request-ID"] = request_id
+            
             # Log response details
             duration = time.time() - start_time
             await self._log_response(request, response, duration, request_id)
