@@ -449,16 +449,9 @@
                         const userData = await response.json();
                         console.log('Token valid, user authenticated:', userData.user?.email);
                         
-                        // Only redirect if we're not in the middle of an auth flow
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const isAuthFlow = urlParams.get('code') || urlParams.get('state') || urlParams.get('error');
-                        
-                        if (!isAuthFlow) {
-                            console.log('Redirecting to dashboard...');
-                            window.location.href = '/admin/dashboard';
-                        } else {
-                            console.log('In auth flow, not redirecting yet');
-                        }
+                        // Redirect to dashboard if user is authenticated
+                        console.log('Redirecting to dashboard...');
+                        window.location.href = '/admin/dashboard';
                     } else {
                         console.log('Token invalid, clearing localStorage');
                         // Token is invalid, remove it
@@ -507,8 +500,12 @@
                 statusMessage.innerHTML = `<i class="fas fa-check-circle"></i> ${decodeURIComponent(success)}`;
             }
             
-            // Check if user is already authenticated
-            checkAuthStatus();
+            // Only check auth status if there's a success message (user just signed in)
+            if (success) {
+                setTimeout(() => {
+                    checkAuthStatus();
+                }, 1000);
+            }
         });
     </script>
 {% endblock %}

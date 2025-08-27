@@ -1,5 +1,12 @@
 CHANGELOG:
 
+## Version 2.1.0
+
+- Add: basic middleware, logging, rate_limiting 
+- Fix: security issue where not all admin endpoints were protected
+- Refactor: project and file organization
+- Update: email templates
+
 ## Version 2.0.5
 
 - Fix: Supabase Auth usage of mock user

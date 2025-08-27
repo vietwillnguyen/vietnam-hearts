@@ -600,7 +600,7 @@
         async function checkAuthentication() {
             const token = localStorage.getItem('access_token');
             if (!token) {
-                window.location.href = '/auth/login';
+                window.location.href = '/';
                 return;
             }
             
@@ -620,10 +620,10 @@
                     window.location.href = '/';
                     return;
                 } else if (!response.ok) {
-                    // Token is invalid, redirect to login
+                    // Token is invalid, redirect to home page
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
-                    window.location.href = '/auth/login';
+                    window.location.href = '/';
                     return;
                 }
                 
@@ -640,7 +640,7 @@
                 
             } catch (error) {
                 console.error('Authentication check failed:', error);
-                window.location.href = '/auth/login';
+                window.location.href = '/';
             }
         }
         
@@ -648,8 +648,8 @@
             // Get authentication token from localStorage
             const token = localStorage.getItem('access_token');
             if (!token) {
-                // Redirect to login if no token
-                window.location.href = '/auth/login';
+                // Redirect to home page if no token
+                window.location.href = '/';
                 return {};
             }
             
@@ -686,10 +686,10 @@
             } catch (error) {
                 console.error('Logout error:', error);
             } finally {
-                // Clear local storage and redirect to login
+                // Clear local storage and redirect to home page
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('refresh_token');
-                window.location.href = '/auth/login';
+                window.location.href = '/';
             }
         }
         

@@ -34,15 +34,17 @@ from app.utils.logging_config import get_api_logger
 from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
 from app.utils.retry_utils import log_ssl_error
-from app.services.supabase_auth import get_current_admin_user
+from app.services.supabase_auth import get_current_admin_user, get_current_admin_user_for_dashboard
 
 logger = get_api_logger()
 
-# Admin router - authentication handled by middleware
+# Admin router - authentication handled by dependency
 admin_router = APIRouter(
     prefix="/admin",
-    tags=["admin"]
+    tags=["admin"],
 )
+
+
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates/web")
@@ -138,7 +140,7 @@ def get_email_summary(communications):
 # Volunteer endpoints
 @admin_router.get("/volunteers")
 def view_volunteers(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
     """View all volunteers and their email status"""
     try:
@@ -164,13 +166,17 @@ def view_volunteers(
     description="Returns list of active volunteers",
     response_model=List[Volunteer],
 )
-def list_active_volunteers(db: Session = Depends(get_db)):
+def list_active_volunteers(
+    db: Session = Depends(get_db)
+):
     """Get only active volunteers"""
     return db.query(VolunteerModel).filter(VolunteerModel.is_active == True).all()
 
 
 @admin_router.get("/volunteers/announcement-recipients")
-def get_announcement_recipients(db: Session = Depends(get_db)):
+def get_announcement_recipients(
+    db: Session = Depends(get_db)
+):
     """Get all volunteers who are subscribed to announcements (all emails)"""
     try:
         # Get all active volunteers who are subscribed to all emails
@@ -214,7 +220,10 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
     description="Returns details for a specific volunteer",
     response_model=Volunteer,
 )
-def get_volunteer_by_id(volunteer_id: int, db: Session = Depends(get_db)):
+def get_volunteer_by_id(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     volunteer = (
         db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
     )
@@ -225,7 +234,7 @@ def get_volunteer_by_id(volunteer_id: int, db: Session = Depends(get_db)):
 
 @admin_router.get("/email-logs")
 def view_email_logs(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
     """View all email communications"""
     try:
@@ -249,45 +258,11 @@ def view_email_logs(
 async def admin_dashboard(
     request: Request, 
     db: Session = Depends(get_db),
+    current_admin: Dict[str, Any] = Depends(get_current_admin_user_for_dashboard)
 ):
     """Admin dashboard to view volunteers and email logs"""
     
-    # Check for authentication token in cookies or query params for HTML pages
-    token = None
-    
-    # Try to get token from various sources
-    if "authorization" in request.headers:
-        auth_header = request.headers["authorization"]
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    elif "x-auth-token" in request.headers:
-        token = request.headers["x-auth-token"]
-    elif "token" in request.query_params:
-        token = request.query_params["token"]
-    
-    # If no token found, try to get from cookies (for session-based auth)
-    if not token:
-        token = request.cookies.get("access_token")
-    
-    # Validate the token
-    if not token:
-        # Redirect to login page for HTML requests
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/?error=Authentication required", status_code=302)
-    
     try:
-        # Validate the token and check admin access
-        from app.services.supabase_auth import auth_service
-        
-        # Get user from token
-        user = await auth_service.get_current_user_from_token(token)
-        
-        # Check if user is admin
-        is_admin = await auth_service.is_admin(user["email"])
-        if not is_admin:
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url="/?error=Admin access required", status_code=302)
-        
         # Get volunteer data
         volunteers = db.query(VolunteerModel).all()
         volunteer_data = get_volunteer_summary(volunteers)
@@ -297,20 +272,16 @@ async def admin_dashboard(
         email_data = get_email_summary(communications)
         
         # Get settings for template
-        settings = []
         from app.services.settings_service import get_all_settings
         all_settings = get_all_settings(db)
         
+        settings = []
         for setting in all_settings:
             settings.append({
                 "key": setting.key,
                 "value": setting.value,
                 "description": setting.description
             })
-
-        # Get settings data
-        from app.services.settings_service import get_all_settings
-        settings = get_all_settings(db)
 
         from app.config import APPLICATION_VERSION
         
@@ -319,8 +290,8 @@ async def admin_dashboard(
             "admin/dashboard.html",
             {
                 "total_volunteers": len(volunteer_data),
-                "volunteers": volunteer_data,
                 "total_emails": len(email_data),
+                "volunteers": volunteer_data,
                 "emails": email_data,
                 "settings": settings,
                 "version": APPLICATION_VERSION,
@@ -329,13 +300,15 @@ async def admin_dashboard(
 
     except Exception as e:
         logger.error(f"Failed to render admin dashboard: {str(e)}", exc_info=True)
-        # Redirect to login page on error
+        # Redirect to home page on error
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/?error=Authentication failed", status_code=302)
 
 
 @admin_router.get("/reminder-stats")
-def get_reminder_stats(db: Session = Depends(get_db)):
+def get_reminder_stats(
+    db: Session = Depends(get_db)
+):
     """Get statistics about weekly reminder emails"""
     try:
         # Get all reminder emails
@@ -388,7 +361,9 @@ def get_reminder_stats(db: Session = Depends(get_db)):
 
 
 @admin_router.get("/schedule-status")
-def get_schedule_status(db: Session = Depends(get_db)):
+def get_schedule_status(
+    db: Session = Depends(get_db)
+):
     """Get current status of schedule sheets"""
     try:
         # Get all schedule sheets
@@ -442,7 +417,8 @@ def get_schedule_status(db: Session = Depends(get_db)):
     description="Fetches and optionally processes volunteer signup form submissions, syncing to database and sending confirmation emails to new volunteers",
 )
 def get_signup_form_submissions(
-    db: Session = Depends(get_db), process_new: bool = True
+    db: Session = Depends(get_db), 
+    process_new: bool = True,
 ):
     """
     Fetch and optionally process volunteer signup form submissions from Google Sheets
@@ -672,7 +648,8 @@ def create_new_volunteer_object(submission: dict) -> VolunteerModel:
 
 @admin_router.post("/volunteers/{volunteer_id}/send-confirmation")
 def send_confirmation_email_to_volunteer(
-    volunteer_id: int, db: Session = Depends(get_db)
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
 ):
     """Manually send a confirmation email to a specific volunteer"""
     try:
@@ -732,7 +709,10 @@ def send_confirmation_email_to_volunteer(
 
 
 @admin_router.post("/volunteers/{volunteer_id}/reset-confirmation")
-def reset_confirmation_email_status(volunteer_id: int, db: Session = Depends(get_db)):
+def reset_confirmation_email_status(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     """Reset confirmation email status for a volunteer (mark as not sent)"""
     try:
         volunteer = (
@@ -775,7 +755,10 @@ def reset_confirmation_email_status(volunteer_id: int, db: Session = Depends(get
 
 
 @admin_router.post("/volunteers/{volunteer_id}/resubscribe")
-def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
+def resubscribe_volunteer(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     """Manually resubscribe a volunteer to emails (admin only)"""
     try:
         volunteer = (
@@ -820,7 +803,10 @@ def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
 
 
 @admin_router.post("/volunteers/{volunteer_id}/resubscribe-weekly")
-def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db)):
+def resubscribe_volunteer_weekly(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     """Manually resubscribe a volunteer to weekly reminders only (admin only)"""
     try:
         volunteer = (
@@ -867,7 +853,10 @@ def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db
 
 
 @admin_router.post("/volunteers/{volunteer_id}/deactivate")
-def deactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
+def deactivate_volunteer(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     """Soft delete a volunteer by setting is_active to False (admin only)"""
     try:
         volunteer = (
@@ -919,7 +908,10 @@ def deactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
 
 
 @admin_router.post("/volunteers/{volunteer_id}/reactivate")
-def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
+def reactivate_volunteer(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     """Reactivate a volunteer by setting is_active to True (admin only)"""
     try:
         volunteer = (
@@ -971,7 +963,10 @@ def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
 
 
 @admin_router.post("/volunteers/{volunteer_id}/send-weekly-reminder")
-def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
+def send_weekly_reminder_to_volunteer(
+    volunteer_id: int, 
+    db: Session = Depends(get_db)
+):
     """Send a weekly reminder email to a specific volunteer (admin only)"""
     try:
         # Check if weekly reminders are globally enabled
@@ -1032,7 +1027,9 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
 
 
 @admin_router.get("/config/validate")
-def validate_configuration(db: Session = Depends(get_db)):
+def validate_configuration(
+    db: Session = Depends(get_db)
+):
     """Validate that all required configuration is set"""
     try:
         missing_settings = []
@@ -1142,7 +1139,6 @@ async def get_admins(current_admin: Dict[str, Any] = Depends(get_current_admin_u
 @timeout_handler(timeout_seconds=30.0)
 async def create_admin(
     request: AdminCreateRequest,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
     """Add a new admin user"""
     try:
@@ -1208,7 +1204,6 @@ async def create_admin(
 async def update_admin_role(
     email: str,
     request: AdminRoleUpdateRequest,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
     """Update admin role"""
     try:
@@ -1266,7 +1261,6 @@ async def update_admin_role(
 @timeout_handler(timeout_seconds=30.0)
 async def remove_admin(
     email: str,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
     """Remove an admin user (deactivate)"""
     try:
@@ -1316,7 +1310,6 @@ async def remove_admin(
 @timeout_handler(timeout_seconds=30.0)
 async def delete_admin_permanently(
     email: str,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
     """Permanently delete an admin user from database"""
     try:
@@ -1515,8 +1508,7 @@ def build_class_table(class_name, config, sheet_service, db):
 @admin_router.post("/send-confirmation-emails")
 async def send_confirmation_emails(
     request: Request,
-    db: Session = Depends(get_db),
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+    db: Session = Depends(get_db)
 ):
     """Process emails for new volunteers - accessible by admin dashboard and scheduler"""
 
@@ -1537,8 +1529,7 @@ async def send_confirmation_emails(
 @admin_router.post("/sync-volunteers")
 async def sync_volunteers(
     request: Request,
-    db: Session = Depends(get_db),
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+    db: Session = Depends(get_db)
 ):
     """Sync volunteers from Google Sheets and process new signups with graceful degradation"""
 
@@ -1578,7 +1569,6 @@ async def sync_volunteers(
 @admin_router.post("/send-weekly-reminders")
 async def send_weekly_reminder_emails(
     request: Request,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
     """Send weekly reminder emails to all active volunteers - accessible by admin dashboard and scheduler"""
     
@@ -1731,7 +1721,6 @@ async def send_weekly_reminder_emails(
 async def rotate_schedule_sheets(
     request: Request,
     display_weeks: int = Query(None, description="Number of weeks to display (1-12), overrides default setting"),
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
     """Rotate schedule sheets to show next week - accessible by admin dashboard and scheduler"""
 
@@ -1768,8 +1757,7 @@ async def rotate_schedule_sheets(
 
 @admin_router.get("/health")
 async def comprehensive_health_check(
-    db: Session = Depends(get_db), 
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+    db: Session = Depends(get_db) 
 ):
     """
     Comprehensive health check endpoint for all admin services

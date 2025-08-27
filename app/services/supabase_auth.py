@@ -449,4 +449,37 @@ async def get_current_admin_user(current_user: Dict[str, Any] = Depends(get_curr
         logger.warning(f"Access denied for non-admin user: {current_user.get('email', 'No email')}")
         raise HTTPException(status_code=403, detail="Admin access required")
     logger.info(f"Admin access granted for user: {current_user.get('email', 'No email')}")
-    return current_user 
+    return current_user
+
+from fastapi import Request
+
+# Custom dependency for dashboard authentication that can handle multiple token sources
+async def get_current_admin_user_for_dashboard(request: Request) -> Dict[str, Any]:
+    """Dependency to get the current authenticated admin user for dashboard (handles query params and cookies)"""
+    token = None
+    
+    # Try to get token from various sources
+    if "authorization" in request.headers:
+        auth_header = request.headers["authorization"]
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    elif "token" in request.query_params:
+        token = request.query_params["token"]
+    elif request.cookies.get("access_token"):
+        token = request.cookies.get("access_token")
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        # Get user from token
+        user = await auth_service.get_current_user_from_token(token)
+        
+        # Check if user is admin
+        if not await auth_service.is_admin(user["email"]):
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        return user
+    except Exception as e:
+        logger.error(f"Dashboard authentication failed: {str(e)}")
+        raise HTTPException(status_code=401, detail="Authentication failed") 

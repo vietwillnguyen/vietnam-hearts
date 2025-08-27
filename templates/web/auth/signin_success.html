@@ -99,7 +99,7 @@
                 <div style="color: #dc3545;">❌</div>
                 <p style="color: #dc3545;">Authentication failed. Please try again.</p>
                 <p style="font-size: 12px; color: #666;">Debug: access_token=${accessToken ? 'present' : 'missing'}, refresh_token=${refreshToken ? 'present' : 'missing'}</p>
-                <button onclick="window.location.href='/auth/login'" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                <button onclick="window.location.href='/'" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
                     Try Again
                 </button>
             `;
@@ -110,7 +110,9 @@
             console.log('Waiting 500ms before redirect...');
             setTimeout(() => {
                 console.log('Redirecting to dashboard...');
-                window.location.href = '/admin/dashboard';
+                // Pass token as query parameter so dashboard can authenticate
+                const token = localStorage.getItem('access_token');
+                window.location.href = `/admin/dashboard?token=${encodeURIComponent(token)}`;
             }, 500);
         }
     </script>
