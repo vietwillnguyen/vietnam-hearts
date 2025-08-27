@@ -107,14 +107,14 @@ rate_limits = {
 ### **Example Usage:**
 ```python
 # In app/routers/admin.py
-admin_router = APIRouter(
+admin_api_router = APIRouter(
     prefix="/admin",
     tags=["admin",
     dependencies=[Depends(get_current_admin_user)]  # Router-level auth
 )
 
 # Individual endpoints don't need auth dependencies
-@admin_router.get("/dashboard")
+@admin_api_router.get("/dashboard")
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     # Automatically protected by router-level dependency
     pass

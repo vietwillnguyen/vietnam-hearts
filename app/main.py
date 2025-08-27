@@ -18,7 +18,7 @@ from .config import (
 )
 from app.utils.config_helper import ConfigHelper
 import os
-from app.routers.admin import admin_router
+from app.routers.admin import admin_api_router, admin_dashboard_router
 from app.routers.public import public_router
 from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
@@ -117,7 +117,8 @@ logger.info("Static files mounted at /static")
 app.include_router(auth_router)
 logger.info("Authentication endpoints enabled.")
 
-app.include_router(admin_router)
+app.include_router(admin_api_router)
+app.include_router(admin_dashboard_router)
 app.include_router(public_router)
 app.include_router(settings_router)
 app.include_router(bot_router)
