@@ -121,7 +121,7 @@ app.include_router(admin_api_router)
 app.include_router(admin_dashboard_router)
 app.include_router(public_router)
 app.include_router(settings_router)
-app.include_router(bot_router)
+# app.include_router(bot_router)
 logger.info("Bot endpoints enabled.")
 
 # Root route redirects to home page
