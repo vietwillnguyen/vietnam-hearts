@@ -14,10 +14,26 @@ from app.models import Volunteer as VolunteerModel, EmailCommunication as EmailC
 from app.routers.admin import get_signup_form_submissions, create_new_volunteer_object
 
 
+@pytest.fixture
+def mock_auth_service():
+    """Mock authentication service for testing admin endpoints with valid auth"""
+    with patch("app.services.supabase_auth.get_current_admin_user") as mock_auth:
+        # Mock a valid admin user
+        mock_user = MagicMock()
+        mock_user.email = "admin@vietnamhearts.org"
+        mock_user.is_admin = True
+        mock_user.is_authenticated = True
+        
+        # Make the mock return our fake admin user
+        mock_auth.return_value = mock_user
+        
+        yield mock_auth
+
+
 class TestFormSubmissionProcessing:
     """Test the form submission processing functionality"""
 
-    def test_no_duplicate_volunteers_created(self, client, test_db):
+    def test_no_duplicate_volunteers_created(self, client, test_db, mock_auth_service):
         """Test that duplicate volunteers are not created when processing form submissions"""
         # Create an existing volunteer
         existing_volunteer = VolunteerModel(
@@ -152,7 +168,7 @@ class TestFormSubmissionProcessing:
                 new_emails = [v.email for v in all_volunteers if v.email in ["new1@example.com", "new2@example.com"]]
                 assert len(new_emails) == 2
 
-    def test_confirmation_emails_sent_to_new_volunteers_only(self, client, test_db):
+    def test_confirmation_emails_sent_to_new_volunteers_only(self, client, test_db, mock_auth_service):
         """Test that confirmation emails are only sent to new volunteers, not existing ones"""
         # Create an existing volunteer with confirmation email already sent
         existing_volunteer = VolunteerModel(
@@ -240,7 +256,7 @@ class TestFormSubmissionProcessing:
                 assert new_volunteer is not None
                 assert new_volunteer.name == "New Volunteer"
 
-    def test_confirmation_emails_not_sent_to_already_confirmed_volunteers(self, client, test_db):
+    def test_confirmation_emails_not_sent_to_already_confirmed_volunteers(self, client, test_db, mock_auth_service):
         """Test that confirmation emails are not sent to volunteers who already have confirmation records"""
         # Create a volunteer with confirmation email already sent
         confirmed_volunteer = VolunteerModel(
@@ -413,7 +429,7 @@ class TestFormSubmissionProcessing:
         assert "Social Media: " in volunteer.additional_info
         assert "Referral Source: " in volunteer.additional_info
 
-    def test_form_submission_with_database_error(self, client, test_db):
+    def test_form_submission_with_database_error(self, client, test_db, mock_auth_service):
         """Test handling of database errors during form submission processing"""
         # Mock form submissions (using new form structure)
         mock_submissions = [
@@ -465,7 +481,7 @@ class TestFormSubmissionProcessing:
                     assert "failed to save new volunteers" in result["message"]
                     assert "Database error" in result["details"]["database_error"]
 
-    def test_form_submission_with_ssl_error(self, client, test_db):
+    def test_form_submission_with_ssl_error(self, client, test_db, mock_auth_service):
         """Test handling of SSL errors during form submission processing"""
         import ssl
         
@@ -483,7 +499,7 @@ class TestFormSubmissionProcessing:
             assert "SSL connection issue" in result["message"]
             assert result["details"]["error_type"] == "ssl_eof_error"
 
-    def test_form_submission_without_processing(self, client, test_db):
+    def test_form_submission_without_processing(self, client, test_db, mock_auth_service):
         """Test form submission retrieval without processing new volunteers"""
         # Mock form submissions (using new form structure)
         mock_submissions = [
@@ -533,7 +549,7 @@ class TestFormSubmissionProcessing:
             volunteers = test_db.query(VolunteerModel).all()
             assert len(volunteers) == 0
 
-    def test_email_communication_logging_for_new_volunteers(self, client, test_db):
+    def test_email_communication_logging_for_new_volunteers(self, client, test_db, mock_auth_service):
         """Test that email communications are properly logged for new volunteers"""
         # Mock form submissions (using new form structure)
         mock_submissions = [
@@ -589,7 +605,7 @@ class TestFormSubmissionProcessing:
                 # This is tested in the email service tests, but we can verify the volunteer exists
                 assert volunteer.email == "test@example.com"
 
-    def test_status_filtering_only_processes_accepted_submissions(self, client, test_db):
+    def test_status_filtering_only_processes_accepted_submissions(self, client, test_db, mock_auth_service):
         """Test that only submissions with STATUS = 'ACCEPTED' are processed"""
         # Mock form submissions with different statuses (using new form structure)
         mock_submissions = [
@@ -743,7 +759,7 @@ class TestFormSubmissionProcessing:
                 assert rejected_volunteer is None
                 assert nostatus_volunteer is None 
 
-    def test_empty_email_submissions_are_filtered_out(self, client, test_db):
+    def test_empty_email_submissions_are_filtered_out(self, client, test_db, mock_auth_service):
         """Test that submissions with empty email addresses are filtered out and not counted"""
         # Mock form submissions including some with empty emails (using new form structure)
         mock_submissions = [

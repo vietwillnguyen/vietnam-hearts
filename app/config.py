@@ -73,7 +73,6 @@ REQUIRED_ENV_VARS = [
     "FACEBOOK_APP_ID",  # Required for Facebook Messenger
     "FACEBOOK_APP_SECRET",  # Required for Facebook Messenger
     "EMAIL_SENDER",  # Required for sending emails
-    "EMAIL_TEMPLATES_PATH",  # Required for sending emails
 ]
 
 
