@@ -154,7 +154,7 @@ class BotService:
             return {
                 "response": response,
                 "context_used": len(relevant_chunks),
-                "confidence": "high" if relevant_chunks else "low",
+                "confidence": 0.9 if relevant_chunks else 0.3,
                 "sources": [chunk.get('source_document_id') for chunk in relevant_chunks]
             }
             
@@ -294,7 +294,7 @@ class BotService:
         return {
             "response": fallback_response,
             "context_used": 0,
-            "confidence": "low",
+            "confidence": 0.1,
             "sources": [],
             "note": "Using fallback response - knowledge base unavailable" + (f" (Error: {error})" if error else "")
         }

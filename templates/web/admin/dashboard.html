@@ -86,6 +86,29 @@
             border-color: #dc3545;
             box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
         }
+        .bot-test-section {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .bot-response {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-success { background-color: #28a745; }
+        .status-danger { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; }
     </style>
 </head>
 <body class="bg-light">
@@ -129,6 +152,11 @@
             <li class="nav-item">
                 <a class="nav-link" id="schedule-tab" data-bs-toggle="tab" href="#schedule" role="tab">
                     Schedule Management
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="bot-tab" data-bs-toggle="tab" href="#bot" role="tab">
+                    Bot Management
                 </a>
             </li>
         </ul>
@@ -558,6 +586,223 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Bot Management Tab -->
+            <div class="tab-pane fade" id="bot" role="tabpanel">
+                <div class="table-container">
+                    <h2>Bot Management</h2>
+                    <p class="text-muted">Manage documents and knowledge base for the bot.</p>
+                    
+                    <!-- Sync Documents Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-sync-alt"></i> Sync Documents</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>Sync documents from your Google Drive to the bot's knowledge base. This will update the bot's ability to understand and respond to new documents.</p>
+                            
+                            <!-- Folder Selection -->
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="syncFolderId" class="form-label">
+                                        <i class="fas fa-folder"></i> Google Drive Folder ID
+                                    </label>
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="syncFolderId" 
+                                           placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                                           title="Leave empty to sync from root directory, or enter a specific folder ID from Google Drive URL">
+                                    <div class="form-text">
+                                        <small>
+                                            <i class="fas fa-info-circle"></i> 
+                                            <strong>How to find folder ID:</strong><br>
+                                            • Open the folder in Google Drive<br>
+                                            • Copy the ID from the URL: <code>https://drive.google.com/drive/folders/FOLDER_ID_HERE</code><br>
+                                            • Leave empty to sync from root directory
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">&nbsp;</label>
+                                    <div>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="testFolderAccess()">
+                                            <i class="fas fa-search"></i> Test Folder Access
+                                        </button>
+                                        <button class="btn btn-outline-info btn-sm ms-2" onclick="clearFolderSelection()">
+                                            <i class="fas fa-times"></i> Clear
+                                        </button>
+                                    </div>
+                                    <div id="folderTestResult" class="mt-2" style="display: none;"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-info">
+                                <small>
+                                    <i class="fas fa-info-circle"></i> <strong>Batch Sync Process:</strong><br>
+                                    1. Lists all available Google Docs from the selected folder<br>
+                                    2. Syncs each document individually to the knowledge base<br>
+                                    3. Creates embeddings for AI-powered responses<br>
+                                    4. Shows detailed progress and results
+                                </small>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <button class="btn btn-info" onclick="syncDocuments()">
+                                        <i class="fas fa-cloud-upload-alt"></i> Sync Documents from Folder
+                                    </button>
+                                </div>
+                                <div class="col-md-6">
+                                    <button class="btn btn-outline-primary" onclick="listDocumentsInFolder()">
+                                        <i class="fas fa-list"></i> Preview Documents
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div id="syncProgress" class="mt-3" style="display: none;">
+                                <div class="progress">
+                                    <div id="syncProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                         role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <small class="text-muted" id="syncProgressText">Preparing...</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Check Knowledge Status Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-info-circle"></i> Check Knowledge Status</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>View the current status of the bot's knowledge base, including the number of documents and their last update.</p>
+                            <button class="btn btn-primary" onclick="checkKnowledgeStatus()">
+                                <i class="fas fa-database"></i> Check Knowledge Status
+                            </button>
+                        </div>
+                    </div>
+
+                                         <!-- List Available Documents Section -->
+                     <div class="card mb-4">
+                         <div class="card-header">
+                             <h5 class="mb-0"><i class="fas fa-list"></i> List Available Documents</h5>
+                         </div>
+                         <div class="card-body">
+                             <p>View a list of all documents currently available in the bot's knowledge base.</p>
+                             <button class="btn btn-success" onclick="listAvailableDocuments()">
+                                 <i class="fas fa-file-alt"></i> List Documents
+                             </button>
+                         </div>
+                     </div>
+
+                     <!-- Test Bot Section -->
+                     <div class="card">
+                         <div class="card-header">
+                             <h5 class="mb-0"><i class="fas fa-robot"></i> Test Bot</h5>
+                         </div>
+                         <div class="card-body">
+                             <p>Test the bot's responses with sample questions to verify knowledge base integration.</p>
+                             
+                             <!-- Sample Questions -->
+                             <div class="mb-3">
+                                 <small class="text-muted">Sample questions to test:</small>
+                                 <div class="mt-2">
+                                     <button type="button" class="btn btn-outline-secondary btn-sm me-2 mb-1" 
+                                             onclick="setTestQuestion('What are the volunteer requirements?')">
+                                         Volunteer Requirements
+                                     </button>
+                                     <button type="button" class="btn btn-outline-secondary btn-sm me-2 mb-1" 
+                                             onclick="setTestQuestion('How do I sign up for classes?')">
+                                         Class Signup
+                                     </button>
+                                     <button type="button" class="btn btn-outline-secondary btn-sm me-2 mb-1" 
+                                             onclick="setTestQuestion('What is the schedule for this week?')">
+                                         Weekly Schedule
+                                     </button>
+                                     <button type="button" class="btn btn-outline-secondary btn-sm me-2 mb-1" 
+                                             onclick="setTestQuestion('Where are the classes held?')">
+                                         Class Location
+                                     </button>
+                                 </div>
+                             </div>
+                             
+                             <div class="row">
+                                 <div class="col-md-8">
+                                     <input type="text" id="testQuestion" class="form-control" 
+                                            placeholder="Enter a test question (e.g., 'What are the volunteer requirements?')" />
+                                 </div>
+                                 <div class="col-md-4">
+                                     <button class="btn btn-warning w-100" onclick="testBot()">
+                                         <i class="fas fa-play"></i> Test Bot
+                                     </button>
+                                 </div>
+                             </div>
+                             <div id="testResult" class="mt-3" style="display: none;">
+                                 <div class="bot-response">
+                                     <h6><i class="fas fa-robot"></i> Bot Response:</h6>
+                                     <div id="botResponse" class="mb-3"></div>
+                                     <hr>
+                                     <div class="row">
+                                         <div class="col-md-4">
+                                             <small>
+                                                 <strong><i class="fas fa-chart-line"></i> Confidence:</strong><br>
+                                                 <span id="botConfidence" class="badge bg-info"></span>
+                                             </small>
+                                         </div>
+                                         <div class="col-md-4">
+                                             <small>
+                                                 <strong><i class="fas fa-file-alt"></i> Sources:</strong><br>
+                                                 <span id="botSources" class="text-muted"></span>
+                                             </small>
+                                         </div>
+                                         <div class="col-md-4">
+                                             <small>
+                                                 <strong><i class="fas fa-database"></i> Context Used:</strong><br>
+                                                 <span id="botContext" class="badge bg-secondary"></span>
+                                             </small>
+                                         </div>
+                                     </div>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+
+                     <!-- Knowledge Base Debug Section -->
+                     <div class="card mt-4">
+                         <div class="card-header">
+                             <h5 class="mb-0"><i class="fas fa-bug"></i> Knowledge Base Debug</h5>
+                         </div>
+                         <div class="card-body">
+                             <p>Debug and inspect the knowledge base to understand what content is stored and how searches work.</p>
+                             
+                             <div class="row">
+                                 <div class="col-md-4">
+                                     <button class="btn btn-outline-info" onclick="inspectKnowledgeBaseChunks()">
+                                         <i class="fas fa-database"></i> Inspect Stored Chunks
+                                     </button>
+                                 </div>
+                                 <div class="col-md-4">
+                                     <button class="btn btn-outline-warning" onclick="testKnowledgeBaseSearch()">
+                                         <i class="fas fa-search"></i> Test Search
+                                     </button>
+                                 </div>
+                                 <div class="col-md-4">
+                                     <button class="btn btn-outline-secondary" onclick="clearDebugResults()">
+                                         <i class="fas fa-times"></i> Clear Results
+                                     </button>
+                                 </div>
+                             </div>
+                             
+                             <div id="debugResults" class="mt-3" style="display: none;">
+                                 <div class="alert alert-info">
+                                     <h6><i class="fas fa-info-circle"></i> Debug Results:</h6>
+                                     <div id="debugContent"></div>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -595,6 +840,12 @@
             
             // Load schedule data when schedule tab is shown
             document.getElementById('schedule-tab').addEventListener('shown.bs.tab', loadScheduleData);
+            
+            // Load bot data when bot tab is shown
+            document.getElementById('bot-tab').addEventListener('shown.bs.tab', loadBotData);
+            
+            // Add event listener for folder ID input to save changes
+            document.getElementById('syncFolderId').addEventListener('input', saveFolderId);
         });
         
         async function checkAuthentication() {
@@ -1646,6 +1897,763 @@
                 button.innerHTML = originalText;
                 button.disabled = false;
             }
+        }
+
+                // Bot Management Functions
+        async function loadBotData() {
+            try {
+                // Load initial bot status when tab is shown
+                await checkKnowledgeStatus();
+                
+                // Load saved folder ID from localStorage
+                const savedFolderId = localStorage.getItem('vietnam_hearts_sync_folder_id');
+                if (savedFolderId) {
+                    document.getElementById('syncFolderId').value = savedFolderId;
+                }
+            } catch (error) {
+                console.error('Error loading bot data:', error);
+            }
+        }
+
+        async function syncDocuments() {
+            const folderId = document.getElementById('syncFolderId').value.trim();
+            const folderText = folderId ? `from folder "${folderId}"` : 'from root directory';
+            
+            if (!confirm(`Sync documents ${folderText} to the bot's knowledge base? This will update the bot's ability to understand and respond to new documents.\n\nThis process will:\n1. List all available documents in the selected location\n2. Sync each document individually\n3. Show progress and results`)) return;
+
+            const button = document.querySelector('button[onclick="syncDocuments()"]');
+            const originalText = button.innerHTML;
+
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+                button.disabled = true;
+
+                // Step 1: Get list of available documents
+                const headers = await getAuthHeaders();
+                const folderId = document.getElementById('syncFolderId').value.trim();
+                
+                // Show progress bar
+                const progressDiv = document.getElementById('syncProgress');
+                const progressBar = document.getElementById('syncProgressBar');
+                const progressText = document.getElementById('syncProgressText');
+                progressDiv.style.display = 'block';
+                const folderText = folderId ? `from folder "${folderId}"` : 'from root directory';
+                progressText.textContent = `Listing available documents ${folderText}...`;
+                progressBar.style.width = '10%';
+                
+                const listResponse = await fetch(`/admin/bot/documents${folderId ? `?folder_id=${encodeURIComponent(folderId)}` : ''}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!listResponse.ok) {
+                    throw new Error(`Failed to list documents: ${listResponse.status}`);
+                }
+
+                const listData = await listResponse.json();
+                
+                if (listData.status !== 'success' || !listData.documents || listData.documents.length === 0) {
+                    alert(`No documents found ${folderText} to sync`);
+                    progressDiv.style.display = 'none';
+                    return;
+                }
+
+                const documents = listData.documents;
+                let successCount = 0;
+                let errorCount = 0;
+                let totalChunks = 0;
+                let totalEmbeddings = 0;
+                const errors = [];
+
+                // Step 2: Sync each document individually
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+                progressText.textContent = `Found ${documents.length} documents ${folderText}. Starting sync...`;
+                progressBar.style.width = '20%';
+                
+                for (let i = 0; i < documents.length; i++) {
+                    const doc = documents[i];
+                    const progress = Math.round(((i + 1) / documents.length) * 100);
+                    const progressPercent = 20 + (progress * 0.7); // 20% to 90%
+                    
+                    progressBar.style.width = `${progressPercent}%`;
+                    progressText.textContent = `Syncing ${i + 1}/${documents.length}: ${doc.name}`;
+                    
+                    try {
+                        const syncResponse = await fetch('/admin/bot/knowledge-sync', {
+                            method: 'POST',
+                            headers: headers,
+                            body: JSON.stringify({
+                                doc_id: doc.id,
+                                metadata: { name: doc.name, batch_sync: true }
+                            })
+                        });
+
+                        const syncResult = await syncResponse.json();
+
+                        if (syncResponse.ok && syncResult.status === 'success') {
+                            successCount++;
+                            totalChunks += syncResult.chunks || 0;
+                            totalEmbeddings += syncResult.embeddings || 0;
+                        } else {
+                            errorCount++;
+                            errors.push(`${doc.name}: ${syncResult.detail || syncResult.message || 'Unknown error'}`);
+                        }
+                    } catch (error) {
+                        errorCount++;
+                        errors.push(`${doc.name}: ${error.message}`);
+                    }
+
+                    // Small delay to avoid overwhelming the API
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                // Step 3: Show results
+                progressBar.style.width = '100%';
+                progressText.textContent = 'Sync completed!';
+                
+                let message = `✅ Batch sync completed!\n\n`;
+                message += `Total documents: ${documents.length}\n`;
+                message += `Successfully synced: ${successCount}\n`;
+                message += `Failed: ${errorCount}\n`;
+                message += `Total chunks: ${totalChunks}\n`;
+                message += `Total embeddings: ${totalEmbeddings}\n`;
+                
+                if (errors.length > 0) {
+                    message += `\nErrors:\n${errors.slice(0, 5).join('\n')}`;
+                    if (errors.length > 5) {
+                        message += `\n... and ${errors.length - 5} more errors`;
+                    }
+                }
+                
+                alert(message);
+                
+                // Hide progress bar after a short delay
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }, 2000);
+                
+                // Refresh bot data
+                await loadBotData();
+                
+            } catch (error) {
+                alert(`❌ Error: ${error.message || 'Failed to sync documents'}`);
+                // Hide progress bar on error
+                document.getElementById('syncProgress').style.display = 'none';
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function checkKnowledgeStatus() {
+            const button = document.querySelector('button[onclick="checkKnowledgeStatus()"]');
+            const originalText = button.innerHTML;
+
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+                button.disabled = true;
+
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/bot/knowledge-sync/status', {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                // Create a modal-like display for better viewing
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.5);
+                    z-index: 9999;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+                
+                const content = document.createElement('div');
+                content.style.cssText = `
+                    background: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    max-width: 800px;
+                    max-height: 80vh;
+                    overflow-y: auto;
+                    position: relative;
+                `;
+                
+                let statusHtml = `
+                    <h4>📚 Knowledge Base Status</h4>
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h5 class="text-primary">${data.documents_count || 0}</h5>
+                                <small class="text-muted">Documents</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h5 class="text-${data.knowledge_service_available ? 'success' : 'danger'}">${data.knowledge_service_available ? '✓' : '✗'}</h5>
+                                <small class="text-muted">Knowledge Service</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h5 class="text-${data.embeddings_available ? 'success' : 'danger'}">${data.embeddings_available ? '✓' : '✗'}</h5>
+                                <small class="text-muted">Embeddings</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h5 class="text-${data.gemini_available ? 'success' : 'danger'}">${data.gemini_available ? '✓' : '✗'}</h5>
+                                <small class="text-muted">Gemini AI</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                if (data.documents && data.documents.length > 0) {
+                    statusHtml += `
+                        <h6>📄 Documents in Knowledge Base:</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Document</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    data.documents.forEach(doc => {
+                        statusHtml += `
+                            <tr>
+                                <td>${doc.title || doc.name || 'Unknown'}</td>
+                                <td>${doc.type || 'Document'}</td>
+                                <td>
+                                    <span class="badge bg-success">Active</span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    statusHtml += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                } else {
+                    statusHtml += `<p class="text-muted">No documents found in knowledge base.</p>`;
+                }
+                
+                statusHtml += `
+                    <div class="mt-3">
+                        <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary">
+                            Close
+                        </button>
+                    </div>
+                `;
+                
+                content.innerHTML = statusHtml;
+                modal.appendChild(content);
+                modal.className = 'modal-overlay';
+                document.body.appendChild(modal);
+                
+                // Close modal when clicking outside
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) modal.remove();
+                });
+                
+            } catch (error) {
+                alert(`❌ Error: ${error.message || 'Failed to check knowledge status'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function listAvailableDocuments() {
+            const button = document.querySelector('button[onclick="listAvailableDocuments()"]');
+            const originalText = button.innerHTML;
+            const folderId = document.getElementById('syncFolderId').value.trim();
+
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Listing...';
+                button.disabled = true;
+
+                const headers = await getAuthHeaders();
+                const response = await fetch(`/admin/bot/documents${folderId ? `?folder_id=${encodeURIComponent(folderId)}` : ''}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Create a modal-like display for better viewing
+                    const modal = document.createElement('div');
+                    modal.style.cssText = `
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: rgba(0,0,0,0.5);
+                        z-index: 9999;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    `;
+                    
+                    const content = document.createElement('div');
+                    content.style.cssText = `
+                        background: white;
+                        padding: 20px;
+                        border-radius: 8px;
+                        max-width: 900px;
+                        max-height: 80vh;
+                        overflow-y: auto;
+                        position: relative;
+                    `;
+                    
+                    const folderId = document.getElementById('syncFolderId').value.trim();
+                    const folderText = folderId ? `in folder "${folderId}"` : 'in root directory';
+                    
+                    let documentsHtml = `
+                        <h4>📄 Available Documents</h4>
+                        <p><strong>Location:</strong> ${folderText}</p>
+                        <p><strong>Total Documents:</strong> ${data.count || 0}</p>
+                        <p><strong>Requested by:</strong> ${data.requested_by || 'Unknown'}</p>
+                    `;
+                    
+                    if (data.documents && data.documents.length > 0) {
+                        documentsHtml += `
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Document Name</th>
+                                            <th>Type</th>
+                                            <th>Size</th>
+                                            <th>Modified</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                        `;
+                        
+                        data.documents.forEach(doc => {
+                            const modifiedDate = doc.modifiedTime ? new Date(doc.modifiedTime).toLocaleDateString() : 'N/A';
+                            const size = doc.size ? `${Math.round(doc.size / 1024)} KB` : 'N/A';
+                            
+                            documentsHtml += `
+                                <tr>
+                                    <td>${doc.name || 'Unknown'}</td>
+                                    <td>${doc.mimeType || 'Document'}</td>
+                                    <td>${size}</td>
+                                    <td>${modifiedDate}</td>
+                                    <td>
+                                        ${doc.webViewLink ? `<a href="${doc.webViewLink}" target="_blank" class="btn btn-sm btn-primary">View</a>` : ''}
+                                        ${doc.id ? `<button onclick="syncSingleDocument('${doc.id}', '${doc.name || 'Unknown'}')" class="btn btn-sm btn-success">Sync</button>` : ''}
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        
+                        documentsHtml += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    } else {
+                        documentsHtml += `<p class="text-muted">No documents found.</p>`;
+                    }
+                    
+                    documentsHtml += `
+                        <div class="mt-3">
+                            <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary">
+                                Close
+                            </button>
+                        </div>
+                    `;
+                    
+                    content.innerHTML = documentsHtml;
+                    modal.appendChild(content);
+                    modal.className = 'modal-overlay';
+                    document.body.appendChild(modal);
+                    
+                    // Close modal when clicking outside
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal) modal.remove();
+                    });
+                    
+                } else {
+                    alert(`❌ Error: ${data.detail || data.message || 'Failed to list documents'}`);
+                }
+            } catch (error) {
+                alert(`❌ Error: ${error.message || 'Failed to list documents'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Helper function to sync a single document
+        async function syncSingleDocument(docId, docName) {
+            if (!confirm(`Sync document "${docName}" to the knowledge base?`)) return;
+            
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/bot/knowledge-sync', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        doc_id: docId,
+                        metadata: { name: docName }
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(`✅ Document "${docName}" synced successfully!\n\nStatus: ${result.status}\nMessage: ${result.message}\nChunks: ${result.chunks || 0}\nEmbeddings: ${result.embeddings || 0}`);
+                    // Refresh bot data
+                    await loadBotData();
+                } else {
+                    alert(`❌ Error syncing "${docName}": ${result.detail || result.message || 'Failed to sync document'}`);
+                }
+            } catch (error) {
+                alert(`❌ Error syncing "${docName}": ${error.message || 'Failed to sync document'}`);
+            }
+        }
+
+        // Helper function to set test questions
+        function setTestQuestion(question) {
+            document.getElementById('testQuestion').value = question;
+        }
+
+        // Test folder access
+        async function testFolderAccess() {
+            const folderId = document.getElementById('syncFolderId').value.trim();
+            if (!folderId) {
+                alert('Please enter a folder ID first');
+                return;
+            }
+
+            const button = document.querySelector('button[onclick="testFolderAccess()"]');
+            const originalText = button.innerHTML;
+            const resultDiv = document.getElementById('folderTestResult');
+
+            try {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+                button.disabled = true;
+                resultDiv.style.display = 'none';
+
+                const headers = await getAuthHeaders();
+                const response = await fetch(`/admin/bot/documents?folder_id=${encodeURIComponent(folderId)}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> 
+                            <strong>Folder accessible!</strong><br>
+                            Found ${data.count} Google Doc(s) in this folder.
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i> 
+                            <strong>Folder test completed</strong><br>
+                            ${data.detail || data.message || 'Unknown response'}
+                        </div>
+                    `;
+                }
+                resultDiv.style.display = 'block';
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle"></i> 
+                        <strong>Error testing folder:</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+                resultDiv.style.display = 'block';
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Clear folder selection
+        function clearFolderSelection() {
+            document.getElementById('syncFolderId').value = '';
+            document.getElementById('folderTestResult').style.display = 'none';
+            localStorage.removeItem('vietnam_hearts_sync_folder_id');
+        }
+
+        // Save folder ID to localStorage when it changes
+        function saveFolderId() {
+            const folderId = document.getElementById('syncFolderId').value.trim();
+            if (folderId) {
+                localStorage.setItem('vietnam_hearts_sync_folder_id', folderId);
+            } else {
+                localStorage.removeItem('vietnam_hearts_sync_folder_id');
+            }
+        }
+
+        // Preview documents in selected folder
+        async function listDocumentsInFolder() {
+            const folderId = document.getElementById('syncFolderId').value.trim();
+            const folderText = folderId ? `in folder "${folderId}"` : 'in root directory';
+            
+            if (!confirm(`Preview documents ${folderText}? This will show you what documents will be synced.`)) return;
+
+            try {
+                const headers = await getAuthHeaders();
+                const response = await fetch(`/admin/bot/documents${folderId ? `?folder_id=${encodeURIComponent(folderId)}` : ''}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    let message = `📄 Documents ${folderText}\n\n`;
+                    message += `Total documents found: ${data.count}\n\n`;
+                    
+                    if (data.documents && data.documents.length > 0) {
+                        message += `Documents:\n`;
+                        data.documents.forEach((doc, index) => {
+                            const modifiedDate = doc.modified_time ? new Date(doc.modified_time).toLocaleDateString() : 'N/A';
+                            message += `${index + 1}. ${doc.name}\n`;
+                            message += `   - Modified: ${modifiedDate}\n`;
+                            message += `   - ID: ${doc.id}\n`;
+                        });
+                    } else {
+                        message += `No documents found in this location.`;
+                    }
+                    
+                    alert(message);
+                } else {
+                    alert(`❌ Error: ${data.detail || data.message || 'Failed to list documents'}`);
+                }
+            } catch (error) {
+                alert(`❌ Error: ${error.message || 'Failed to preview documents'}`);
+            }
+        }
+
+        // Test bot functionality
+        async function testBot() {
+            const question = document.getElementById('testQuestion').value.trim();
+            if (!question) {
+                alert('Please enter a test question');
+                return;
+            }
+
+            const button = document.querySelector('button[onclick="testBot()"]');
+            const originalText = button.innerHTML;
+
+            try {
+                // Show loading state
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+                button.disabled = true;
+
+                // Use the public bot endpoint for testing
+                const response = await fetch('/bot/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: question,
+                        user_context: { test_mode: true, admin_test: true }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const result = await response.json();
+
+                // Display results
+                document.getElementById('botResponse').textContent = result.response || 'No response';
+                document.getElementById('botConfidence').textContent = `${(result.confidence * 100).toFixed(1)}%`;
+                document.getElementById('botSources').textContent = result.sources ? result.sources.join(', ') : 'None';
+                document.getElementById('botContext').textContent = result.context_used || '0';
+
+                // Show results
+                document.getElementById('testResult').style.display = 'block';
+
+            } catch (error) {
+                alert(`❌ Error testing bot: ${error.message || 'Failed to test bot'}`);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Knowledge Base Debug Functions
+        async function inspectKnowledgeBaseChunks() {
+            const button = document.querySelector('button[onclick="inspectKnowledgeBaseChunks()"]');
+            const originalText = button.innerHTML;
+
+            try {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Inspecting...';
+                button.disabled = true;
+
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/bot/knowledge-base/chunks?limit=20', {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    let html = `<h6>📚 Knowledge Base Contents (${data.total_chunks} chunks)</h6>`;
+                    
+                    if (data.chunks && data.chunks.length > 0) {
+                        html += `<div class="table-responsive mt-3">`;
+                        html += `<table class="table table-sm">`;
+                        html += `<thead><tr><th>Chunk</th><th>Document ID</th><th>Content Preview</th><th>Length</th></tr></thead><tbody>`;
+                        
+                        data.chunks.forEach((chunk, index) => {
+                            html += `<tr>`;
+                            html += `<td><strong>${chunk.chunk_index}</strong></td>`;
+                            html += `<td><code>${chunk.source_document_id}</code></td>`;
+                            html += `<td><small>${chunk.content_preview}</small></td>`;
+                            html += `<td>${chunk.content_length} chars</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table></div>`;
+                    } else {
+                        html += `<p class="text-muted">No chunks found in knowledge base.</p>`;
+                    }
+                    
+                    document.getElementById('debugContent').innerHTML = html;
+                    document.getElementById('debugResults').style.display = 'block';
+                } else {
+                    alert(`❌ Error: ${data.detail || data.message || 'Failed to inspect chunks'}`);
+                }
+            } catch (error) {
+                alert(`❌ Error: ${error.message || 'Failed to inspect chunks'}`);
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function testKnowledgeBaseSearch() {
+            const question = prompt('Enter a search query to test the knowledge base search:');
+            if (!question) return;
+
+            const button = document.querySelector('button[onclick="testKnowledgeBaseSearch()"]');
+            const originalText = button.innerHTML;
+
+            try {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+                button.disabled = true;
+
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/bot/knowledge-base/test-search', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        message: question,
+                        user_context: { debug_mode: true }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    let html = `<h6>🔍 Search Test Results for: "${data.query}"</h6>`;
+                    html += `<p><strong>Search Parameters:</strong> Limit: ${data.search_parameters.limit}, Threshold: ${data.search_parameters.threshold}</p>`;
+                    html += `<p><strong>Results Found:</strong> ${data.total_results} chunks</p>`;
+                    
+                    if (data.results && data.results.length > 0) {
+                        html += `<div class="table-responsive mt-3">`;
+                        html += `<table class="table table-sm">`;
+                        html += `<thead><tr><th>Chunk</th><th>Similarity</th><th>Document ID</th><th>Content Preview</th></tr></thead><tbody>`;
+                        
+                        data.results.forEach((result, index) => {
+                            html += `<tr>`;
+                            html += `<td><strong>${result.chunk_index}</strong></td>`;
+                            html += `<td><span class="badge bg-${result.similarity > 0.7 ? 'success' : result.similarity > 0.5 ? 'warning' : 'danger'}">${(result.similarity * 100).toFixed(1)}%</span></td>`;
+                            html += `<td><code>${result.source_document_id}</code></td>`;
+                            html += `<td><small>${result.content_preview}</small></td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table></div>`;
+                    } else {
+                        html += `<p class="text-muted">No results found for this query.</p>`;
+                    }
+                    
+                    document.getElementById('debugContent').innerHTML = html;
+                    document.getElementById('debugResults').style.display = 'block';
+                } else {
+                    alert(`❌ Error: ${data.detail || data.message || 'Failed to test search'}`);
+                }
+            } catch (error) {
+                alert(`❌ Error: ${error.message || 'Failed to test search'}`);
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        function clearDebugResults() {
+            document.getElementById('debugResults').style.display = 'none';
+            document.getElementById('debugContent').innerHTML = '';
         }
     </script>
 </body>
