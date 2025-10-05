@@ -156,4 +156,236 @@ class TestEmailService:
         # Should use default max of 3
         table_html = result["table_html"]
         assert "Max 3 Assistants" in table_html
-        assert "Fully Covered (4/3 assistants)" in table_html 
+        assert "Fully Covered (4/3 assistants)" in table_html
+
+    def test_build_class_table_missing_teacher_status(self):
+        """Test status when teacher is missing (need volunteers)"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday"],
+            ["Teacher", "Need Volunteers", "John Doe"],
+            ["Head TA", "Head TA 1", "Head TA 2"],
+            ["Assistants", "TA1, TA2", "TA1"]
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Monday should show missing teacher status
+        assert "❌ Missing Teacher" in table_html
+        # Tuesday should show normal status
+        assert "Partially Covered (1/3 assistants)" in table_html
+
+    def test_build_class_table_missing_head_ta_status(self):
+        """Test status when head TA is missing"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday"],
+            ["Teacher", "John Doe", "Jane Smith"],
+            ["Head TA", "", "Need Volunteers"],  # Empty and need volunteers
+            ["Assistants", "TA1, TA2", "TA1"]
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Both days should show missing head TA status
+        assert "❌ Missing Head TA" in table_html
+        assert table_html.count("❌ Missing Head TA") == 2
+
+    def test_build_class_table_missing_assistants_status(self):
+        """Test status when assistants are missing"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday"],
+            ["Teacher", "John Doe", "Jane Smith"],
+            ["Head TA", "Head TA 1", "Head TA 2"],
+            ["Assistants", "Need Volunteers", "TA1"]  # Need volunteers for assistants
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Monday should show missing assistants status
+        assert "❌ Missing TA's" in table_html
+        # Tuesday should show normal status
+        assert "Partially Covered (1/3 assistants)" in table_html
+
+    def test_build_class_table_optional_day_status(self):
+        """Test status for optional days"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday"],
+            ["Teacher", "Optional Day", "John Doe"],
+            ["Head TA", "Head TA 1", "Head TA 2"],
+            ["Assistants", "TA1", "TA1, TA2"]
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Monday should show optional day status
+        assert "optional day, volunteers welcome to support existing classes" in table_html
+        # Tuesday should show normal status
+        assert "Partially Covered (2/3 assistants)" in table_html
+
+    def test_build_class_table_no_class_status(self):
+        """Test status for no class days"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday"],
+            ["Teacher", "No Class", "No Class - Holiday"],
+            ["Head TA", "Head TA 1", "Head TA 2"],
+            ["Assistants", "TA1", "TA1"]
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Monday should show no class status
+        assert "No class" in table_html
+        # Tuesday should show holiday status
+        assert "No class: holiday" in table_html
+
+    def test_build_class_table_no_limit_assistants(self):
+        """Test status when max_assistants is None (no limit)"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": None,  # No limit
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday"],
+            ["Teacher", "John Doe", "Jane Smith"],
+            ["Head TA", "Head TA 1", "Head TA 2"],
+            ["Assistants", "TA1, TA2, TA3", "TA1"]
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Both days should show no limit status
+        assert "3 assistant(s) signed up - No limit, TA's welcome to join" in table_html
+        assert "1 assistant(s) signed up - No limit, TA's welcome to join" in table_html
+
+    def test_build_class_table_status_priority_order(self):
+        """Test that status conditions are checked in the correct priority order"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        # Test case where teacher says "need volunteers" but head TA and assistants are also missing
+        # Should prioritize missing teacher over other issues
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday"],
+            ["Teacher", "Need Volunteers"],
+            ["Head TA", "Need Volunteers"],  # Also missing
+            ["Assistants", "Need Volunteers"]  # Also missing
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Should show missing teacher, not missing head TA or assistants
+        assert "❌ Missing Teacher" in table_html
+        assert "❌ Missing Head TA" not in table_html
+        assert "❌ Missing TA's" not in table_html
+
+    def test_build_class_table_case_insensitive_status_detection(self):
+        """Test that status detection is case insensitive"""
+        email_service = EmailService()
+        
+        config = {
+            "sheet_range": "B7:G11",
+            "time": "9:30 - 10:30 AM",
+            "max_assistants": 3,
+            "notes": "Test class"
+        }
+        
+        mock_sheet_service = MagicMock()
+        mock_sheet_service.get_schedule_range.return_value = [
+            ["", "Monday", "Tuesday", "Wednesday"],
+            ["Teacher", "NEED VOLUNTEERS", "optional day", "NO CLASS"],
+            ["Head TA", "Head TA 1", "Head TA 2", "Head TA 3"],
+            ["Assistants", "TA1", "TA1", "TA1"]
+        ]
+        
+        mock_db = MagicMock()
+        
+        result = email_service.build_class_table("Test Class", config, mock_sheet_service, mock_db)
+        
+        table_html = result["table_html"]
+        # Should detect all statuses regardless of case
+        assert "❌ Missing Teacher" in table_html
+        assert "optional day, volunteers welcome to support existing classes" in table_html
+        assert "No class" in table_html 

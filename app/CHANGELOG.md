@@ -1,6 +1,10 @@
 CHANGELOG:
 
-## Version 2.1.0
+## Version 3.0.1
+
+- Fix: Email reading 'Status'
+
+## Version 3.0.0
 
 - Add: basic middleware, logging, rate_limiting 
 - Fix: security issue where not all admin endpoints were protected
