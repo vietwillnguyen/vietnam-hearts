@@ -72,17 +72,22 @@ def mock_bot_service():
 @pytest.fixture
 def mock_auth_service():
     """Mock authentication service for testing admin endpoints with valid auth"""
-    with patch("app.services.supabase_auth.get_current_admin_user") as mock_auth:
-        # Mock a valid admin user
-        mock_user = MagicMock()
-        mock_user.email = "admin@vietnamhearts.org"
-        mock_user.is_admin = True
-        mock_user.is_authenticated = True
+    with patch("app.services.supabase_auth.auth_service") as mock_auth_service:
+        # Mock the entire auth service
+        mock_user = {
+            "id": "test-admin-id",
+            "email": "admin@vietnamhearts.org",
+            "name": "Test Admin",
+            "email_verified": True
+        }
         
-        # Make the mock return our fake admin user
-        mock_auth.return_value = mock_user
+        # Mock the is_admin method to return True
+        mock_auth_service.is_admin.return_value = True
         
-        yield mock_auth
+        # Mock the get_current_user_from_token method to return our mock user
+        mock_auth_service.get_current_user_from_token.return_value = mock_user
+        
+        yield mock_auth_service
 
 
 @pytest.fixture
@@ -100,7 +105,7 @@ def authenticated_client(mock_auth_service):
 class TestPublicEndpoints:
     """Test public endpoints that don't require authentication"""
     
-    def test_root_endpoint(self):
+    def test_root_endpoint(self, client):
         """Test root endpoint"""
         response = client.get("/")
         
@@ -108,7 +113,7 @@ class TestPublicEndpoints:
         # Should return HTML content
         assert "text/html" in response.headers.get("content-type", "")
     
-    def test_unsubscribe_endpoint_get(self):
+    def test_unsubscribe_endpoint_get(self, client):
         """Test unsubscribe endpoint GET (shows form)"""
         # Test with an invalid token - should return 400
         response = client.get("/unsubscribe?token=invalid-token-123")
@@ -118,7 +123,7 @@ class TestPublicEndpoints:
         # Should return HTML error page
         assert "text/html" in response.headers.get("content-type", "")
     
-    def test_webhook_messenger_endpoint(self):
+    def test_webhook_messenger_endpoint(self, client):
         """Test Facebook webhook endpoint"""
         # Test webhook verification
         response = client.get("/webhook/messenger?mode=subscribe&verify_token=test&challenge=test123")
@@ -130,7 +135,7 @@ class TestPublicEndpoints:
 class TestAuthEndpoints:
     """Test authentication endpoints"""
     
-    def test_auth_health_endpoint(self):
+    def test_auth_health_endpoint(self, client):
         """Test auth health endpoint"""
         response = client.get("/auth/health")
         
@@ -139,7 +144,7 @@ class TestAuthEndpoints:
         data = response.json()
         assert "status" in data or "message" in data
     
-    def test_auth_login_endpoint(self):
+    def test_auth_login_endpoint(self, client):
         """Test auth login endpoint"""
         response = client.get("/auth/login")
         
@@ -153,74 +158,46 @@ class TestAuthEndpoints:
 class TestAdminEndpoints:
     """Test admin endpoints authentication and functionality"""
     
-    def test_admin_volunteers_endpoint_requires_auth(self, mock_google_sheets):
+    def test_admin_volunteers_endpoint_requires_auth(self, client, mock_google_sheets):
         """Test that admin volunteers endpoint requires authentication"""
         response = client.get("/admin/volunteers")
         
-        # ⚠️ SECURITY ISSUE: This endpoint is NOT properly protected!
-        # It should return 401 Unauthorized, but currently returns 200
-        # This is a security vulnerability that needs to be fixed
+        # ✅ Security issue has been fixed - endpoint is now properly protected
+        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
         
-        if response.status_code == 401:
-            # ✅ Good - endpoint is properly protected
-            data = response.json()
-            assert "detail" in data
-            error_detail = data["detail"].lower()
-            assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
-        elif response.status_code == 200:
-            # ❌ SECURITY ISSUE - endpoint is accessible without auth
-            pytest.fail("SECURITY ISSUE: Admin endpoint /admin/volunteers is accessible without authentication!")
-        else:
-            # Some other status - log it
-            pytest.fail(f"Unexpected status code: {response.status_code}")
+        data = response.json()
+        assert "detail" in data
+        error_detail = data["detail"].lower()
+        assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
     
-    def test_admin_dashboard_endpoint_requires_auth(self, mock_google_sheets):
+    def test_admin_dashboard_endpoint_requires_auth(self, client, mock_google_sheets):
         """Test that admin dashboard endpoint requires authentication"""
         response = client.get("/admin/dashboard")
         
-        # The dashboard endpoint now handles authentication manually and redirects unauthenticated users
-        # This is actually more secure than returning 401 errors
+        # ✅ Security issue has been fixed - endpoint now returns 401 Unauthorized
+        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
         
-        if response.status_code == 401:
-            # ✅ Good - endpoint is properly protected with 401
-            data = response.json()
-            assert "detail" in data
-        elif response.status_code == 302:
-            # ✅ Good - endpoint redirects unauthenticated users (more secure)
-            # Check that it redirects to home page with error
-            assert "Location" in response.headers
-            location = response.headers["Location"]
-            assert "/?error=" in location or "/" in location
-        elif response.status_code == 200:
-            # ❌ SECURITY ISSUE - endpoint is accessible without auth
-            pytest.fail("SECURITY ISSUE: Admin endpoint /admin/dashboard is accessible without authentication!")
-        else:
-            # Some other status - log it
-            pytest.fail(f"Unexpected status code: {response.status_code}")
+        data = response.json()
+        assert "detail" in data
+        error_detail = data["detail"].lower()
+        assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
     
-    def test_admin_sync_volunteers_endpoint_requires_auth(self, mock_google_sheets):
+    def test_admin_sync_volunteers_endpoint_requires_auth(self, client, mock_google_sheets):
         """Test that admin sync volunteers endpoint requires authentication"""
         response = client.post("/admin/sync-volunteers")
         
-        # ⚠️ SECURITY ISSUE: This endpoint is NOT properly protected!
-        # It should return 401 Unauthorized, but currently returns 200
+        # ✅ Security issue has been fixed - endpoint is now properly protected
+        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
         
-        if response.status_code == 401:
-            # ✅ Good - endpoint is properly protected
-            data = response.json()
-            assert "detail" in data
-        elif response.status_code == 200:
-            # ❌ SECURITY ISSUE - endpoint is accessible without auth
-            pytest.skip("Admin endpoint /admin/sync-volunteers is accessible without authentication!")
-        else:
-            # Some other status - log it
-            pytest.skip(f"Unexpected status code: {response.status_code}")
+        data = response.json()
+        assert "detail" in data
+        error_detail = data["detail"].lower()
+        assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
     
-    def test_admin_endpoints_consistent_auth_behavior(self, mock_google_sheets):
+    def test_admin_endpoints_consistent_auth_behavior(self, client, mock_google_sheets):
         """Test that all admin endpoints consistently require authentication
         
-        Note: The dashboard endpoint uses redirects (302) for unauthenticated users,
-        which is more secure than returning 401 errors for HTML endpoints.
+        All admin endpoints now return 401 Unauthorized when accessed without authentication.
         """
         admin_endpoints = [
             ("GET", "/admin/volunteers"),
@@ -233,82 +210,27 @@ class TestAdminEndpoints:
             ("GET", "/admin/email-logs"),
         ]
         
-        security_issues = []
-        
         for method, endpoint in admin_endpoints:
             if method == "GET":
                 response = client.get(endpoint)
             else:
                 response = client.post(endpoint)
             
-            # Check if endpoint is properly protected
-            if response.status_code == 401:
-                # ✅ Good - endpoint is properly protected with 401
-                data = response.json()
-                assert "detail" in data
-                assert isinstance(data["detail"], str)
-            elif response.status_code == 302 and endpoint == "/admin/dashboard":
-                # ✅ Good - dashboard endpoint redirects unauthenticated users (more secure)
-                # Check that it redirects to home page with error
-                assert "Location" in response.headers
-                location = response.headers["Location"]
-                assert "/?error=" in location or "/" in location
-            elif response.status_code == 302:
-                # ✅ Good - other endpoints redirect unauthenticated users
-                assert "Location" in response.headers
-            elif response.status_code == 200:
-                # ❌ SECURITY ISSUE - endpoint is accessible without auth
-                security_issues.append(f"{method} {endpoint} returns {response.status_code}")
-            else:
-                # Some other status - might be acceptable depending on the endpoint
-                if response.status_code not in [401, 302]:
-                    security_issues.append(f"{method} {endpoint} returns {response.status_code}")
-        
-        # Report all security issues found
-        if security_issues:
-            pytest.fail(f"SECURITY ISSUES FOUND - Admin endpoints accessible without authentication:\n" + 
-                       "\n".join(security_issues))
-    
-    @pytest.mark.skip(reason="Admin endpoints are not properly protected - security issue to fix first")
-    def test_admin_endpoints_with_valid_auth(self, mock_google_sheets, mock_email_service):
-        """Test admin endpoints work with valid authentication (requires auth setup)"""
-        # This test is skipped because the admin endpoints are not properly protected
-        # Fix the authentication first, then unskip this test
-        
-        pytest.skip("Admin endpoints are not properly protected - fix authentication first")
-    
-    def test_admin_endpoints_with_mocked_auth(self, mock_google_sheets, mock_email_service, mock_auth_service):
-        """Test admin endpoints work when authentication is mocked (advanced testing)"""
-        # This test shows how you could test admin endpoints with mocked authentication
-        # It's useful for testing the business logic without setting up full auth
-        
-        # The mock_auth_service fixture overrides the auth dependency
-        # So these endpoints should now work (if they exist and are properly implemented)
-        
-        try:
-            # Test volunteers endpoint
-            response = client.get("/admin/volunteers")
-            if response.status_code == 200:
-                # Great! Endpoint exists and works with auth
-                data = response.json()
-                assert "volunteers" in data
-                assert isinstance(data["volunteers"], list)
-            elif response.status_code == 404:
-                pytest.skip("Admin volunteers endpoint not implemented yet")
-            else:
-                # Some other status - log it for debugging
-                pytest.skip(f"Admin volunteers endpoint returned {response.status_code}")
-                
-        except Exception as e:
-            # Endpoint might not exist or have other issues
-            pytest.skip(f"Admin volunteers endpoint not accessible: {e}")
+            # All endpoints should return 401 Unauthorized when accessed without authentication
+            assert response.status_code == 401, f"{method} {endpoint} should return 401, got {response.status_code}"
+            
+            # Verify error response format
+            data = response.json()
+            assert "detail" in data
+            assert isinstance(data["detail"], str)
+            error_detail = data["detail"].lower()
+            assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
 
 
 class TestBotEndpoints:
     """Test bot-related endpoints"""
     
-    @pytest.mark.skip(reason="Bot endpoints may not exist yet - test structure only")
-    def test_bot_health_endpoint_structure(self, mock_bot_service):
+    def test_bot_health_endpoint_structure(self, client, mock_bot_service):
         """Test bot health endpoint structure"""
         try:
             response = client.get("/bot/health")
@@ -328,8 +250,7 @@ class TestBotEndpoints:
             # Endpoint might not exist - that's okay for integration tests
             pytest.skip("Bot health endpoint not accessible")
     
-    @pytest.mark.skip(reason="Bot endpoints may not exist yet - test structure only")
-    def test_bot_chat_endpoint_structure(self, mock_bot_service):
+    def test_bot_chat_endpoint_structure(self, client, mock_bot_service):
         """Test bot chat endpoint structure"""
         try:
             chat_data = {
@@ -353,7 +274,7 @@ class TestBotEndpoints:
 class TestDatabaseIntegration:
     """Test database integration with the API"""
     
-    def test_database_connection(self):
+    def test_database_connection(self, client):
         """Test that database is accessible through the app"""
         # This test verifies that the database connection works
         # by trying to access a simple endpoint that uses the database
@@ -403,7 +324,9 @@ class TestServiceIntegration:
 
 
 # Configuration for integration tests
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.slow  # Mark as slow since these are integration tests
-] 
+# Note: Custom pytest marks can be registered in pytest.ini or pyproject.toml
+# For now, we'll remove the unknown marks to avoid warnings
+# pytestmark = [
+#     pytest.mark.integration,
+#     pytest.mark.slow  # Mark as slow since these are integration tests
+# ] 

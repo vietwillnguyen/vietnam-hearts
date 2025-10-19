@@ -18,11 +18,11 @@ from .config import (
 )
 from app.utils.config_helper import ConfigHelper
 import os
-from app.routers.admin import admin_api_router, admin_dashboard_router
+from app.routers.admin import admin_router
 from app.routers.public import public_router
 from app.routers.auth import router as auth_router
 from app.routers.settings import router as settings_router
-from app.routers.bot import public_bot_router, admin_router
+from app.routers.bot import public_bot_router, admin_router as bot_admin_router
 
 # Configure logging
 logger = get_logger("main")
@@ -115,17 +115,15 @@ logger.info("Static files mounted at /static")
 # Routers
 app.include_router(auth_router)
 logger.info("Authentication endpoints enabled.")
-app.include_router(admin_api_router)
-logger.info("Admin API endpoints enabled.")
-app.include_router(admin_dashboard_router)
-logger.info("Admin dashboard endpoints enabled.")
+app.include_router(admin_router)
+logger.info("Admin endpoints enabled.")
 app.include_router(public_router)
 logger.info("Public endpoints enabled.")
 app.include_router(settings_router)
 logger.info("Settings endpoints enabled.")
 app.include_router(public_bot_router)
 logger.info("Public bot endpoints enabled.")
-app.include_router(admin_router)
+app.include_router(bot_admin_router)
 logger.info("Admin bot endpoints enabled.")
 
 # Root route redirects to home page

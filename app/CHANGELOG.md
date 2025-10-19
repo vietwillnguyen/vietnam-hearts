@@ -1,5 +1,10 @@
 CHANGELOG:
 
+## Version 3.0.2
+
+- Fix: Single authentication dependency handles all token sources (headers, query params, cookies, API keys)
+- Refactor: Consolidated two separate authentication dependencies into one unified solution.
+
 ## Version 3.0.1
 
 - Fix: Email reading 'Status'

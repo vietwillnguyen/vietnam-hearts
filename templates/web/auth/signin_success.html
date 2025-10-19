@@ -105,15 +105,11 @@
             `;
         } else {
             console.log('Authentication tokens stored successfully');
-            
-            // Add a small delay to ensure localStorage is fully updated
-            console.log('Waiting 500ms before redirect...');
-            setTimeout(() => {
-                console.log('Redirecting to dashboard...');
-                // Pass token as query parameter so dashboard can authenticate
-                const token = localStorage.getItem('access_token');
-                window.location.href = `/admin/dashboard?token=${encodeURIComponent(token)}`;
-            }, 500);
+            // Redirect immediately to the dashboard, no delay
+            console.log('Redirecting to dashboard...');
+            // Pass token as query parameter so dashboard can authenticate
+            const token = localStorage.getItem('access_token');
+            window.location.href = `/admin/dashboard?token=${encodeURIComponent(token)}`;
         }
     </script>
 </body>

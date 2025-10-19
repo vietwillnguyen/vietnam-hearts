@@ -7,7 +7,7 @@ for the Vietnam Hearts application.
 
 from typing import Optional, Dict, Any
 from supabase import create_client, Client
-from fastapi import HTTPException, Depends, Header
+from fastapi import HTTPException, Depends, Header, Request
 from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, API_URL
 from app.utils.logging_config import get_logger
 
@@ -441,21 +441,16 @@ async def get_current_user(
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 
-# Dependency for getting current admin user
-async def get_current_admin_user(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    """Dependency to get the current authenticated admin user"""
-    logger.info(f"Checking admin access for user: {current_user.get('email', 'No email')}")
-    if not await auth_service.is_admin(current_user["email"]):
-        logger.warning(f"Access denied for non-admin user: {current_user.get('email', 'No email')}")
-        raise HTTPException(status_code=403, detail="Admin access required")
-    logger.info(f"Admin access granted for user: {current_user.get('email', 'No email')}")
-    return current_user
-
-from fastapi import Request
-
-# Custom dependency for dashboard authentication that can handle multiple token sources
-async def get_current_admin_user_for_dashboard(request: Request) -> Dict[str, Any]:
-    """Dependency to get the current authenticated admin user for dashboard (handles query params and cookies)"""
+# Unified dependency for getting current admin user that handles all authentication sources
+async def get_current_admin_user(request: Request) -> Dict[str, Any]:
+    """
+    Unified dependency to get the current authenticated admin user.
+    Handles multiple authentication sources:
+    - Authorization header (Bearer token)
+    - apikey header (service role key)
+    - token query parameter
+    - access_token cookie
+    """
     token = None
     
     # Try to get token from various sources
@@ -463,6 +458,16 @@ async def get_current_admin_user_for_dashboard(request: Request) -> Dict[str, An
         auth_header = request.headers["authorization"]
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
+    elif "apikey" in request.headers:
+        # Handle service role key directly
+        try:
+            user = await auth_service.get_current_user_from_apikey(request.headers["apikey"])
+            if not await auth_service.is_admin(user["email"]):
+                raise HTTPException(status_code=403, detail="Admin access required")
+            return user
+        except Exception as e:
+            logger.error(f"API key authentication failed: {str(e)}")
+            raise HTTPException(status_code=401, detail="Authentication failed")
     elif "token" in request.query_params:
         token = request.query_params["token"]
     elif request.cookies.get("access_token"):
@@ -479,7 +484,12 @@ async def get_current_admin_user_for_dashboard(request: Request) -> Dict[str, An
         if not await auth_service.is_admin(user["email"]):
             raise HTTPException(status_code=403, detail="Admin access required")
         
+        logger.info(f"Admin access granted for user: {user.get('email', 'No email')}")
         return user
     except Exception as e:
-        logger.error(f"Dashboard authentication failed: {str(e)}")
-        raise HTTPException(status_code=401, detail="Authentication failed") 
+        logger.error(f"Admin authentication failed: {str(e)}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+# Legacy aliases for backward compatibility (can be removed after testing)
+get_current_admin_user_for_dashboard = get_current_admin_user 

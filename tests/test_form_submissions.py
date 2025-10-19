@@ -17,17 +17,24 @@ from app.routers.admin import get_signup_form_submissions, create_new_volunteer_
 @pytest.fixture
 def mock_auth_service():
     """Mock authentication service for testing admin endpoints with valid auth"""
-    with patch("app.services.supabase_auth.get_current_admin_user") as mock_auth:
-        # Mock a valid admin user
-        mock_user = MagicMock()
-        mock_user.email = "admin@vietnamhearts.org"
-        mock_user.is_admin = True
-        mock_user.is_authenticated = True
-        
-        # Make the mock return our fake admin user
-        mock_auth.return_value = mock_user
-        
-        yield mock_auth
+    from app.services.supabase_auth import get_current_admin_user
+    
+    async def mock_get_current_admin_user():
+        """Mock admin user for testing"""
+        return {
+            "email": "admin@vietnamhearts.org",
+            "is_admin": True,
+            "is_authenticated": True
+        }
+    
+    # Override the dependency at the app level
+    from app.main import app
+    app.dependency_overrides[get_current_admin_user] = mock_get_current_admin_user
+    
+    yield mock_get_current_admin_user
+    
+    # Clean up after test
+    app.dependency_overrides.clear()
 
 
 class TestFormSubmissionProcessing:

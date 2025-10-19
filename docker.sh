@@ -15,9 +15,9 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_NAME="vietnam-hearts-automations"
 IMAGE_NAME="vietnam-hearts-automation"
-VERSION="v3.0.0"
+VERSION="v3.0.2"
 GCR_PROJECT_ID="refined-vector-457419-n6"  # Change this to your GCP project ID
-GCR_REGION="europe-west1"  # Change this to your preferred region
+GCR_REGION="asia-southeast1"  # Vietnam region (Ho Chi Minh City)
 GCR_HOSTNAME="gcr.io"
 
 # Default values

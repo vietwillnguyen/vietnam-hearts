@@ -1,13 +1,15 @@
-# Vietnam Hearts Scheduler
+# Vietnam Hearts Automations
 
 [![Tests](https://github.com/vietwillnguyen/vietnam-hearts/actions/workflows/test.yml/badge.svg)](https://github.com/vietwillnguyen/vietnam-hearts/actions/workflows/test.yml)
+
+Public URL: https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app
 
 A comprehensive scheduling and communication system for Vietnam Hearts volunteer management, built with FastAPI and integrated with Google Sheets.
 
 ## Features
 
 - 📅 **Automated Scheduling**: Sync with Google Sheets for class schedules
-- 📧 **Email Notifications**: Automated weekly reminders and communications
+- 📧 **Email Notifications**: Email Announcement Blast and automated weekly reminders and communications
 - 👥 **Volunteer Management**: Track new signups and preferences
 - 🔐 **OAuth Integration**: Secure Google authentication
 - 📊 **API Endpoints**: RESTful API for external integrations

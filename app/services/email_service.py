@@ -35,7 +35,7 @@ class EmailService:
         )  # Use App Password, not regular password
 
         # Email subjects
-        self.welcome_email_subject = "Welcome to Vietnam Hearts! ❤️🇻🇳"
+        self.welcome_email_subject = "[ACTION REQUIRED] Welcome to Vietnam Hearts! ❤️🇻🇳"
         self.reminder_email_subject_template = "🗓️ Weekly Volunteer Reminder – Schedule Update ({start_date} to {end_date})"
 
         # External links - these will be loaded dynamically from database

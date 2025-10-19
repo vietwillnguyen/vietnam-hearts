@@ -12,8 +12,8 @@ logger = get_api_logger()
 
 # Fallback configuration in case Google Sheets is unavailable
 FALLBACK_CLASS_CONFIG = {
-    "Grade 1": {"sheet_range": "B7:G10", "time": "9:30 - 10:30 AM", "room": "Downstairs", "max_assistants": 4, "notes": "Pre-A1 Starters (G1)"},
-    "Grade 4": {"sheet_range": "B13:G16", "time": "9:30 - 10:30 AM", "room": "Upstairs", "max_assistants": 4, "notes": "A1 Movers (G4)"},
+    "Grade 2": {"sheet_range": "B7:G10", "time": "9:30 - 10:30 AM", "room": "Upstairs", "max_assistants": 4, "notes": "Pre-A1 Starters (G1)"},
+    "Grade 5": {"sheet_range": "B13:G16", "time": "9:30 - 10:30 AM", "room": "Upstairs", "max_assistants": 4, "notes": "A1 Movers (G4)"},
 }
 
 def get_class_config(db: Session) -> Dict[str, Dict[str, Any]]:
