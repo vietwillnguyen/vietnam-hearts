@@ -18,12 +18,12 @@ def setup_cors(app: FastAPI) -> None:
     Setup CORS middleware for the application
     
     Configures CORS based on the current environment:
-    - Development: Allows all origins for easier development
+    - Development/Test: Allows all origins for easier development and testing
     - Production: Restricts to specific allowed origins
     """
     
     # Determine allowed origins based on environment
-    if ENVIRONMENT == "development":
+    if ENVIRONMENT in ["development", "test"]:
         allowed_origins = [
             "http://localhost:3000",      # React dev server
             "http://localhost:8080",      # FastAPI dev server
@@ -33,7 +33,7 @@ def setup_cors(app: FastAPI) -> None:
             "http://127.0.0.1:8080",      # Alternative port
             API_URL,
         ]
-        logger.info("🔓 CORS configured for development - allowing localhost origins")
+        logger.info(f"🔓 CORS configured for {ENVIRONMENT} - allowing localhost origins")
     else:
         # Production origins - restrict to your actual domains
         allowed_origins = [
@@ -79,5 +79,5 @@ def setup_cors(app: FastAPI) -> None:
     logger.info(f"✅ CORS middleware configured with {len(allowed_origins)} allowed origins")
     
     # Log allowed origins for debugging
-    if ENVIRONMENT == "development":
+    if ENVIRONMENT in ["development", "test"]:
         logger.debug(f"Allowed origins: {allowed_origins}")
