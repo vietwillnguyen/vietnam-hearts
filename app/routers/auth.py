@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from app.services.supabase_auth import auth_service, get_current_user, get_current_admin_user
+from app.services.auth_service import auth_service
+from app.dependencies.auth import get_current_user, get_current_admin_user
 from app.utils.logging_config import get_logger
 
 logger = get_logger("auth_router")
@@ -96,7 +97,7 @@ async def auth_callback(
         
         try:
             # Use the existing is_admin method from auth_service
-            is_admin = await auth_service.is_admin(user_email)
+            is_admin = await auth_service._is_admin_cached(user_email)
             
             if not is_admin:
                 logger.warning(f"Access denied for non-admin user: {user_email}")
@@ -209,21 +210,21 @@ async def list_users(current_admin: Dict[str, Any] = Depends(get_current_admin_u
     try:
         # This is a simplified implementation
         # TODO: In production, you might want to implement pagination and filtering
-        from supabase import create_client
-        from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+        from app.services.admin_service import admin_service
         
-        admin_supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        response = admin_supabase.auth.admin.list_users()
+        admin_users = await admin_service.get_all_admin_users(current_admin["email"])
         
         users = []
-        for user in response.users:
+        for admin_user in admin_users:
             users.append({
-                "id": user.id,
-                "email": user.email,
-                "name": user.user_metadata.get("full_name"),
-                "email_verified": user.email_confirmed_at is not None,
-                "created_at": user.created_at,
-                "last_sign_in": user.last_sign_in_at
+                "id": admin_user.id,
+                "email": admin_user.email,
+                "name": admin_user.email,  # Using email as name for now
+                "email_verified": True,  # Admin users are considered verified
+                "created_at": admin_user.created_at.isoformat(),
+                "last_sign_in": admin_user.last_login.isoformat() if admin_user.last_login else None,
+                "role": admin_user.role,
+                "is_active": admin_user.is_active
             })
         
         logger.info(f"Admin {current_admin['email']} retrieved user list")

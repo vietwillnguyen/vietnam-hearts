@@ -17,9 +17,8 @@ logger = logging.getLogger(__name__)
 @pytest.fixture(scope="session", autouse=True)
 def mock_supabase_dependencies():
     """Mock Supabase dependencies to prevent import errors during testing"""
-    with patch("app.services.supabase_auth.supabase", MagicMock()), \
-         patch("app.services.supabase_auth.SupabaseAuthService.__init__", return_value=None), \
-         patch("app.services.supabase_auth.auth_service", MagicMock()):
+    with patch("app.services.auth_service.auth_service", MagicMock()), \
+         patch("app.services.admin_service.admin_service", MagicMock()):
         yield
 
 @pytest.fixture(scope="session", autouse=True)

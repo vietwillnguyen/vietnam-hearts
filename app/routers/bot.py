@@ -6,7 +6,7 @@ from functools import lru_cache
 import asyncio
 import functools
 from app.services.bot_service import BotService
-from app.services.supabase_auth import get_current_admin_user
+from app.dependencies.auth import get_current_admin_user
 from app.database import get_db
 from app.utils.logging_config import get_api_logger
 from app.config import *  # import all config variables

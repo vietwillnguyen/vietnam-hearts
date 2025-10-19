@@ -17,7 +17,7 @@ from app.routers.admin import get_signup_form_submissions, create_new_volunteer_
 @pytest.fixture
 def mock_auth_service():
     """Mock authentication service for testing admin endpoints with valid auth"""
-    from app.services.supabase_auth import get_current_admin_user
+    from app.dependencies.auth import get_current_admin_user
     
     async def mock_get_current_admin_user():
         """Mock admin user for testing"""

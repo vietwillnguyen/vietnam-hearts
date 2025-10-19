@@ -72,7 +72,7 @@ def mock_bot_service():
 @pytest.fixture
 def mock_auth_service():
     """Mock authentication service for testing admin endpoints with valid auth"""
-    with patch("app.services.supabase_auth.auth_service") as mock_auth_service:
+    with patch("app.services.auth_service.auth_service") as mock_auth_service:
         # Mock the entire auth service
         mock_user = {
             "id": "test-admin-id",

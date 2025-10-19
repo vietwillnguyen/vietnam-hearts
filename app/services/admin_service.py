@@ -1,20 +1,24 @@
 """
-Dynamic admin user management service
-Replaces hardcoded ADMIN_EMAILS with database-driven approach
+Admin Management Service
+
+Handles CRUD operations for admin users only.
+Separated from authentication logic for better maintainability.
 """
 
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
-import logging
 import asyncio
 from supabase import create_client
+from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+from app.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("admin_service")
 
 
 @dataclass
 class AdminUser:
+    """Admin user data structure"""
     id: str
     email: str
     role: str
@@ -23,77 +27,24 @@ class AdminUser:
     last_login: Optional[datetime] = None
 
 
-class AdminUserService:
-    def __init__(self, supabase_client):
-        self.supabase = supabase_client
-        # Create a single admin client for all operations
-        from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-        if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
-            self.admin_supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        else:
-            self.admin_supabase = None
-            logger.warning("Supabase admin credentials not configured")
+class AdminService:
+    """
+    Service for managing admin users in the database.
     
-    async def is_admin(self, email: str) -> bool:
-        """Check if email belongs to an active admin user"""
-        try:
-            if not self.admin_supabase:
-                logger.error("Admin Supabase client not initialized")
-                return False
-            
-            # Add timeout to prevent hanging
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users").select("email").eq(
-                        "email", email.lower()
-                    ).eq("is_active", True).execute()
-                ),
-                timeout=10.0  # 10 second timeout
-            )
-
-            logger.info(f"Admin check result: {result.data}")
-            
-            is_admin = len(result.data) > 0
-            
-            if is_admin:
-                # Update last login timestamp
-                await self._update_last_login(email.lower())
-                logger.info(f"Admin access granted for: {email}")
-            else:
-                logger.warning(f"Access denied for non-admin user: {email}")
-            
-            return is_admin
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout checking admin status for {email}")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to check admin status for {email}: {e}")
-            return False
+    This service handles only CRUD operations for admin users.
+    Authentication and authorization are handled by AuthService.
+    """
     
-    async def _update_last_login(self, email: str):
-        """Update last login timestamp for admin user"""
-        try:
-            if not self.admin_supabase:
-                return
-                
-            await asyncio.wait_for(
-                asyncio.to_thread(
-                    lambda: self.admin_supabase.rpc("update_admin_last_login", {"user_email": email}).execute()
-                ),
-                timeout=5.0  # 5 second timeout
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout updating last login for {email}")
-        except Exception as e:
-            logger.error(f"Failed to update last login for {email}: {e}")
+    def __init__(self):
+        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+            raise ValueError("Supabase admin credentials not configured")
+        
+        self.admin_supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        logger.info("AdminService initialized")
     
     async def get_admin_users(self, requester_email: str) -> List[AdminUser]:
         """Get list of active admin users (only for admins)"""
         try:
-            # First check if requester is admin
-            if not await self.is_admin(requester_email):
-                raise PermissionError("Only admins can view admin users")
-            
             if not self.admin_supabase:
                 logger.error("Admin Supabase client not initialized")
                 return []
@@ -102,7 +53,7 @@ class AdminUserService:
                 asyncio.to_thread(
                     lambda: self.admin_supabase.table("admin_users").select("*").eq("is_active", True).order("created_at", desc=True).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             admin_users = []
@@ -116,7 +67,9 @@ class AdminUserService:
                     last_login=datetime.fromisoformat(row["last_login"].replace('Z', '+00:00')) if row["last_login"] else None
                 ))
             
+            logger.info(f"Retrieved {len(admin_users)} active admin users")
             return admin_users
+            
         except asyncio.TimeoutError:
             logger.error("Timeout getting admin users")
             return []
@@ -127,10 +80,6 @@ class AdminUserService:
     async def get_all_admin_users(self, requester_email: str) -> List[AdminUser]:
         """Get list of all admin users including inactive ones (only for super admins)"""
         try:
-            # First check if requester is admin
-            if not await self.is_admin(requester_email):
-                raise PermissionError("Only admins can view admin users")
-            
             if not self.admin_supabase:
                 logger.error("Admin Supabase client not initialized")
                 return []
@@ -139,7 +88,7 @@ class AdminUserService:
                 asyncio.to_thread(
                     lambda: self.admin_supabase.table("admin_users").select("*").order("created_at", desc=True).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             admin_users = []
@@ -153,7 +102,9 @@ class AdminUserService:
                     last_login=datetime.fromisoformat(row["last_login"].replace('Z', '+00:00')) if row["last_login"] else None
                 ))
             
+            logger.info(f"Retrieved {len(admin_users)} total admin users")
             return admin_users
+            
         except asyncio.TimeoutError:
             logger.error("Timeout getting all admin users")
             return []
@@ -176,7 +127,7 @@ class AdminUserService:
                             "email", added_by_email.lower()
                         ).eq("is_active", True).execute()
                     ),
-                    timeout=10.0  # 10 second timeout
+                    timeout=10.0
                 )
                 
                 if not result.data or result.data[0]["role"] != "super_admin":
@@ -189,7 +140,7 @@ class AdminUserService:
                         "email", email.lower()
                     ).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             if existing.data:
@@ -205,7 +156,7 @@ class AdminUserService:
                         "is_active": True
                     }).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             logger.info(f"Added new admin user: {email} with role: {role}")
@@ -232,7 +183,7 @@ class AdminUserService:
                         "email", removed_by_email.lower()
                     ).eq("is_active", True).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             if not result.data or result.data[0]["role"] != "super_admin":
@@ -246,7 +197,7 @@ class AdminUserService:
                         "updated_at": datetime.utcnow().isoformat()
                     }).eq("email", email.lower()).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             logger.info(f"Deactivated admin user: {email}")
@@ -273,7 +224,7 @@ class AdminUserService:
                         "email", deleted_by_email.lower()
                     ).eq("is_active", True).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             if not result.data or result.data[0]["role"] != "super_admin":
@@ -284,7 +235,7 @@ class AdminUserService:
                 asyncio.to_thread(
                     lambda: self.admin_supabase.table("admin_users").delete().eq("email", email.lower()).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             logger.info(f"Permanently deleted admin user: {email}")
@@ -311,7 +262,7 @@ class AdminUserService:
                         "email", updated_by_email.lower()
                     ).eq("is_active", True).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             if not result.data or result.data[0]["role"] != "super_admin":
@@ -325,7 +276,7 @@ class AdminUserService:
                         "updated_at": datetime.utcnow().isoformat()
                     }).eq("email", email.lower()).execute()
                 ),
-                timeout=10.0  # 10 second timeout
+                timeout=10.0
             )
             
             logger.info(f"Updated admin user {email} role to: {new_role}")
@@ -337,3 +288,7 @@ class AdminUserService:
         except Exception as e:
             logger.error(f"Failed to update admin role for {email}: {e}")
             return False
+
+
+# Create global instance
+admin_service = AdminService()

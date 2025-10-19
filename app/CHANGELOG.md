@@ -1,5 +1,9 @@
 CHANGELOG:
 
+## Version 3.0.3
+
+- Refactor: simply authentication.
+
 ## Version 3.0.2
 
 - Fix: Single authentication dependency handles all token sources (headers, query params, cookies, API keys)

@@ -34,7 +34,7 @@ from app.utils.logging_config import get_api_logger
 from app.config import ENVIRONMENT
 from app.utils.config_helper import ConfigHelper
 from app.utils.retry_utils import log_ssl_error
-from app.services.supabase_auth import get_current_admin_user
+from app.dependencies.auth import get_current_admin_user
 
 logger = get_api_logger()
 
@@ -1067,7 +1067,7 @@ def validate_configuration(
 # Admin Management Endpoints
 from pydantic import BaseModel
 from typing import Optional
-from app.services.supabase_auth import get_current_admin_user
+from app.dependencies.auth import get_current_admin_user
 
 
 class AdminCreateRequest(BaseModel):
@@ -1086,10 +1086,7 @@ class AdminRoleUpdateRequest(BaseModel):
 async def get_admins(current_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Get all admin users and current user info"""
     try:
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
-        
-        admin_service = AdminUserService(supabase)
+        from app.services.admin_service import admin_service
         
         # Get admin users from database
         admin_users = await admin_service.get_admin_users(current_admin["email"])
@@ -1144,8 +1141,7 @@ async def create_admin(
     try:
         logger.info(f"Creating admin user: {request.email} with role: {request.role}")
         
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
+        from app.services.admin_service import admin_service
         
         # Validate email format
         if not request.email or "@" not in request.email:
@@ -1208,8 +1204,7 @@ async def update_admin_role(
 ):
     """Update admin role"""
     try:
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
+        from app.services.admin_service import admin_service
         
         # Validate role
         if request.role not in ["admin", "super_admin"]:
@@ -1266,8 +1261,7 @@ async def remove_admin(
 ):
     """Remove an admin user (deactivate)"""
     try:
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
+        from app.services.admin_service import admin_service
         
         # Prevent removing yourself
         if email == current_admin["email"]:
@@ -1316,8 +1310,7 @@ async def delete_admin_permanently(
 ):
     """Permanently delete an admin user from database"""
     try:
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
+        from app.services.admin_service import admin_service
         
         # Prevent deleting yourself
         if email == current_admin["email"]:
@@ -1363,10 +1356,7 @@ async def delete_admin_permanently(
 async def get_all_admins(current_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Get all admin users including inactive ones (for super admins)"""
     try:
-        from app.services.admin_user_service import AdminUserService
-        from app.services.supabase_auth import supabase
-        
-        admin_service = AdminUserService(supabase)
+        from app.services.admin_service import admin_service
         
         # Get all admin users including inactive ones
         admin_users = await admin_service.get_all_admin_users(current_admin["email"])
@@ -1719,20 +1709,18 @@ async def comprehensive_health_check(
         
         # Test admin service
         try:
-            from app.services.admin_user_service import AdminUserService
-            from app.services.supabase_auth import supabase
+            from app.services.admin_service import admin_service
             from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
             
             admin_service_available = False
             supabase_configured = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
-            supabase_client_initialized = supabase is not None
+            supabase_client_initialized = admin_service.admin_supabase is not None
             
             if supabase_configured and supabase_client_initialized:
-                admin_service = AdminUserService(supabase)
                 # Test with timeout
                 try:
                     await asyncio.wait_for(
-                        admin_service.is_admin("test@example.com"),
+                        admin_service._check_admin_db("test@example.com"),
                         timeout=5.0
                     )
                     admin_service_available = True
