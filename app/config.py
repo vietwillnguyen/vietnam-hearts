@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-APPLICATION_VERSION = os.getenv("APPLICATION_VERSION", "3.0.3")
+APPLICATION_VERSION = os.getenv("APPLICATION_VERSION", "3.0.4")
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent

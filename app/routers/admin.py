@@ -141,9 +141,14 @@ def get_email_summary(communications):
 def view_volunteers(
     db: Session = Depends(get_db)
 ):
-    """View all volunteers and their email status"""
+    """View all volunteers and their email status - OPTIMIZED VERSION"""
     try:
-        volunteers = db.query(VolunteerModel).all()
+        # OPTIMIZATION: Use joins to avoid N+1 queries
+        from sqlalchemy.orm import joinedload
+        
+        volunteers = db.query(VolunteerModel).options(
+            joinedload(VolunteerModel.email_communications)
+        ).all()
         volunteer_data = get_volunteer_summary(volunteers)
 
         return {
@@ -235,9 +240,14 @@ def get_volunteer_by_id(
 def view_email_logs(
     db: Session = Depends(get_db)
 ):
-    """View all email communications"""
+    """View all email communications - OPTIMIZED VERSION"""
     try:
-        communications = db.query(EmailCommunicationModel).all()
+        # OPTIMIZATION: Use joins to avoid N+1 queries
+        from sqlalchemy.orm import joinedload
+        
+        communications = db.query(EmailCommunicationModel).options(
+            joinedload(EmailCommunicationModel.volunteer)
+        ).all()
         email_data = get_email_summary(communications)
 
         return {
@@ -254,20 +264,28 @@ def view_email_logs(
 
 
 @admin_router.get("/dashboard", response_class=HTMLResponse)
+@timeout_handler(timeout_seconds=10.0)  # Add timeout protection
 async def admin_dashboard(
     request: Request, 
     db: Session = Depends(get_db),
     current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
-    """Admin dashboard to view volunteers and email logs"""
+    """Admin dashboard to view volunteers and email logs - OPTIMIZED VERSION"""
     
     try:
-        # Get volunteer data
-        volunteers = db.query(VolunteerModel).all()
+        # OPTIMIZATION: Use joins to avoid N+1 queries
+        from sqlalchemy.orm import joinedload
+        
+        # Get volunteer data with email communications in a single query
+        volunteers = db.query(VolunteerModel).options(
+            joinedload(VolunteerModel.email_communications)
+        ).all()
         volunteer_data = get_volunteer_summary(volunteers)
 
-        # Get email data
-        communications = db.query(EmailCommunicationModel).all()
+        # Get email data with volunteer info in a single query - LIMIT for performance
+        communications = db.query(EmailCommunicationModel).options(
+            joinedload(EmailCommunicationModel.volunteer)
+        ).order_by(EmailCommunicationModel.sent_at.desc()).limit(100).all()  # Only show last 100 emails
         email_data = get_email_summary(communications)
         
         # Get settings for template
