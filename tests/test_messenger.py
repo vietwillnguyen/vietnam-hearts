@@ -18,7 +18,7 @@ class TestMessengerWebhook:
 
     def test_verify_webhook_success(self, client: TestClient):
         """Test successful webhook verification"""
-        with patch("app.routers.public.FACEBOOK_VERIFY_TOKEN", "test_token"):
+        with patch("app.routers.messenger.FACEBOOK_VERIFY_TOKEN", "test_token"):
             response = client.get(
                 "/webhook/messenger",
                 params={
@@ -33,7 +33,7 @@ class TestMessengerWebhook:
 
     def test_verify_webhook_failure(self, client: TestClient):
         """Test failed webhook verification"""
-        with patch("app.routers.public.FACEBOOK_VERIFY_TOKEN", "test_token"):
+        with patch("app.routers.messenger.FACEBOOK_VERIFY_TOKEN", "test_token"):
             response = client.get(
                 "/webhook/messenger",
                 params={
@@ -48,7 +48,7 @@ class TestMessengerWebhook:
 
     def test_verify_webhook_no_token(self, client: TestClient):
         """Test webhook verification without token"""
-        with patch("app.routers.public.FACEBOOK_VERIFY_TOKEN", None):
+        with patch("app.routers.messenger.FACEBOOK_VERIFY_TOKEN", None):
             response = client.get(
                 "/webhook/messenger",
                 params={
@@ -63,7 +63,7 @@ class TestMessengerWebhook:
 
     def test_handle_webhook_valid_page_event(self, client: TestClient):
         """Test handling valid page event webhook"""
-        with patch("app.routers.public.get_message_sender") as mock_get_sender:
+        with patch("app.routers.messenger.get_message_sender") as mock_get_sender:
             mock_sender = MagicMock()
             mock_sender.send_text_message.return_value = True
             mock_get_sender.return_value = mock_sender
@@ -109,7 +109,7 @@ class TestMessengerWebhook:
 
     def test_handle_webhook_postback_event(self, client: TestClient):
         """Test handling postback event webhook"""
-        with patch("app.routers.public.get_message_sender") as mock_get_sender:
+        with patch("app.routers.messenger.get_message_sender") as mock_get_sender:
             mock_sender = MagicMock()
             mock_sender.send_text_message.return_value = True
             mock_get_sender.return_value = mock_sender
@@ -174,9 +174,9 @@ class TestMessengerWebhook:
 
     def test_messenger_configuration_endpoint(self, client: TestClient):
         """Test the messenger configuration test endpoint"""
-        with patch("app.routers.public.FACEBOOK_VERIFY_TOKEN", "test_token"), \
-             patch("app.routers.public.FACEBOOK_ACCESS_TOKEN", "test_access_token"), \
-             patch("app.routers.public.MessageSender") as mock_sender_class:
+        with patch("app.routers.messenger.FACEBOOK_VERIFY_TOKEN", "test_token"), \
+             patch("app.routers.messenger.FACEBOOK_ACCESS_TOKEN", "test_access_token"), \
+             patch("app.routers.messenger.MessageSender") as mock_sender_class:
             
             mock_sender = MagicMock()
             mock_sender.get_page_info.return_value = {"name": "Test Page", "id": "123"}

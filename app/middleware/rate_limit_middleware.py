@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from app.utils.logging_config import get_logger
+from app.utils.request_helpers import get_client_ip
 
 logger = get_logger("rate_limit_middleware")
 
@@ -121,31 +122,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return f"user_{user_id}"
         
         # Fall back to IP address
-        client_ip = self._get_client_ip(request)
+        client_ip = get_client_ip(request)
         return f"ip_{client_ip}"
-    
-    def _get_client_ip(self, request: Request) -> str:
-        """
-        Get the client IP address from request headers
-        
-        Args:
-            request: FastAPI request object
-            
-        Returns:
-            Client IP address
-        """
-        # Check for forwarded headers (common in proxy setups)
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-        
-        # Check for real IP header
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-        
-        # Fall back to client host
-        return request.client.host if request.client else "unknown"
     
     def _get_rate_limit_category(self, path: str) -> str:
         """

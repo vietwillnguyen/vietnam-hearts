@@ -1,5 +1,16 @@
 CHANGELOG:
 
+## Version 3.0.5
+
+- Refactor: Split 1,639-line admin.py into feature-based router package (volunteers, emails, sign-ups, schedules, users, health)
+- Refactor: Extract Messenger webhook endpoints from public.py into dedicated messenger.py router
+- Refactor: Deduplicate timeout_handler, _get_client_ip, and AdminUser into shared utils
+- Fix: Settings endpoints now require admin authentication
+- Fix: Remove self-referential root redirect in main.py
+- Fix: Scrubbed real Google OAuth credentials from env.template
+- Remove: Unused WebhookHandler class and dead scheduler/migration dependencies
+- Rename: create_tables() → init_db() to accurately reflect function behavior
+
 ## Version 3.0.4
 
 - Refactor:  Database Query Optimization

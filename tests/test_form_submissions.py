@@ -11,7 +11,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 from app.models import Volunteer as VolunteerModel, EmailCommunication as EmailCommunicationModel
-from app.routers.admin import get_signup_form_submissions, create_new_volunteer_object
+from app.routers.admin.signups import get_signup_form_submissions
+from app.routers.admin.helpers import create_new_volunteer_object
 
 
 @pytest.fixture
@@ -146,11 +147,11 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service to return our test submissions
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Mock the email service to avoid actually sending emails
-            with patch('app.routers.admin.email_service') as mock_email:
+            with patch('app.routers.admin.signups.email_service') as mock_email:
                 mock_email.send_confirmation_emails.return_value = None
                 
                 # Call the function
@@ -243,11 +244,11 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Mock the email service and capture calls
-            with patch('app.routers.admin.email_service') as mock_email:
+            with patch('app.routers.admin.signups.email_service') as mock_email:
                 mock_email.send_confirmation_emails.return_value = None
                 
                 # Call the function
@@ -469,11 +470,11 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Mock the email service
-            with patch('app.routers.admin.email_service') as mock_email:
+            with patch('app.routers.admin.signups.email_service') as mock_email:
                 mock_email.send_confirmation_emails.return_value = None
                 
                 # Mock database commit to raise an exception
@@ -493,7 +494,7 @@ class TestFormSubmissionProcessing:
         import ssl
         
         # Mock the sheets service to raise SSL error
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.side_effect = ssl.SSLEOFError("SSL connection failed")
             
             response = client.get("/admin/forms/submissions?process_new=true")
@@ -539,7 +540,7 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Call without processing new volunteers
@@ -589,7 +590,7 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Mock the email service to simulate successful email sending
@@ -723,11 +724,11 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Mock the email service
-            with patch('app.routers.admin.email_service') as mock_email:
+            with patch('app.routers.admin.signups.email_service') as mock_email:
                 mock_email.send_confirmation_emails.return_value = None
                 
                 # Call the function
@@ -877,11 +878,11 @@ class TestFormSubmissionProcessing:
         ]
 
         # Mock the sheets service to return our test submissions
-        with patch('app.routers.admin.sheets_service') as mock_sheets:
+        with patch('app.routers.admin.signups.sheets_service') as mock_sheets:
             mock_sheets.get_signup_form_submissions.return_value = mock_submissions
             
             # Mock the email service
-            with patch('app.routers.admin.email_service') as mock_email:
+            with patch('app.routers.admin.signups.email_service') as mock_email:
                 mock_email.send_confirmation_emails.return_value = None
                 
                 # Call the function

@@ -6,7 +6,6 @@ high-performance service with caching and optimized database calls.
 """
 
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
 from datetime import datetime
 import asyncio
 import time
@@ -16,17 +15,6 @@ from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KE
 from app.utils.logging_config import get_logger
 
 logger = get_logger("auth_service")
-
-
-@dataclass
-class AdminUser:
-    """Admin user data structure"""
-    id: str
-    email: str
-    role: str
-    is_active: bool
-    created_at: datetime
-    last_login: Optional[datetime] = None
 
 
 class AuthService:

@@ -19,12 +19,17 @@ from app.services.settings_service import (
     get_settings_dict,
 )
 from app.utils.logging_config import get_api_logger
+from app.dependencies.auth import get_current_admin_user
 
 # Initialize logger
 logger = get_api_logger()
 
-# Create router
-router = APIRouter(prefix="/settings", tags=["settings"])
+# Create router — all settings endpoints require admin auth
+router = APIRouter(
+    prefix="/settings",
+    tags=["settings"],
+    dependencies=[Depends(get_current_admin_user)],
+)
 
 
 @router.get("/", response_model=SettingsList)

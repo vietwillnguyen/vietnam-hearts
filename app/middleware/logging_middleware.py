@@ -11,6 +11,7 @@ from typing import Callable, Dict, Any
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.utils.logging_config import get_logger
+from app.utils.request_helpers import get_client_ip
 
 logger = get_logger("logging_middleware")
 
@@ -98,7 +99,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 "path": path,
                 "query_params": query_params,
                 "headers": headers,
-                "client_ip": self._get_client_ip(request)
+                "client_ip": get_client_ip(request)
             }
         )
         
@@ -202,29 +203,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         """
         import uuid
         return str(uuid.uuid4())[:8]
-    
-    def _get_client_ip(self, request: Request) -> str:
-        """
-        Get the client IP address from request headers
-        
-        Args:
-            request: FastAPI request object
-            
-        Returns:
-            Client IP address
-        """
-        # Check for forwarded headers (common in proxy setups)
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-        
-        # Check for real IP header
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-        
-        # Fall back to client host
-        return request.client.host if request.client else "unknown"
     
     async def _get_request_body(self, request: Request) -> Dict[str, Any]:
         """

@@ -4,11 +4,11 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from functools import lru_cache
 import asyncio
-import functools
 from app.services.bot_service import BotService
 from app.dependencies.auth import get_current_admin_user
 from app.database import get_db
 from app.utils.logging_config import get_api_logger
+from app.utils.timeout import timeout_handler
 from app.config import *  # import all config variables
 
 logger = get_api_logger()
@@ -49,21 +49,6 @@ class KnowledgeStatusResponse(BaseModel):
 
 # ---- Dependencies / Guards ----
 
-def timeout_handler(timeout_seconds: float = 30.0):
-    """Decorator to add timeout protection to async functions"""
-    def decorator(func):
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            try:
-                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
-            except asyncio.TimeoutError:
-                logger.error(f"Function {func.__name__} timed out after {timeout_seconds} seconds")
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"Operation timed out after {timeout_seconds} seconds"
-                )
-        return wrapper
-    return decorator
 
 @lru_cache
 def get_bot_service() -> BotService:

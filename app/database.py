@@ -36,25 +36,10 @@ Core Concept: Database Sessions
 """
 
 
-def create_tables():
+def init_db():
     """
-    Create all tables defined in models.py
-    This runs when the application starts
-    """
-    try:
-        db = SessionLocal()
-        initialize_default_settings(db)
-        db.close()
-        logger.info("Default settings initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize default settings: {str(e)}", exc_info=True)
-        raise
-
-
-def initialize_settings():
-    """
-    Initialize default settings in the database
-    This runs after tables are created
+    Initialize the database on application startup.
+    Ensures default settings are present in the database.
     """
     try:
         db = SessionLocal()
