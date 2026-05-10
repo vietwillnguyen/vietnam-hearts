@@ -218,14 +218,14 @@ Initial setup script that:
 ### `docker.sh`
 Docker management CLI for build/push/pull/run:
 ```bash
-./docker.sh build [TAG]    # Build image (default: IMAGE_VERSION from deploy.config)
-./docker.sh push [TAG]     # Push to GCR
-./docker.sh deploy [TAG]   # Build + push (production workflow)
-./docker.sh run [-d] [-p PORT]  # Run container locally
-./docker.sh stop           # Stop running container
-./docker.sh logs           # Tail container logs
-./docker.sh clean          # Remove containers and images
-./docker.sh help           # Show all options
+./scripts/docker.sh build [TAG]    # Build image (default: IMAGE_VERSION from deploy.config)
+./scripts/docker.sh push [TAG]     # Push to GCR
+./scripts/docker.sh deploy [TAG]   # Build + push (production workflow)
+./scripts/docker.sh run [-d] [-p PORT]  # Run container locally
+./scripts/docker.sh stop           # Stop running container
+./scripts/docker.sh logs           # Tail container logs
+./scripts/docker.sh clean          # Remove containers and images
+./scripts/docker.sh help           # Show all options
 ```
 
 ### `scripts/create-or-update-scheduler-jobs.sh`

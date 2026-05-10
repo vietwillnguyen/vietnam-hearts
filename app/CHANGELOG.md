@@ -7,6 +7,7 @@ CHANGELOG:
 - Fix: Schedule status date parsing changed from `%m/%d/%Y` to `%m/%d` with current year; add `display_weeks_count` for actual visible sheets
 - Remove: Deprecated scripts (`deploy.sh`, `docker.sh`), debug artifacts (`debug_auth.py`, `test_auth.html`, `.cursorrules`)
 - Update: Dockerfile uses production-only dependencies (`--only main`) and uppercase `AS` for multi-stage build
+- Remove: bot endpoints, as not currently working.
 
 ## Version 3.0.5
 
