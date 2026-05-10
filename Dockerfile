@@ -1,5 +1,5 @@
 # Multi-stage build for Vietnam Hearts Scheduler API
-FROM python:3.10-slim as builder
+FROM python:3.10-slim AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -18,11 +18,11 @@ COPY . .
 # Configure Poetry to not create virtual environment
 RUN poetry config virtualenvs.create false
 
-# Install dependencies
-RUN poetry install
+# Install production dependencies only
+RUN poetry install --only main
 
 # Production stage
-FROM python:3.10-slim as production
+FROM python:3.10-slim AS production
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -38,7 +38,9 @@ WORKDIR /app
 
 # Copy only the Python packages we need
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy only installed entry-point scripts (not build tools like poetry/pip)
+COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # Copy application files from builder (already copied there)
 COPY --from=builder /build/app/ ./app/
@@ -59,5 +61,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Update CMD to create logs directory if it doesn't exist
-CMD ["sh", "-c", "mkdir -p /app/logs && chmod 755 /app/logs && uvicorn app.main:app --host 0.0.0.0 --port 8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

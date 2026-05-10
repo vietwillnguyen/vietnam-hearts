@@ -25,7 +25,7 @@ def get_schedule_status(db: Session = Depends(get_db)):
         for sheet in sheets:
             title = sheet["properties"]["title"]
             try:
-                sheet_date = datetime.strptime(title.replace("Schedule ", ""), "%m/%d/%Y")
+                sheet_date = datetime.strptime(title.replace("Schedule ", ""), "%m/%d").replace(year=datetime.now().year)
             except ValueError:
                 sheet_date = None
             sheet_info.append({
@@ -35,10 +35,15 @@ def get_schedule_status(db: Session = Depends(get_db)):
                 "index": sheet["properties"].get("index", 0),
             })
         sheet_info.sort(key=lambda x: x["date"] if x["date"] else "")
+        visible_schedule_sheets = [
+            s for s in sheet_info
+            if not s["hidden"] and s["title"] != "Schedule Template"
+        ]
         return {
             "status": "success",
             "details": {
-                "display_weeks_count": ConfigHelper.get_schedule_sheets_display_weeks_count(db),
+                "display_weeks_count": len(visible_schedule_sheets),
+                "configured_display_weeks": ConfigHelper.get_schedule_sheets_display_weeks_count(db),
                 "total_sheets": len(sheet_info),
                 "visible_sheets": len([s for s in sheet_info if not s["hidden"]]),
                 "hidden_sheets": len([s for s in sheet_info if s["hidden"]]),

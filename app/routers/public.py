@@ -211,12 +211,43 @@ def update_email_preferences(
     except Exception as e:
         logger.error(f"Error updating email preferences: {str(e)}", exc_info=True)
         db.rollback()
+        # Re-query volunteer so the form re-renders with the correct pre-selected radio.
+        try:
+            db.expire_all()
+            err_volunteer = (
+                db.query(VolunteerModel)
+                .filter(VolunteerModel.email_unsubscribe_token == token)
+                .first()
+            )
+            if err_volunteer:
+                if not err_volunteer.all_emails_subscribed:
+                    err_subscribed_status = "Unsubscribed from all emails (Account deactivated)"
+                    err_unsubscribe_type = "all_emails"
+                elif not err_volunteer.weekly_reminders_subscribed:
+                    err_subscribed_status = "Subscribed to announcements only (No weekly reminders)"
+                    err_unsubscribe_type = "weekly_reminders"
+                else:
+                    err_subscribed_status = "Subscribed to all emails including weekly reminders"
+                    err_unsubscribe_type = "resubscribe"
+                return templates.TemplateResponse(
+                    request,
+                    "unsubscribe/manage_preferences.html",
+                    {
+                        "volunteer_name": err_volunteer.name,
+                        "volunteer_email": err_volunteer.email,
+                        "token": token,
+                        "subscribed_status": err_subscribed_status,
+                        "unsubscribe_type": err_unsubscribe_type,
+                        "error_message": "An error occurred while updating your preferences. Please try again or contact us for assistance.",
+                    },
+                )
+        except Exception:
+            pass
         return templates.TemplateResponse(
             request,
-            "unsubscribe/manage_preferences.html",
+            "unsubscribe/error.html",
             {
                 "error_message": "An error occurred while updating your preferences. Please try again or contact us for assistance.",
-                "token": token,
             },
         )
 

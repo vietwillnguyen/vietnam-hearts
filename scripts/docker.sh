@@ -12,16 +12,23 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-PROJECT_NAME="vietnam-hearts-automations"
-IMAGE_NAME="vietnam-hearts-automation"
-VERSION="v3.0.4"
-GCR_PROJECT_ID="refined-vector-457419-n6"  # Change this to your GCP project ID
-GCR_REGION="asia-southeast1"  # Vietnam region (Ho Chi Minh City)
-GCR_HOSTNAME="gcr.io"
+# Load deployment configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${SCRIPT_DIR}/deploy.config"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo -e "${RED}[ERROR] deploy.config not found at ${CONFIG_FILE}${NC}"
+    echo "Create deploy.config from deploy.config.template or check the repository."
+    exit 1
+fi
+source "$CONFIG_FILE"
+
+# Derived values
+VERSION="${IMAGE_VERSION}"
+GCR_PROJECT_ID="${GCP_PROJECT_ID}"
 
 # Default values
-ENV_FILE="../.env"
+ENV_FILE="${SCRIPT_DIR}/../.env"  # secrets stay at project root
 PORT="8080"
 CONTAINER_NAME="vietnam-hearts-container"
 NETWORK_NAME="vietnam-hearts-network"
@@ -379,21 +386,30 @@ cleanup() {
     print_success "Cleanup completed"
 }
 
-# Function to deploy (build, push, and optionally run)
+# Function to deploy (build, push, deploy to Cloud Run)
 deploy() {
     local tag=${1:-latest}
-    
+    local full_tag="${GCR_HOSTNAME}/${GCR_PROJECT_ID}/${IMAGE_NAME}:${tag}"
+
     print_status "Starting deployment workflow..."
     print_status "Version: ${tag}"
-    
+
     # Build
     build_image "$tag"
-    
-    # Push
+
+    # Push to GCR
     push_image "$tag"
-    
+
+    # Deploy to Cloud Run
+    print_status "Deploying to Cloud Run service: ${CLOUD_RUN_SERVICE}..."
+    gcloud run deploy "${CLOUD_RUN_SERVICE}" \
+        --image "${full_tag}" \
+        --region "${CLOUD_RUN_REGION}" \
+        --platform managed \
+        --quiet
+
     print_success "Deployment completed successfully"
-    print_status "Image is now available in GCR: ${GCR_HOSTNAME}/${GCR_PROJECT_ID}/${IMAGE_NAME}:${tag}"
+    print_status "Live at: ${BASE_URL}"
 }
 
 # Main script logic

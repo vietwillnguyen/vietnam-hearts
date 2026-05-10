@@ -110,5 +110,25 @@ class TestUpdateEmailPreferences:
             "/unsubscribe",
             data={"unsubscribe_type": "all_emails"}
         )
-        
+
         assert response.status_code == 422  # FastAPI validation error
+
+    def test_unsubscribe_urlencoded_form(self, client, test_db, mock_volunteer):
+        """Test unsubscribe via application/x-www-form-urlencoded (the browser default).
+
+        This exercises the logging middleware's URL-encoded body path, which
+        previously consumed the request receive stream and caused the route handler
+        to see a null body (input: null) and return 422.
+        """
+        response = client.post(
+            f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
+            data={"unsubscribe_type": "weekly_reminders"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        assert response.status_code == 200
+        assert "unsubscribed from weekly reminders" in response.text
+
+        test_db.refresh(mock_volunteer)
+        assert mock_volunteer.weekly_reminders_subscribed == False
+        assert mock_volunteer.all_emails_subscribed == True

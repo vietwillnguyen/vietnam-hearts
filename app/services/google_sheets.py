@@ -681,7 +681,25 @@ class GoogleSheetsService:
                 except Exception as e:
                     logger.error(f"Failed to hide 'Schedule Template' sheet: {str(e)}", exc_info=True)
 
-            # Process each date in the display range
+            # PASS 1: Hide all schedule sheets outside the display range FIRST.
+            # Running hide before show ensures visible count never exceeds display_weeks_count,
+            # even if the operation is interrupted partway through.
+            for sheet in existing_sheets:
+                title = sheet["properties"]["title"]
+                if not (title.startswith("Schedule ") and title != "Schedule Template"):
+                    continue
+
+                if title not in visible_sheet_names:
+                    current_visibility = not sheet["properties"].get("hidden", False)
+                    if current_visibility:
+                        try:
+                            self.set_sheet_visibility(sheet["properties"]["sheetId"], True, db)
+                            sheets_made_hidden.append(title)
+                            logger.info(f"Set sheet {title} visibility to hidden")
+                        except ValueError:
+                            logger.warning(f"Skipping sheet with invalid date format: {title}")
+
+            # PASS 2: Make each display-range sheet visible and move it into position.
             for i, date in enumerate(display_dates):
                 sheet_name = f"Schedule {date.strftime('%m/%d')}"
                 existing_sheet = next(
@@ -694,65 +712,28 @@ class GoogleSheetsService:
                 )
 
                 if existing_sheet:
-                    # Sheet exists, ensure it's visible and in the correct position
                     was_hidden = existing_sheet["properties"].get("hidden", False)
                     old_index = existing_sheet["properties"].get("index", 0)
 
                     self.set_sheet_visibility(
                         existing_sheet["properties"]["sheetId"], False, db
-                    )  # False = visible
+                    )
                     self.move_sheet(
                         existing_sheet["properties"]["sheetId"], i + 1, db
-                    )  # +1 to account for template sheet
+                    )  # +1 to account for template sheet at index 0
 
-                    # Track changes
                     if was_hidden:
                         sheets_made_visible.append(sheet_name)
                     if old_index != i + 1:
                         sheets_reordered.append(sheet_name)
                 else:
-                    # Create new sheet and ensure it's visible
                     new_sheet_id = self.create_sheet_from_template(
                         "Schedule Template", date, db
                     )
                     self.update_sheet_dates(date, db)
-                    self.set_sheet_visibility(int(new_sheet_id), False, db)  # False = visible
-                    self.move_sheet(int(new_sheet_id), i + 1, db)  # Move to correct position
+                    self.set_sheet_visibility(int(new_sheet_id), False, db)
+                    self.move_sheet(int(new_sheet_id), i + 1, db)
                     sheets_created.append(sheet_name)
-
-            # Handle visibility for all sheets except 'Schedule Template'
-            for sheet in existing_sheets:
-                title = sheet["properties"]["title"]
-                # Only process sheets with names 'Schedule MM/DD'
-                if not (title.startswith("Schedule ") and title != "Schedule Template"):
-                    continue
-
-                try:
-                    # Set visibility based on whether the sheet should be in the display range
-                    should_be_visible = title in visible_sheet_names
-                    current_visibility = not sheet["properties"].get(
-                        "hidden", False
-                    )  # Convert hidden to visible
-
-                    # Only update if visibility needs to change
-                    if current_visibility != should_be_visible:
-                        self.set_sheet_visibility(
-                            sheet["properties"]["sheetId"], not should_be_visible, db   
-                        )  # True = hidden
-
-                        # Track the change
-                        if should_be_visible:
-                            sheets_made_visible.append(title)
-                        else:
-                            sheets_made_hidden.append(title)
-
-                        logger.info(
-                            f"Set sheet {title} visibility to {'visible' if should_be_visible else 'hidden'}"
-                        )
-                except ValueError:
-                    # Skip sheets that don't match the date format
-                    logger.warning(f"Skipping sheet with invalid date format: {title}")
-                    continue
 
             # Get final state after all changes
             final_sheets = self.get_schedule_sheets(db)

@@ -40,10 +40,8 @@ mkdir -p secrets
 ### 3. Deploy to Google Container Registry
 
 ```bash
-# Update GCR_PROJECT_ID in docker.sh
-nano docker.sh
-
-# Deploy to GCR
+# Set your GCP project and image version in deploy.config (committed to repo)
+# Then deploy to GCR
 ./docker.sh deploy v1.1.1
 ```
 
@@ -149,10 +147,10 @@ The application uses environment variables for configuration. Key variables:
    gcloud auth configure-docker
    ```
 
-4. **Update docker.sh**:
+4. **Update deploy.config**:
    ```bash
-   # Edit GCR_PROJECT_ID in docker.sh
-   GCR_PROJECT_ID="your-actual-project-id"
+   # Edit deploy.config at the project root
+   GCP_PROJECT_ID="your-actual-project-id"
    ```
 
 ## Production Deployment
@@ -274,8 +272,23 @@ For issues related to:
 - **Google Cloud**: Check GCP documentation
 - **Application**: Check the main README.md
 
+## Configuration
+
+All non-secret deployment settings (project IDs, regions, image name, version) are stored in
+`deploy.config` at the project root. Edit that file to change deployment targets — do not
+edit `docker.sh` directly.
+
+```bash
+# Key settings in deploy.config:
+GCP_PROJECT_ID    # GCP project for container registry
+IMAGE_NAME        # Docker image name
+IMAGE_VERSION     # Current image version (bump on each release)
+GCR_REGION        # Registry region
+CLOUD_RUN_REGION  # Cloud Run deployment region
+```
+
 ## Version History
 
-- **v1.1.1** - Current version with Docker support
-- **v1.1.0** - Added admin API and scheduler
-- **v1.0.0** - Initial release 
+- **v3.0.5** - Config-driven deployment via deploy.config
+- **v3.0.4** - Codebase simplification refactor
+- **v1.1.1** - Docker support added 

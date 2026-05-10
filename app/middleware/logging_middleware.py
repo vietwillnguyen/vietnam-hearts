@@ -206,32 +206,40 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     
     async def _get_request_body(self, request: Request) -> Dict[str, Any]:
         """
-        Extract request body content
-        
-        Args:
-            request: FastAPI request object
-            
-        Returns:
-            Request body as dictionary
+        Extract request body content.
+
+        Reads the raw body bytes and installs a replay receive so the route
+        handler's Request can still read the body (consuming the ASGI receive
+        stream once here would otherwise leave the handler with a null body).
         """
         try:
-            # Try to get JSON body
-            if request.headers.get("content-type") == "application/json":
-                body = await request.json()
-                return body
-            
-            # Try to get form data
-            if request.headers.get("content-type") == "application/x-www-form-urlencoded":
-                form_data = await request.form()
-                return dict(form_data)
-            
-            # Try to get raw body
+            content_type = request.headers.get("content-type", "")
             body = await request.body()
+
             if body:
-                return {"raw_body": body.decode()}
-            
-            return {}
-            
+                # Replace _receive so the next handler in the chain can still
+                # read the same bytes (Starlette's BaseHTTPMiddleware passes
+                # request._receive down to the inner app, so we must replay).
+                captured = body
+
+                async def _replay_receive() -> dict:
+                    return {"type": "http.request", "body": captured, "more_body": False}
+
+                request._receive = _replay_receive  # type: ignore[attr-defined]
+
+            if "application/json" in content_type:
+                try:
+                    return json.loads(body) if body else {}
+                except Exception:
+                    return {"raw_body": body.decode("utf-8", errors="replace")}
+
+            if "application/x-www-form-urlencoded" in content_type:
+                from urllib.parse import parse_qs
+                parsed = parse_qs(body.decode("utf-8", errors="replace"))
+                return {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
+
+            return {"raw_body": body.decode("utf-8", errors="replace")} if body else {}
+
         except Exception:
             return {"error": "Could not read request body"}
     

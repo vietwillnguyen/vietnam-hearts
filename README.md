@@ -183,9 +183,31 @@ Once running, the API will be available at:
 - **Health Check**: `http://localhost:8080/public/health`
 - **Admin Endpoints**: `http://localhost:8080/admin/*` (development only)
 
+## Deploy Configuration
+
+All non-secret deployment settings live in `deploy.config` at the project root.
+This file is committed to version control — it contains no secrets.
+
+```bash
+# deploy.config controls:
+GCP_PROJECT_ID        # GCP project for container registry
+GCR_HOSTNAME          # Container registry hostname (gcr.io)
+GCR_REGION            # GCR region (asia-southeast1)
+IMAGE_NAME            # Docker image name
+IMAGE_VERSION         # Current image version (bump on release)
+CLOUD_RUN_SERVICE     # Cloud Run service identifier
+CLOUD_RUN_REGION      # Cloud Run region (northamerica-northeast1)
+BASE_URL              # Public service URL
+SCHEDULER_REGION      # Cloud Scheduler region
+SCHEDULER_TIMEZONE    # Cron job timezone
+```
+
+To change the deployment target (e.g. bump version or change region), edit `deploy.config`.
+Both `docker.sh` and `scripts/create-or-update-scheduler-jobs.sh` source this file automatically.
+
 ## Scripts
 
-### `setup-dev-env.sh`
+### `scripts/setup-dev-env.sh`
 Initial setup script that:
 - Checks dependencies
 - Installs Python packages
@@ -193,8 +215,25 @@ Initial setup script that:
 - Sets up `.env` file
 - Validates configuration
 
+### `docker.sh`
+Docker management CLI for build/push/pull/run:
+```bash
+./docker.sh build [TAG]    # Build image (default: IMAGE_VERSION from deploy.config)
+./docker.sh push [TAG]     # Push to GCR
+./docker.sh deploy [TAG]   # Build + push (production workflow)
+./docker.sh run [-d] [-p PORT]  # Run container locally
+./docker.sh stop           # Stop running container
+./docker.sh logs           # Tail container logs
+./docker.sh clean          # Remove containers and images
+./docker.sh help           # Show all options
+```
+
+### `scripts/create-or-update-scheduler-jobs.sh`
+Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule).
+Reads scheduler region and timezone from `deploy.config`.
+
 ### `run.sh`
-Main application runner with options:
+Local application runner (no Docker):
 - `-e, --env-file FILE` - Use custom environment file
 - `-p, --port PORT` - Set port number
 - `-E, --environment ENV` - Set environment mode
@@ -204,11 +243,8 @@ Main application runner with options:
 - `-h, --help` - Show help
 
 ### `env.template`
-Template file containing all environment variables with:
-- Default values
-- Explanatory comments
-- Setup instructions
-- Required vs optional variables
+Template for secret environment variables. Copy to `.env` and fill in values.
+Never commit `.env` to version control.
 
 ## Project Structure
 
@@ -221,11 +257,16 @@ vietnam-hearts/
 │   ├── routers/           # API route handlers
 │   ├── services/          # Business logic
 │   └── utils/             # Utility functions
-├── templates/             # Email templates
+├── docs/                  # Extended documentation
+├── scripts/               # Deployment and setup scripts
+│   ├── create-or-update-scheduler-jobs.sh          # Cloud Scheduler job setup
+│   └── setup-dev-env.sh   # Developer environment setup
+├── templates/             # Email and HTML templates
 ├── secrets/               # Credentials (not in git)
-├── env.template           # Environment template
-├── run.sh                 # Application runner
-├── setup-dev-env.sh               # Setup script
+├── deploy.config          # Non-secret deployment settings (GCP, Docker)
+├── env.template           # Secret environment variable template
+├── docker.sh              # Docker build/push/run management
+├── run.sh                 # Local application runner
 └── pyproject.toml         # Poetry configuration
 ```
 

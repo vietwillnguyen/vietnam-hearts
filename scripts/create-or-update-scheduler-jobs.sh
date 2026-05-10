@@ -9,11 +9,26 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Load environment variables
-if [ -f .env ]; then
-  export $(grep -v '^#' .env | xargs)
+# Load deployment configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${SCRIPT_DIR}/deploy.config"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo -e "${RED}[ERROR] deploy.config not found at ${CONFIG_FILE}${NC}"
+  exit 1
+fi
+source "$CONFIG_FILE"
+
+# Map config vars to local names
+REGION="${SCHEDULER_REGION}"
+TIMEZONE="${SCHEDULER_TIMEZONE}"
+
+# Load environment variables (for secrets)
+ENV_FILE="${SCRIPT_DIR}/../.env"  # secrets stay at project root
+if [ -f "$ENV_FILE" ]; then
+  export $(grep -v '^#' "$ENV_FILE" | xargs)
 else
-  echo -e "${RED}[ERROR] .env file not found. Please create it and set SUPABASE_SERVICE_ROLE_KEY.${NC}"
+  echo -e "${RED}[ERROR] .env file not found at ${ENV_FILE}. Please create it and set SUPABASE_SERVICE_ROLE_KEY.${NC}"
   exit 1
 fi
 
@@ -21,14 +36,6 @@ if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
   echo -e "${RED}[ERROR] SUPABASE_SERVICE_ROLE_KEY is not set in .env.${NC}"
   exit 1
 fi
-
-# Configuration
-PROJECT_ID="vietnam-hearts-automation-367619842919"
-REGION="northamerica-northeast1"
-TIMEZONE="Asia/Ho_Chi_Minh"
-
-# Base URL for the service
-BASE_URL="https://${PROJECT_ID}.northamerica-northeast1.run.app"
 
 # Function to create or update a job
 create_or_update_job() {

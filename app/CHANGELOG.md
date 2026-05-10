@@ -1,5 +1,13 @@
 CHANGELOG:
 
+## Version 3.0.6
+
+- Fix: Unsubscribe form always returning 422 — logging middleware was consuming the request body stream before the route handler could read it; body is now replayed via a cached receive closure
+- Fix: Unsubscribe POST except block re-queries volunteer state after rollback so the form re-renders with the correct pre-selected radio button
+- Fix: Schedule status date parsing changed from `%m/%d/%Y` to `%m/%d` with current year; add `display_weeks_count` for actual visible sheets
+- Remove: Deprecated scripts (`deploy.sh`, `docker.sh`), debug artifacts (`debug_auth.py`, `test_auth.html`, `.cursorrules`)
+- Update: Dockerfile uses production-only dependencies (`--only main`) and uppercase `AS` for multi-stage build
+
 ## Version 3.0.5
 
 - Refactor: Split 1,639-line admin.py into feature-based router package (volunteers, emails, sign-ups, schedules, users, health)
