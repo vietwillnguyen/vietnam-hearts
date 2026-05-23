@@ -135,6 +135,10 @@ def initialize_default_settings(db: Session) -> None:
             "value": "",
             "description": "Discord invite link for the community"
         },
+        "INVITE_LINK_ZALO": {
+            "value": "https://zalo.me/g/gcmgkowx6gvotsghvsji",
+            "description": "Zalo group chat invite link"
+        },
         "ONBOARDING_GUIDE_LINK": {
             "value": "",
             "description": "Link to the onboarding guide for new volunteers"

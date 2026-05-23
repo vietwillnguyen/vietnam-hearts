@@ -58,6 +58,13 @@ class ConfigHelper:
         if db is None:
             return default
         return get_setting(db, "INVITE_LINK_DISCORD", default) or default
+
+    @staticmethod
+    def get_invite_link_zalo(db: Session, default: str = "") -> str:
+        """Get the Zalo group chat invite link from database settings"""
+        if db is None:
+            return default
+        return get_setting(db, "INVITE_LINK_ZALO", default) or default
     
     @staticmethod
     def get_onboarding_guide_link(db: Session, default: str = "") -> str:
