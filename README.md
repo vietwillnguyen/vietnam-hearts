@@ -80,7 +80,7 @@ The application uses the following environment variables (see `env.template` for
 - `SCHEDULE_SIGNUP_LINK` - Link for volunteer signups
 - `EMAIL_PREFERENCES_LINK` - Link for email preferences
 - `NEW_SIGNUPS_RESPONSES_LINK` - Google Sheets ID for new signups
-- Social media links (Facebook, Discord, Instagram, etc.)
+- Community & social links (`INVITE_LINK_ZALO`, `INSTAGRAM_LINK`, `FACEBOOK_PAGE_LINK`, etc.)
 
 #### Google Sheets Integration
 - `SCHEDULE_SIGNUP_LINK` - Main schedule Google Sheets ID
