@@ -1,5 +1,16 @@
 CHANGELOG:
 
+## Version 3.0.8
+
+- Add: Cron job schedule settings configurable from the admin Settings tab (sync volunteers, weekly reminders, rotate schedule)
+- Remove: `CRON_SEND_CONFIRMATION_EMAILS` setting — confirmation emails are sent automatically during volunteer sync
+- Remove: `INVITE_LINK_DISCORD` and `INVITE_LINK_FACEBOOK_MESSENGER` settings — Discord and Facebook Messenger deprecated, Zalo is the sole community platform
+
+## Version 3.0.7
+
+- Fix: Update remaining Zalo references in dashboard, error page, docs, run.sh
+- Replace: Discord/Facebook Messenger group chat with Zalo
+
 ## Version 3.0.6
 
 - Fix: Unsubscribe form always returning 422 — logging middleware was consuming the request body stream before the route handler could read it; body is now replayed via a cached receive closure
