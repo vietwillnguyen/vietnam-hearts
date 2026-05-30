@@ -150,8 +150,6 @@ async def send_weekly_reminder_emails(request: Request):
                     class_tables=[ct["table_html"] for ct in class_tables],
                     SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
                     EMAIL_PREFERENCES_LINK=email_service.get_volunteer_unsubscribe_link(db_volunteer, db),
-                    INVITE_LINK_FACEBOOK_MESSENGER=ConfigHelper.get_invite_link_facebook_messenger(db) or "#",
-                    INVITE_LINK_DISCORD=ConfigHelper.get_invite_link_discord(db) or "#",
                     INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
                     ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
                     INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",

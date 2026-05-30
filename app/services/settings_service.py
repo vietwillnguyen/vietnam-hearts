@@ -127,15 +127,7 @@ def initialize_default_settings(db: Session) -> None:
             "value": "true",
             "description": "If false, weekly reminder emails will be disabled globally"
         },
-        "INVITE_LINK_FACEBOOK_MESSENGER": {
-            "value": "",
-            "description": "Link to Facebook Messenger group or chat"
-        },
-        "INVITE_LINK_DISCORD": {
-            "value": "",
-            "description": "Discord invite link for the community"
-        },
-        "INVITE_LINK_ZALO": {
+"INVITE_LINK_ZALO": {
             "value": "https://zalo.me/g/gcmgkowx6gvotsghvsji",
             "description": "Zalo group chat invite link"
         },
@@ -164,16 +156,16 @@ def initialize_default_settings(db: Session) -> None:
             "description": "The default number of weeks to display in the schedule sheets"
         },
         "CRON_SYNC_VOLUNTEERS": {
-            "value": "0 2 * * *",
-            "description": "Cron schedule for syncing volunteers from Google Sheets (default: daily at 2:00 AM)"
+            "value": "0 */4 * * *",
+            "description": "Cron schedule for syncing volunteers from Google Sheets (default: every 4 hours)"
         },
         "CRON_SEND_WEEKLY_REMINDERS": {
-            "value": "0 9 * * 1",
-            "description": "Cron schedule for sending weekly reminder emails (default: every Monday at 9:00 AM)"
+            "value": "0 12 * * 0",
+            "description": "Cron schedule for sending weekly reminder emails (default: every Sunday at 12:00 PM)"
         },
-"CRON_ROTATE_SCHEDULE": {
-            "value": "0 0 * * 0",
-            "description": "Cron schedule for rotating schedule sheets (default: every Sunday at midnight)"
+        "CRON_ROTATE_SCHEDULE": {
+            "value": "0 17 * * 5",
+            "description": "Cron schedule for rotating schedule sheets (default: every Friday at 5:00 PM)"
         },
     }
     

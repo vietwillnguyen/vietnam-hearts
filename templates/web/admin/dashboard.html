@@ -467,7 +467,7 @@
                     </div>
                     
                     <form id="settings-form" class="settings-form">
-                        {% for setting in settings %}
+                        {% for setting in settings if not setting.key.startswith('CRON_') %}
                         <div class="form-group {% if setting.key in ['DRY_RUN', 'DRY_RUN_EMAIL_RECIPIENT'] %}dry-run-setting{% endif %}">
                             <label for="{{ setting.key }}" class="form-label">
                                 {{ setting.key }}
@@ -515,19 +515,19 @@
                                 "key": "CRON_SYNC_VOLUNTEERS",
                                 "label": "Sync Volunteers",
                                 "description": "Sync volunteer records from Google Sheets into the database.",
-                                "example": "0 2 * * *  →  Every day at 2:00 AM"
+                                "example": "0 */4 * * *  →  Every 4 hours"
                             },
                             {
                                 "key": "CRON_SEND_WEEKLY_REMINDERS",
                                 "label": "Send Weekly Reminders",
                                 "description": "Send weekly reminder emails to all subscribed volunteers.",
-                                "example": "0 9 * * 1  →  Every Monday at 9:00 AM"
+                                "example": "0 12 * * 0  →  Every Sunday at 12:00 PM"
                             },
 {
                                 "key": "CRON_ROTATE_SCHEDULE",
                                 "label": "Rotate Schedule",
                                 "description": "Hide old schedule sheets and reveal the next week's sheet.",
-                                "example": "0 0 * * 0  →  Every Sunday at midnight"
+                                "example": "0 17 * * 5  →  Every Friday at 5:00 PM"
                             }
                         ] %}
 
@@ -1690,8 +1690,6 @@
                 'DRY_RUN_EMAIL_RECIPIENT': '',
                 'WEEKLY_REMINDERS_ENABLED': 'true',
                 'INVITE_LINK_ZALO': 'https://zalo.me/g/gcmgkowx6gvotsghvsji',
-                'INVITE_LINK_FACEBOOK_MESSENGER': '',
-                'INVITE_LINK_DISCORD': '',
                 'ONBOARDING_GUIDE_LINK': '',
                 'INSTAGRAM_LINK': '',
                 'FACEBOOK_PAGE_LINK': '',

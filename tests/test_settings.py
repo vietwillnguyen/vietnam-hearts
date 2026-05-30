@@ -20,9 +20,9 @@ CRON_KEYS = [
 ]
 
 EXPECTED_DEFAULTS = {
-    "CRON_SYNC_VOLUNTEERS": "0 2 * * *",
-    "CRON_SEND_WEEKLY_REMINDERS": "0 9 * * 1",
-    "CRON_ROTATE_SCHEDULE": "0 0 * * 0",
+    "CRON_SYNC_VOLUNTEERS": "0 */4 * * *",
+    "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
+    "CRON_ROTATE_SCHEDULE": "0 17 * * 5",
 }
 
 

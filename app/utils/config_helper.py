@@ -44,20 +44,6 @@ class ConfigHelper:
         if db is None:
             return default
         return get_setting(db, "SCHEDULE_SIGNUP_LINK", default) or default
-    
-    @staticmethod
-    def get_invite_link_facebook_messenger(db: Session, default: str = "") -> str:
-        """Get the Facebook Messenger link from database settings"""
-        if db is None:
-            return default
-        return get_setting(db, "INVITE_LINK_FACEBOOK_MESSENGER", default) or default
-    
-    @staticmethod
-    def get_invite_link_discord(db: Session, default: str = "") -> str:
-        """Get the Discord invite link from database settings"""
-        if db is None:
-            return default
-        return get_setting(db, "INVITE_LINK_DISCORD", default) or default
 
     @staticmethod
     def get_invite_link_zalo(db: Session, default: str = "") -> str:

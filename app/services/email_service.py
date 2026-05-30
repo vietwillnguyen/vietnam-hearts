@@ -238,8 +238,6 @@ class EmailService:
             class_tables=[ct['table_html'] for ct in class_tables],
             SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
-            INVITE_LINK_FACEBOOK_MESSENGER=ConfigHelper.get_invite_link_facebook_messenger(db) or "#",
-            INVITE_LINK_DISCORD=ConfigHelper.get_invite_link_discord(db) or "#",
             INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
             ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
             INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
@@ -261,8 +259,6 @@ class EmailService:
 
             # Get dynamic settings from database
             schedule_signup_link = config.get_schedule_signup_link(db)
-            INVITE_LINK_FACEBOOK_MESSENGER = config.get_invite_link_facebook_messenger(db)
-            INVITE_LINK_DISCORD = config.get_invite_link_discord(db)
             INVITE_LINK_ZALO = config.get_invite_link_zalo(db)
             onboarding_guide_link = config.get_onboarding_guide_link(db)
             instagram_link = config.get_instagram_link(db)
@@ -275,8 +271,6 @@ class EmailService:
                 "EMAIL_PREFERENCES_LINK": self.get_volunteer_unsubscribe_link(
                     volunteer, db
                 ),
-                "INVITE_LINK_FACEBOOK_MESSENGER": INVITE_LINK_FACEBOOK_MESSENGER or "#",
-                "INVITE_LINK_DISCORD": INVITE_LINK_DISCORD or "#",
                 "INVITE_LINK_ZALO": INVITE_LINK_ZALO or "#",
                 "ONBOARDING_GUIDE_LINK": onboarding_guide_link or "#",
                 "INSTAGRAM_LINK": instagram_link or "#",
