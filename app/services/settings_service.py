@@ -162,7 +162,19 @@ def initialize_default_settings(db: Session) -> None:
         "SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT": {
             "value": "4",
             "description": "The default number of weeks to display in the schedule sheets"
-        }
+        },
+        "CRON_SYNC_VOLUNTEERS": {
+            "value": "0 2 * * *",
+            "description": "Cron schedule for syncing volunteers from Google Sheets (default: daily at 2:00 AM)"
+        },
+        "CRON_SEND_WEEKLY_REMINDERS": {
+            "value": "0 9 * * 1",
+            "description": "Cron schedule for sending weekly reminder emails (default: every Monday at 9:00 AM)"
+        },
+"CRON_ROTATE_SCHEDULE": {
+            "value": "0 0 * * 0",
+            "description": "Cron schedule for rotating schedule sheets (default: every Sunday at midnight)"
+        },
     }
     
     for key, config in default_settings.items():

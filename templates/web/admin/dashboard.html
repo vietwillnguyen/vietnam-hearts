@@ -502,7 +502,57 @@
                             {% endif %}
                         </div>
                         {% endfor %}
-                        
+
+                        <!-- Cron Job Schedules Section -->
+                        <hr class="my-4">
+                        <div class="mb-3">
+                            <h4>⏰ Cron Job Schedules</h4>
+                            <p class="text-muted">Configure when each automated job runs using standard cron expressions (<code>minute hour day-of-month month day-of-week</code>). Changes take effect on the next Cloud Scheduler sync.</p>
+                        </div>
+
+                        {% set cron_jobs = [
+                            {
+                                "key": "CRON_SYNC_VOLUNTEERS",
+                                "label": "Sync Volunteers",
+                                "description": "Sync volunteer records from Google Sheets into the database.",
+                                "example": "0 2 * * *  →  Every day at 2:00 AM"
+                            },
+                            {
+                                "key": "CRON_SEND_WEEKLY_REMINDERS",
+                                "label": "Send Weekly Reminders",
+                                "description": "Send weekly reminder emails to all subscribed volunteers.",
+                                "example": "0 9 * * 1  →  Every Monday at 9:00 AM"
+                            },
+{
+                                "key": "CRON_ROTATE_SCHEDULE",
+                                "label": "Rotate Schedule",
+                                "description": "Hide old schedule sheets and reveal the next week's sheet.",
+                                "example": "0 0 * * 0  →  Every Sunday at midnight"
+                            }
+                        ] %}
+
+                        {% for job in cron_jobs %}
+                            {% set current_value = "" %}
+                            {% for s in settings %}
+                                {% if s.key == job.key %}
+                                    {% set current_value = s.value %}
+                                {% endif %}
+                            {% endfor %}
+                        <div class="form-group">
+                            <label for="{{ job.key }}" class="form-label">
+                                {{ job.label }}
+                                <span class="badge bg-secondary ms-1">cron</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control font-monospace"
+                                   id="{{ job.key }}"
+                                   name="{{ job.key }}"
+                                   value="{{ current_value }}"
+                                   placeholder="{{ job.example.split('→')[0].strip() }}">
+                            <div class="form-text">{{ job.description }} <span class="text-secondary">e.g. {{ job.example }}</span></div>
+                        </div>
+                        {% endfor %}
+
                         <div class="form-group">
                             <button type="submit" class="btn btn-primary">Save All Settings</button>
                             <button type="button" class="btn btn-secondary ms-2" onclick="resetToDefaults()">Reset to Defaults</button>
