@@ -161,7 +161,7 @@ async def send_weekly_reminder_emails(request: Request):
                     recipient_email=volunteer["email"],
                     email_type="weekly_reminder",
                     subject=subject,
-                    status="pending",
+                    status="PENDING",
                 )
                 email_communications.append((email_comm, html_body))
 

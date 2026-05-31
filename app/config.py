@@ -68,10 +68,6 @@ REQUIRED_ENV_VARS = [
     "SUPABASE_URL",  # Required for Supabase auth
     "SUPABASE_ANON_KEY",  # Required for Supabase auth
     "SUPABASE_SERVICE_ROLE_KEY",  # Required for Supabase auth
-    "FACEBOOK_VERIFY_TOKEN",  # Required for Facebook Messenger
-    "FACEBOOK_ACCESS_TOKEN",  # Required for Facebook Messenger
-    "FACEBOOK_APP_ID",  # Required for Facebook Messenger
-    "FACEBOOK_APP_SECRET",  # Required for Facebook Messenger
     "EMAIL_SENDER",  # Required for sending emails
 ]
 

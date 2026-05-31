@@ -109,7 +109,7 @@ class EmailCommunication(Base):
 
     # Status tracking
     status = Column(
-        String, default="pending"
+        String, default="PENDING"
     )  # pending, sent, delivered, failed, bounced
     error_message = Column(String)  # If delivery failed
     sent_at = Column(DateTime, default=datetime.now(timezone.utc))

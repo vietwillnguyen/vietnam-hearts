@@ -1,5 +1,9 @@
 CHANGELOG:
 
+## Version 3.1.0
+- Add: LLM as a judge on sheet signups. Triggers on PENDING applicants. Assigns a verdict based on safety of a candidate.
+- Remove: Messenger functionality and endpoint, not being used nor a plan to incorprate added unnecessary feature.
+
 ## Version 3.0.8
 
 - Add: Cron job schedule settings configurable from the admin Settings tab (sync volunteers, weekly reminders, rotate schedule)

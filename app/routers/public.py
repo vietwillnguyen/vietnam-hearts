@@ -14,11 +14,7 @@ from app.models import (
 from app.services.google_sheets import sheets_service
 from app.services.bot_service import BotService
 from app.utils.logging_config import get_api_logger
-from app.config import (
-    ENVIRONMENT,
-    FACEBOOK_VERIFY_TOKEN,
-    FACEBOOK_ACCESS_TOKEN,
-)
+from app.config import ENVIRONMENT
 from datetime import datetime
 import os
 from app.utils.config_helper import ConfigHelper
@@ -325,10 +321,6 @@ def get_health(db: Session = Depends(get_db)):
                     "type": "SQLite" if "sqlite" in os.getenv("DATABASE_URL", "") else "PostgreSQL",
                 },
                 "google_sheets": {"status": sheets_status, "error": sheets_error},
-                "facebook_messenger": {
-                    "status": "healthy" if FACEBOOK_VERIFY_TOKEN and FACEBOOK_ACCESS_TOKEN else "unhealthy",
-                    "webhook_url": "/webhook/messenger",
-                },
                 "bot_service": {"status": bot_status, "error": bot_error},
             },
         }

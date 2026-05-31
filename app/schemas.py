@@ -59,7 +59,7 @@ class EmailCommunicationBase(BaseModel):
     email_type: str
     subject: str
     template_name: Optional[str] = None
-    status: str = "pending"
+    status: str = "PENDING"
     error_message: Optional[str] = None
 
 

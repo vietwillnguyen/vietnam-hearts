@@ -648,7 +648,7 @@ class TestFormSubmissionProcessing:
                 "timestamp": "12/01/2024 11:00:00",
                 "email_address": "pending@example.com",
                 "score": "75",
-                "first_name": "Pending",
+                "first_name": "PENDING",
                 "last_name": "Volunteer",
                 "passport_id_number": "987654321",
                 "passport_expiry_date": "12/31/2030",

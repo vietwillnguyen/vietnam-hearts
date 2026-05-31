@@ -29,6 +29,63 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
 ]
 
+# Column mapping for the volunteer signup form sheet.
+# Index 0 = col A.  Update here when the form adds/removes columns.
+SIGNUP_SHEET_HEADERS = [
+    "applicant_status",         # A  – Form Response Status
+    "timestamp",                # B  – Timestamp
+    "llm_judge_score",          # C  – LLM Judge Score (our output column)
+    "email_address",            # D  – Email Address
+    "quiz_score",               # E  – Score on Quiz
+    "first_name",               # F
+    "last_name",                # G
+    "passport_id_number",       # H
+    "passport_expiry_date",     # I
+    "date_of_birth",            # J
+    "passport_upload",          # K
+    "headshot_upload",          # L
+    "social_media_link",        # M  – Facebook or LinkedIn profile
+    "location",                 # N  – Where are you from?
+    "phone_number",             # O
+    "position_interest",        # P
+    "availability",             # Q
+    "start_date",               # R
+    "commitment_duration",      # S
+    "teaching_experience",      # T  – Prior teaching/TA experience?
+    "experience_details",       # U
+    "teaching_certificate",     # V
+    "vietnamese_speaking",      # W
+    "other_support",            # X
+    "referral_source",          # Y  – How did you hear about us?
+    "motivation",               # Z  – Why interested in volunteering?
+    "expected_gain",            # AA – What do you hope to gain?
+    "children_experience",      # AB – Worked with children before?
+    "preferred_age_group",      # AC
+    "safeguarding_discomfort",  # AD – Team member made someone uncomfortable?
+    "safeguarding_physical",    # AE – Child seeks physical affection?
+    "safeguarding_contact",     # AF – Student asks for phone/social media?
+    "teacher_responsibilities", # AG
+    "tuesday_class_focus",      # AH
+    "agree_lesson_plan",        # AI
+    "warnings_response",        # AJ
+    "teacher_help_response",    # AK
+    "ta_role",                  # AL
+    "teacher_absence_response", # AM
+    "true_statement",           # AN
+    "agree_1",                  # AO
+    "agree_2",                  # AP
+    "agree_3",                  # AQ
+    "agree_4",                  # AR
+    "agree_5",                  # AS
+    "agree_6",                  # AT
+    "medical_conditions",       # AU
+    "agree_medical",            # AV
+    "legal_name_confirmation",  # AW
+    "ta_per_class",             # AX
+    "current_address",          # AY
+]
+
+
 class GoogleSheetsService:
     def __init__(self):
         """Initialize Google Sheets service with lazy initialization"""
@@ -195,8 +252,7 @@ class GoogleSheetsService:
             sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
             if not sheet_id:
                 raise ValueError("NEW_SIGNUPS_RESPONSES_LINK is not configured. Please set it in the admin settings.")
-            # Use hardcoded range for now, can be made configurable later
-            full_range = range_name or "A2:R"
+            full_range = range_name or "A2:ZZ"
             logger.info(f"Fetching signups from sheet {sheet_id} with range {full_range}")
             result = (
                 self.sheet.values()
@@ -207,34 +263,7 @@ class GoogleSheetsService:
                 .execute()
             )
             values = result.get("values", [])
-
-            # Map column headers to field names for new form structure
-            headers = [
-                "applicant_status",
-                "timestamp", 
-                "email_address",
-                "score",
-                "first_name",
-                "last_name",
-                "passport_id_number",
-                "passport_expiry_date",
-                "date_of_birth",
-                "passport_upload",
-                "headshot_upload",
-                "social_media_link",
-                "location",
-                "phone_number",
-                "position_interest",
-                "availability",
-                "start_date",
-                "commitment_duration",
-                "teaching_experience",
-                "experience_details",
-                "teaching_certificate",
-                "vietnamese_speaking",
-                "other_support",
-                "referral_source",
-            ]
+            headers = SIGNUP_SHEET_HEADERS
 
             # Process each row into a dictionary
             submissions = []
@@ -612,6 +641,98 @@ class GoogleSheetsService:
             logger.info(f"Moved sheet {sheet_id} to index {new_index}")
         except Exception as e:
             logger.error(f"Failed to move sheet: {str(e)}", exc_info=True)
+            raise
+
+    def get_pending_submissions_with_rows(self, db: Session) -> List[tuple]:
+        """
+        Fetch signup submissions that have not yet been reviewed (not ACCEPTED or REJECTED).
+
+        Returns:
+            List of (row_number, submission_dict) tuples.
+            row_number is 1-based with the header occupying row 1, so values[0] → row 2.
+        """
+        self._ensure_initialized(db)
+        sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
+        max_attempts = ConfigHelper.get_google_sheets_max_retries(db)
+
+        headers = SIGNUP_SHEET_HEADERS
+
+        def _fetch():
+            result = (
+                self._sheet.values()
+                .get(spreadsheetId=sheet_id, range="A2:ZZ")
+                .execute()
+            )
+            return result.get("values", [])
+
+        try:
+            raw_rows = safe_api_call(_fetch, max_attempts=max_attempts, context="fetch pending submissions")
+        except Exception as e:
+            logger.error(f"Failed to fetch pending submissions: {e}", exc_info=True)
+            return []
+
+        pending = []
+        for index, row in enumerate(raw_rows):
+            row_data = row + [""] * (len(headers) - len(row))
+            submission = dict(zip(headers, row_data))
+            status = submission.get("applicant_status", "").strip().upper()
+            email = submission.get("email_address", "").strip()
+            # Only include rows explicitly marked PENDING with a real email address.
+            # Blank/empty rows would otherwise be treated as pending.
+            if status == "PENDING" and email:
+                row_number = index + 2  # header is row 1
+                pending.append((row_number, submission))
+
+        logger.info(f"Found {len(pending)} pending submissions out of {len(raw_rows)} total rows")
+        return pending
+
+    def update_submission_judgment(
+        self,
+        db: Session,
+        row_number: int,
+        status: str,
+        summary: str,
+        rating: int,
+        reasoning: str = "",
+    ) -> None:
+        """
+        Write LLM judgment back to the signups sheet for a single row.
+
+        Writes:
+            Column A → status (ACCEPTED or REJECTED)
+            Column B → LLM summary
+            Column D → rating (1-10)
+        """
+        self._ensure_initialized(db)
+        sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
+        max_attempts = ConfigHelper.get_google_sheets_max_retries(db)
+
+        parts = [f"[{status}] {rating}/10"]
+        if reasoning:
+            parts.append(reasoning)
+        if summary:
+            parts.append(summary)
+        llm_text = " | ".join(parts)
+        body = {
+            "valueInputOption": "RAW",
+            "data": [
+                {"range": f"A{row_number}", "values": [[status]]},
+                {"range": f"C{row_number}", "values": [[llm_text]]},
+            ],
+        }
+
+        def _write():
+            return (
+                self._sheet.values()
+                .batchUpdate(spreadsheetId=sheet_id, body=body)
+                .execute()
+            )
+
+        try:
+            safe_api_call(_write, max_attempts=max_attempts, context=f"update judgment for row {row_number}")
+            logger.info(f"Wrote judgment to row {row_number}: {status} / rating={rating}")
+        except Exception as e:
+            logger.error(f"Failed to write judgment for row {row_number}: {e}", exc_info=True)
             raise
 
     def rotate_schedule_sheets(self, db: Session, display_weeks_override: Optional[int] = None) -> Dict[str, Any]:

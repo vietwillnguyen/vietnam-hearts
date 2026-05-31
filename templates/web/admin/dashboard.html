@@ -206,7 +206,32 @@
                             </div>
                         </div>
                     </div>
-                    
+
+                    <!-- AI Review Row -->
+                    <div class="row mb-4">
+                        <div class="col-md-5">
+                            <div class="card border-primary">
+                                <div class="card-body">
+                                    <h5 class="card-title">🤖 AI Review — Pending Submissions</h5>
+                                    <p class="card-text">Use Gemini to screen pending applicants: checks identity docs, social link, and free-form answers for safeguarding concerns. Writes summary + rating to the signups sheet.</p>
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <label for="judgeBatchSize" class="form-label mb-0 me-1">Batch size:</label>
+                                        <input type="number" id="judgeBatchSize" class="form-control form-control-sm"
+                                               value="20" min="1" max="200" style="width:80px;">
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button class="btn btn-outline-primary global-action-btn"
+                                                data-action="judge-pending-submissions">
+                                            <i class="fas fa-robot"></i> Run AI Review
+                                        </button>
+                                        <span id="judgeStatusBadge" class="badge" style="display:none;"></span>
+                                    </div>
+                                    <div id="judgeResult" class="mt-3" style="display:none;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <table class="table table-striped">
                         <thead>
                             <tr>
@@ -1172,6 +1197,9 @@
                 case 'sync-volunteers':
                     await syncVolunteers();
                     break;
+                case 'judge-pending-submissions':
+                    await judgePendingSubmissions();
+                    break;
             }
         }
 
@@ -1399,6 +1427,60 @@
                 alert(`Error: ${error.message}`);
             } finally {
                 // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function judgePendingSubmissions() {
+            const button = document.querySelector('[data-action="judge-pending-submissions"]');
+            const resultDiv = document.getElementById('judgeResult');
+            const badge = document.getElementById('judgeStatusBadge');
+            const originalText = button.innerHTML;
+
+            try {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running AI review...';
+                button.disabled = true;
+                resultDiv.style.display = 'none';
+                badge.style.display = 'none';
+
+                const headers = await getAuthHeaders();
+                const limit = document.getElementById('judgeBatchSize').value || 20;
+                const response = await fetch(`/admin/judge-pending-submissions?limit=${limit}`, {
+                    method: 'POST',
+                    headers: headers
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    const dryRun = result.dry_run;
+                    badge.textContent = dryRun ? 'DRY RUN' : 'LIVE';
+                    badge.className = `badge ${dryRun ? 'bg-warning text-dark' : 'bg-success'}`;
+                    badge.style.display = 'inline';
+
+                    resultDiv.innerHTML = `
+                        <div class="alert ${result.errors > 0 ? 'alert-warning' : 'alert-success'} mb-0">
+                            <strong>${dryRun ? '🔍 Dry-run complete' : '✅ Review complete'}</strong>
+                            ${dryRun ? '<br><small class="text-muted">No changes written to sheet (dry_run is ON)</small>' : ''}
+                            <ul class="mb-0 mt-2">
+                                <li>Processed: <strong>${result.processed}</strong></li>
+                                <li>Accepted: <strong class="text-success">${result.accepted}</strong></li>
+                                <li>Rejected: <strong class="text-danger">${result.rejected}</strong></li>
+                                ${result.errors > 0 ? `<li>Errors: <strong class="text-warning">${result.errors}</strong></li>` : ''}
+                            </ul>
+                            ${result.remaining > 0 ? `<li class="text-muted">Remaining (unprocessed): <strong>${result.remaining}</strong></li>` : ''}
+                            ${!dryRun && result.processed > 0 ? '<small class="text-muted mt-1 d-block">Verdicts written to sheet — run "Sync Volunteers" to import newly accepted applicants.</small>' : ''}
+                        </div>`;
+                    resultDiv.style.display = 'block';
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger mb-0">Error: ${result.detail || 'Request failed'}</div>`;
+                    resultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger mb-0">Error: ${error.message}</div>`;
+                resultDiv.style.display = 'block';
+            } finally {
                 button.innerHTML = originalText;
                 button.disabled = false;
             }
