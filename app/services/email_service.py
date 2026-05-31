@@ -369,6 +369,7 @@ class EmailService:
                 db.query(VolunteerModel)
                 .filter(
                     VolunteerModel.is_active == True,
+                    VolunteerModel.email.contains("@"),
                     ~VolunteerModel.email_communications.any(
                         EmailCommunicationModel.email_type == "volunteer_confirmation"
                     ),
@@ -377,6 +378,9 @@ class EmailService:
             )
 
             for volunteer in volunteers:
+                if "@" not in (volunteer.email or ""):
+                    logger.warning(f"Skipping malformed email for volunteer id={volunteer.id}: {volunteer.email!r}")
+                    continue
                 logger.info(f"Volunteer is a volunteer without a confirmation email, sending confirmation email to {volunteer.email}")
                 self.send_confirmation_email(db, volunteer)
 

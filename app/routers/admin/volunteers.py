@@ -337,3 +337,65 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
     except Exception as e:
         logger.error(f"Failed to send weekly reminder to volunteer {volunteer_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to send weekly reminder email: {str(e)}")
+
+
+@router.post("/volunteers/cleanup-malformed-emails")
+def cleanup_malformed_emails(db: Session = Depends(get_db), dry_run: bool = True):
+    """
+    Find and remove volunteer records whose email field does not contain '@'.
+    These were created by syncs that ran with an incorrect column mapping
+    (email field was reading the timestamp or LLM judge score column instead).
+
+    Pass dry_run=false to actually delete. Default is dry_run=true (preview only).
+    After deletion, re-run sync to re-import correctly from the sheet.
+    """
+    bad_volunteers = (
+        db.query(VolunteerModel)
+        .filter(~VolunteerModel.email.contains("@"))
+        .all()
+    )
+
+    preview = [
+        {"id": v.id, "name": v.name, "bad_email": v.email}
+        for v in bad_volunteers
+    ]
+
+    if dry_run:
+        return {
+            "status": "preview",
+            "dry_run": True,
+            "count": len(preview),
+            "records": preview,
+            "message": f"Would delete {len(preview)} volunteers. Pass dry_run=false to confirm.",
+        }
+
+    # Delete email_communications first (FK constraint)
+    deleted_comms = 0
+    for v in bad_volunteers:
+        deleted_comms += (
+            db.query(EmailCommunicationModel)
+            .filter(EmailCommunicationModel.volunteer_id == v.id)
+            .delete()
+        )
+
+    deleted_volunteers = (
+        db.query(VolunteerModel)
+        .filter(~VolunteerModel.email.contains("@"))
+        .delete()
+    )
+    db.commit()
+
+    logger.info(
+        f"Cleaned up {deleted_volunteers} malformed-email volunteers "
+        f"and {deleted_comms} related email communication records"
+    )
+    return {
+        "status": "success",
+        "dry_run": False,
+        "deleted_volunteers": deleted_volunteers,
+        "deleted_email_communications": deleted_comms,
+        "message": (
+            f"Deleted {deleted_volunteers} volunteers with malformed emails. "
+            "Run sync-volunteers to re-import them with correct data."
+        ),
+    }
