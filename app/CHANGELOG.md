@@ -1,5 +1,9 @@
 CHANGELOG:
 
+## Version 3.1.1
+
+- Fix: LLM judge now processes new form submissions that arrive with a blank applicant_status column (Google Forms does not pre-fill it). Condition changed from requiring explicit "PENDING" to excluding final states (ACCEPTED/REJECTED).
+
 ## Version 3.1.0
 - Add: LLM as a judge on sheet signups. Triggers on PENDING applicants. Assigns a verdict based on safety of a candidate.
 - Remove: Messenger functionality and endpoint, not being used nor a plan to incorprate added unnecessary feature.

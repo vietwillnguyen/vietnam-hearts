@@ -129,8 +129,8 @@ class TestGetPendingSubmissionsWithRows:
         statuses = [sub["applicant_status"] for _, sub in result]
         assert "ACCEPTED" not in statuses
         assert "REJECTED" not in statuses
-        # Blank-status rows are excluded; only explicit PENDING rows with email are included
-        assert len(result) == 2
+        # Blank-status rows (new form submissions) and PENDING rows are both included
+        assert len(result) == 3
 
     def test_row_numbers_are_one_indexed_with_header_offset(self):
         """Row 0 in values list → row 2 in sheet (header is row 1)."""

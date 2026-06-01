@@ -677,9 +677,10 @@ class GoogleSheetsService:
             submission = dict(zip(headers, row_data))
             status = submission.get("applicant_status", "").strip().upper()
             email = submission.get("email_address", "").strip()
-            # Only include rows explicitly marked PENDING with a real email address.
-            # Blank/empty rows would otherwise be treated as pending.
-            if status == "PENDING" and email:
+            # Include any row that hasn't reached a final state and has a real email.
+            # New Google Form submissions arrive with a blank status, so we check
+            # for the absence of final states rather than presence of "PENDING".
+            if status not in ("ACCEPTED", "REJECTED") and email:
                 row_number = index + 2  # header is row 1
                 pending.append((row_number, submission))
 
