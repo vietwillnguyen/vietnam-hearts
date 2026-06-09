@@ -1,5 +1,10 @@
 CHANGELOG:
 
+## Version 3.1.2
+
+- Fix: LLM judge prompt removes safeguarding scenario questions as a scored rubric item (subjective); replaces with a hard-reject SAFEGUARDING GATE that flags explicit red flags (grooming, predatory language) without influencing the 1-10 numeric rating.
+- Fix: Remove stale `{safeguarding_discomfort}` placeholder from judge prompt that was causing a latent KeyError.
+
 ## Version 3.1.1
 
 - Fix: LLM judge now processes new form submissions that arrive with a blank applicant_status column (Google Forms does not pre-fill it). Condition changed from requiring explicit "PENDING" to excluding final states (ACCEPTED/REJECTED).

@@ -25,9 +25,9 @@ logger = get_api_logger()
 
 router = APIRouter()
 
-_JUDGE_PROMPT_TEMPLATE = """You are a safeguarding reviewer for Vietnam Hearts, a children's education charity \
-that places volunteers with Vietnamese children. Your job is to screen out unsafe \
-applicants before a human does a full review.
+_JUDGE_PROMPT_TEMPLATE = """You are an applicant reviewer for Vietnam Hearts, a children's education charity \
+that places volunteers with Vietnamese children. Your job is to do an initial screen \
+of applicants before a human does a full review.
 
 Reply ONLY with valid JSON (no markdown):
 {{
@@ -42,12 +42,11 @@ RATING CRITERIA (in order of importance):
 non-empty links — missing either is an automatic 1/10 and REJECTED.
 2. Social media link submitted: must be a non-empty link — missing is heavily \
 penalised (-3 points).
-3. Free-form answers (experience_details, other_support, referral_source) must \
-not contain language that raises safeguarding concerns (grooming, predatory \
-interest in children, inappropriate statements). Any red flag → REJECTED \
-regardless of other scores.
-4. All other factors (experience, availability, etc.) are secondary and only \
-used to differentiate candidates who pass the above checks.
+
+SAFEGUARDING GATE (evaluated separately — does NOT affect the numeric rating):
+Scan free-form answers (experience_details, other_support, referral_source) for \
+explicit red flags: grooming language, predatory interest in children, or statements \
+suggesting inappropriate contact. Any such red flag → REJECTED regardless of score.
 
 VERDICT: ACCEPTED if rating >= 6 AND no safeguarding red flags. REJECTED otherwise.
 
@@ -62,9 +61,6 @@ Experience details: {experience_details}
 Motivation for volunteering: {motivation}
 Expected gain: {expected_gain}
 Prior experience with children: {children_experience}
-Safeguarding — team member made someone uncomfortable: {safeguarding_discomfort}
-Safeguarding — child seeks physical affection: {safeguarding_physical}
-Safeguarding — student asks for phone/social media: {safeguarding_contact}
 Other support offered: {other_support}
 Referral source: {referral_source}"""
 
@@ -101,9 +97,6 @@ def _judge_submission(submission: dict) -> dict:
         motivation=_field("motivation"),
         expected_gain=_field("expected_gain"),
         children_experience=_field("children_experience"),
-        safeguarding_discomfort=_field("safeguarding_discomfort"),
-        safeguarding_physical=_field("safeguarding_physical"),
-        safeguarding_contact=_field("safeguarding_contact"),
         other_support=_field("other_support"),
         referral_source=_field("referral_source"),
     )
