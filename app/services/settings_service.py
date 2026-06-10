@@ -156,8 +156,8 @@ def initialize_default_settings(db: Session) -> None:
             "description": "The default number of weeks to display in the schedule sheets"
         },
         "CRON_SYNC_VOLUNTEERS": {
-            "value": "0 */4 * * *",
-            "description": "Cron schedule for syncing volunteers from Google Sheets (default: every 4 hours)"
+            "value": "0 */2 * * *",
+            "description": "Cron schedule for syncing volunteers from Google Sheets (default: every 2 hours)"
         },
         "CRON_SEND_WEEKLY_REMINDERS": {
             "value": "0 12 * * 0",

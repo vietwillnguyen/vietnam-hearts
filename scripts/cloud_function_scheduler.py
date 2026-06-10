@@ -38,8 +38,8 @@ def make_request(endpoint: str, method: str = "POST", data: Dict[str, Any] = Non
         return {"error": str(e)}
 
 def sync_volunteers(request):
-    """Cloud Function to sync volunteers"""
-    result = make_request("sync-volunteers", method="POST")
+    """Cloud Function to LLM-judge pending signups then sync accepted volunteers"""
+    result = make_request("review-and-sync", method="POST")
     return json.dumps(result)
 
 def send_weekly_reminders(request):

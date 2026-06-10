@@ -645,7 +645,11 @@ class GoogleSheetsService:
 
     def get_pending_submissions_with_rows(self, db: Session) -> List[tuple]:
         """
-        Fetch signup submissions that have not yet been reviewed (not ACCEPTED or REJECTED).
+        Fetch signup submissions that have not yet been reviewed.
+
+        A row is pending when it is a real form entry (non-empty timestamp and
+        email) that has no LLM judgement yet (blank llm_judge_score) and has
+        not reached a final state (ACCEPTED/REJECTED).
 
         Returns:
             List of (row_number, submission_dict) tuples.
@@ -677,10 +681,18 @@ class GoogleSheetsService:
             submission = dict(zip(headers, row_data))
             status = submission.get("applicant_status", "").strip().upper()
             email = submission.get("email_address", "").strip()
-            # Include any row that hasn't reached a final state and has a real email.
+            timestamp = submission.get("timestamp", "").strip()
+            judgement = submission.get("llm_judge_score", "").strip()
+            # A pending row is a real form entry (timestamp + email present)
+            # that has no judgement yet and hasn't reached a final state.
             # New Google Form submissions arrive with a blank status, so we check
             # for the absence of final states rather than presence of "PENDING".
-            if status not in ("ACCEPTED", "REJECTED") and email:
+            if (
+                timestamp
+                and email
+                and not judgement
+                and status not in ("ACCEPTED", "REJECTED")
+            ):
                 row_number = index + 2  # header is row 1
                 pending.append((row_number, submission))
 

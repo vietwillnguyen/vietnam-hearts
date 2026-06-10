@@ -95,9 +95,9 @@ list_existing_jobs
 # Create/update jobs
 create_or_update_job \
     "sync-volunteers" \
-    "0 */6 * * *" \
-    "/admin/sync-volunteers" \
-    "Sync volunteers from Google Sheets every 6 hours"
+    "0 */2 * * *" \
+    "/admin/review-and-sync" \
+    "LLM-judge pending signups, then sync accepted volunteers and send confirmation emails (every 2 hours)"
 
 create_or_update_job \
     "send-weekly-reminders" \

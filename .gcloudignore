@@ -1,0 +1,16 @@
+# Upload context for `gcloud builds submit`.
+# NOTE: secrets/ must be uploaded — the Dockerfile bakes
+# secrets/google_credentials.json into the image.
+.git
+.gitignore
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+file::memory:

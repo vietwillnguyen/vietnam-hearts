@@ -90,13 +90,13 @@ GEMINI_REJECT_RESPONSE = json.dumps({
 class TestGetPendingSubmissionsWithRows:
     """Tests for the new method that returns (row_number, submission) tuples."""
 
-    def _make_raw_rows(self, statuses):
+    def _make_raw_rows(self, statuses, timestamp="01/01/2025 10:00:00", judgement=""):
         """Build raw sheet values list from a list of statuses.
         Col layout: A=status, B=timestamp, C=llm_judge_score, D=email, ...
         """
         rows = []
         for status in statuses:
-            row = [status, "01/01/2025 10:00:00", "",  # A, B, C
+            row = [status, timestamp, judgement,       # A, B, C
                    "x@x.com", "",                       # D email, E quiz_score
                    "A", "B",                            # F first, G last
                    "P1", "01/01/30", "01/01/95",        # H,I,J
@@ -173,6 +173,42 @@ class TestGetPendingSubmissionsWithRows:
         assert used_range.startswith("A2"), f"Range should start with 'A2', got: {used_range}"
         # Must not use the old narrow ranges that drop columns S-X and beyond
         assert used_range not in ("A2:R", "A2:X"), f"Range is too narrow: {used_range}"
+
+    def test_skips_rows_without_timestamp(self):
+        """Rows with no timestamp are not real form entries and must be skipped."""
+        from app.services.google_sheets import GoogleSheetsService
+
+        svc = GoogleSheetsService()
+        svc._initialized = True
+        mock_sheet = MagicMock()
+        svc._sheet = mock_sheet
+
+        raw = self._make_raw_rows(["PENDING", ""], timestamp="")
+        mock_sheet.values().get().execute.return_value = {"values": raw}
+
+        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
+             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+            result = svc.get_pending_submissions_with_rows(db=MagicMock())
+
+        assert result == []
+
+    def test_skips_rows_with_existing_judgement(self):
+        """Rows that already have LLM judge output in col C are not re-judged."""
+        from app.services.google_sheets import GoogleSheetsService
+
+        svc = GoogleSheetsService()
+        svc._initialized = True
+        mock_sheet = MagicMock()
+        svc._sheet = mock_sheet
+
+        raw = self._make_raw_rows(["PENDING", ""], judgement="[ACCEPTED] 7/10 | looks good")
+        mock_sheet.values().get().execute.return_value = {"values": raw}
+
+        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
+             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+            result = svc.get_pending_submissions_with_rows(db=MagicMock())
+
+        assert result == []
 
     def test_returns_empty_list_when_no_pending_rows(self):
         """Returns empty list when all rows are already reviewed."""

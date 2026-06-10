@@ -1,5 +1,11 @@
 CHANGELOG:
 
+## Version 3.1.3
+
+- Fix: sync-volunteers cron job now runs the full pipeline (`/admin/review-and-sync`): LLM judge pending submissions → write ACCEPTED/REJECTED to sheet → sync accepted volunteers to DB → send confirmation emails. Previously the cron only synced rows that were already ACCEPTED, so the judge never ran automatically.
+- Fix: Pending-submission detection now requires a non-empty timestamp (proof of a real form entry) and a blank LLM judge score column — rows that already have a judgement are never re-judged, and junk rows without a timestamp are skipped.
+- Update: Default CRON_SYNC_VOLUNTEERS schedule changed from every 4 hours to every 2 hours, matching the live Cloud Scheduler job.
+
 ## Version 3.1.2
 
 - Fix: LLM judge prompt removes safeguarding scenario questions as a scored rubric item (subjective); replaces with a hard-reject SAFEGUARDING GATE that flags explicit red flags (grooming, predatory language) without influencing the 1-10 numeric rating.
