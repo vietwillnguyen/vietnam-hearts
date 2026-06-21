@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import safe_api_call, log_ssl_error
-from app.services.classes_config import get_class_config
 from app.config import (
     GOOGLE_APPLICATION_CREDENTIALS,
 )
@@ -233,6 +232,20 @@ class GoogleSheetsService:
         if not range_name:
             raise ValueError("range_name is required for get_schedule_range")
         return self.get_range_from_sheet(db, sheet_id, range_name)
+
+    def get_schedule_blocks(self, db: Session, range_name: str = "B1:G100"):
+        """
+        Auto-discover class blocks from the current schedule sheet.
+
+        The schedule tab is the single source of truth: this fetches the whole
+        class area (starting at column B so labels are at index 0) and parses it
+        into ClassBlock objects, tolerating missing rows, blank separators, and
+        the Sheets API's trailing-empty trimming. No hardcoded per-class ranges.
+        """
+        from app.services.schedule_parser import discover_schedule_blocks
+
+        rows = self.get_schedule_range(db, range_name)
+        return discover_schedule_blocks(rows)
 
     def get_signup_form_submissions(
         self, db: Session, range_name: Optional[str] = None
@@ -470,29 +483,29 @@ class GoogleSheetsService:
                 },
             ).execute()
 
-            # Update table header dates for each class
+            # Update table header dates for each class. Discover class header rows
+            # by scanning the sheet (column B holds the title, days follow) rather
+            # than relying on hardcoded per-class ranges.
+            from app.services.schedule_parser import row_is_class_header
+
             dates = [
                 (sheet_date + timedelta(days=i)).strftime("%m/%d") for i in range(5)
             ]
-            class_config = get_class_config(db)
-            for class_name, config in class_config.items():
-                # Get the start cell for the header row (e.g., B7)
-                start_cell = config["sheet_range"].split(":")[0]
-                header_range = (
-                    f"{sheet_title}!{start_cell}:G{start_cell[1:]}"  # e.g., B7:G7
-                )
-                # Fetch the current values to preserve the first column
-                values = self.get_range_from_sheet(db, spreadsheet_id, header_range)
-                if values and len(values) > 0:
-                    header_row = values[0]
-                    new_header = [header_row[0]] + dates
-                    self.sheet.values().update(
-                        spreadsheetId=spreadsheet_id,
-                        range=header_range,
-                        valueInputOption="USER_ENTERED",
-                        body={"values": [new_header]},
-                    ).execute()
-                    logger.info(f"Updated {header_range} to {new_header}")
+            grid = self.get_range_from_sheet(db, spreadsheet_id, f"{sheet_title}!A1:G100")
+            for offset, row in enumerate(grid):
+                # title is in column B (index 1) when fetched from column A
+                if not row_is_class_header(row, title_index=1):
+                    continue
+                row_num = offset + 1  # 1-based sheet row
+                # Write the 5 dates into C:G, preserving the title in column B.
+                header_range = f"{sheet_title}!C{row_num}:G{row_num}"
+                self.sheet.values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range=header_range,
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [dates]},
+                ).execute()
+                logger.info(f"Updated {header_range} to {dates}")
             logger.info(f"Successfully updated dates in sheet {sheet_title}")
         except Exception as e:
             logger.error(f"Failed to update sheet dates: {str(e)}", exc_info=True)

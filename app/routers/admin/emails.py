@@ -13,7 +13,6 @@ from app.models import (
 )
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
-from app.services.classes_config import CLASS_CONFIG
 from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import ConfigHelper
 from app.routers.admin.helpers import get_email_summary
@@ -127,8 +126,8 @@ async def send_weekly_reminder_emails(request: Request):
             logger.info(f"Sending weekly reminder emails to {len(volunteers)} volunteers")
 
             class_tables = [
-                email_service.build_class_table(class_name, config, sheets_service, db)
-                for class_name, config in CLASS_CONFIG.items()
+                email_service.build_class_table(block)
+                for block in sheets_service.get_schedule_blocks(db)
             ]
             current_monday, current_friday = sheets_service.get_current_schedule_dates(db)
             subject = email_service.get_reminder_subject(current_monday, current_friday)
