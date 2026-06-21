@@ -1,5 +1,13 @@
 CHANGELOG:
 
+## Version 3.1.4
+
+- Fix: Weekly reminder email no longer shows "No data available for {class} (missing Head Teaching Assistant row)". Root cause was a data-model mismatch — the schedule sheet was restructured (most classes no longer have a Head TA row, blank separator rows added) but the email parser still read rows by fixed position, and the Google Sheets API trims trailing empty rows so configured cell ranges silently dropped rows.
+- Add: Schedule auto-discovery (`app/services/schedule_parser.py`) — class blocks are now parsed from the Schedule tab by row labels (Teacher / Head Assistant / Assistants MAX N), tolerating missing rows, blank separators, ragged/trimmed rows, and per-class structure differences.
+- Change: The "Head Assistant" column is rendered only for classes that actually have a head TA row.
+- Change: A blank teacher/role cell now defaults to "Need Volunteers" (❌ Missing Teacher); genuinely off days must be written explicitly as "No Class {reason}".
+- Remove: The "Schedule Config" tab dependency and `app/services/classes_config.py`. The Schedule tab is now the single source of truth — `time` and `max_assistants` are read from the sheet itself; the unused `room`/`notes` fields and hardcoded cell ranges are gone. The weekly sheet date-updater now discovers class header rows instead of relying on configured ranges.
+
 ## Version 3.1.3
 
 - Fix: sync-volunteers cron job now runs the full pipeline (`/admin/review-and-sync`): LLM judge pending submissions → write ACCEPTED/REJECTED to sheet → sync accepted volunteers to DB → send confirmation emails. Previously the cron only synced rows that were already ACCEPTED, so the judge never ran automatically.

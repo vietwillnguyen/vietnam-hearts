@@ -3,6 +3,7 @@ Email service for sending automated emails to volunteers
 """
 
 import os
+import re
 import smtplib
 import secrets
 from email.mime.text import MIMEText
@@ -16,6 +17,7 @@ from app.models import (
     EmailCommunication as EmailCommunicationModel,
     Volunteer as VolunteerModel,
 )
+from app.services.schedule_parser import ClassBlock, discover_schedule_blocks
 from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import config
 from jinja2 import Template, Environment, FileSystemLoader
@@ -82,64 +84,54 @@ class EmailService:
             start_date=start_date.strftime("%m/%d"), end_date=end_date.strftime("%m/%d")
         )
 
-    def build_class_table(self, class_name: str, config: dict, sheet_service, db: Session) -> dict:
+    def build_class_table(self, block: "ClassBlock") -> dict:
         """
-        Build HTML table for a specific class, with Day/Teacher/Head TA/Assistant(s)/Status columns.
-        A class must have at least one Head Teaching Assistant.
-        Enforces max_assistants limit from config.
+        Build the HTML table for a single class from a parsed ClassBlock.
+
+        Columns: Day / Teacher / [Head Assistant] / Assistant(s) / Status.
+        The Head Assistant column is only rendered for classes that actually have
+        a head TA row (block.has_head_ta). max_assistants of None means no limit.
         """
         try:
-            sheet_range = config.get("sheet_range")
-            class_time = config.get("time", "")
-            max_assistants = config.get("max_assistants", 3)  # Default to 3 if not specified
-            
-            if not sheet_range:
-                logger.error(f"No sheet_range configured for class {class_name}")
-                return {
-                    "class_name": class_name,
-                    "table_html": f"<p>No sheet range configured for {class_name}</p>",
-                    "has_data": False,
-                }
-            class_data = sheet_service.get_schedule_range(db, sheet_range)
-            # Expecting: [header_row, teacher_row, head_ta_row, assistant_row]
-            if not class_data or len(class_data) < 4:  # Must have at least 4 rows
-                logger.error(f"Insufficient data rows for {class_name}. Expected at least 4 rows (header, teacher, head TA, assistant).")
-                return {
-                    "class_name": class_name,
-                    "table_html": f"<p>No data available for {class_name} (missing Head Teaching Assistant row)</p>",
-                    "has_data": False,
-                }
+            days = block.days
+            teachers = block.teacher
+            head_tas = block.head_ta
+            assistants = block.assistants
+            max_assistants = block.max_assistants
 
-            # Transpose data: columns are days, rows are header/teacher/head_ta/assistant
-            days = class_data[0][1:]  # skip first col (label)
-            teachers = class_data[1][1:]
-            head_tas = class_data[2][1:]
-            assistants = class_data[3][1:]
+            cap_label = (
+                f"Max {max_assistants} Assistants"
+                if max_assistants is not None
+                else "No assistant limit"
+            )
+            cell = "padding: 8px; text-align: center;"
 
-            # Table header
-            table_html = f"<h3>{class_name} ({class_time}) - Max {max_assistants} Assistants</h3>"
+            table_html = f"<h3>{block.name} ({block.time}) - {cap_label}</h3>"
             table_html += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
             table_html += "<thead><tr style='background-color: #f0f0f0;'>"
-            table_html += "<th style='padding: 8px; text-align: center;'>Day</th>"
-            table_html += "<th style='padding: 8px; text-align: center;'>Teacher</th>"
-            table_html += "<th style='padding: 8px; text-align: center;'>Head Teaching Assistant</th>"
-            table_html += "<th style='padding: 8px; text-align: center;'>Assistant(s)</th>"
-            table_html += "<th style='padding: 8px; text-align: center;'>Status</th>"
+            table_html += f"<th style='{cell}'>Day</th>"
+            table_html += f"<th style='{cell}'>Teacher</th>"
+            if block.has_head_ta:
+                table_html += f"<th style='{cell}'>Head Assistant</th>"
+            table_html += f"<th style='{cell}'>Assistant(s)</th>"
+            table_html += f"<th style='{cell}'>Status</th>"
             table_html += "</tr></thead><tbody>"
 
             for i, day in enumerate(days):
                 teacher = teachers[i] if i < len(teachers) else ""
                 head_ta = head_tas[i] if i < len(head_tas) else ""
                 assistant = assistants[i] if i < len(assistants) else ""
-                
-                # Count current assistants (split by comma and count non-empty entries)
+
+                # Count current assistants (split by comma/semicolon, ignore blanks)
                 current_assistants = 0
                 if assistant and assistant.strip():
-                    # Split by comma and count non-empty entries
-                    assistant_list = [a.strip() for a in assistant.split(',') if a.strip()]
+                    assistant_list = [
+                        a.strip()
+                        for a in re.split(r"[,;]", assistant)
+                        if a.strip()
+                    ]
                     current_assistants = len(assistant_list)
-                
-                # Status logic with max assistants enforcement, including "no limit" case
+
                 status = ""
                 bg_color = ""
                 teacher_lower = teacher.strip().lower() if teacher else ""
@@ -150,22 +142,20 @@ class EmailService:
                     status = "optional day, volunteers welcome to support existing classes"
                     bg_color = "#f5f5f5"
                 elif "no class" in teacher_lower:
-                    if "holiday" in teacher_lower:
-                        status = "No class: holiday"
-                    else:
-                        status = "No class"
+                    status = "No class: holiday" if "holiday" in teacher_lower else "No class"
                     bg_color = "#f5f5f5"
-                elif "need volunteers" in teacher_lower:
+                elif not teacher_lower or "need volunteers" in teacher_lower:
+                    # A blank teacher cell defaults to "Need Volunteers"; genuinely
+                    # off days are written explicitly as "No Class {reason}".
                     status = "❌ Missing Teacher"
                     bg_color = "#ffcccc"
-                elif not head_ta or "need volunteers" in head_ta_lower:
+                elif block.has_head_ta and (not head_ta or "need volunteers" in head_ta_lower):
                     status = "❌ Missing Head TA"
                     bg_color = "#ffe5b4"
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
                 elif max_assistants is None:
-                    # No limit on assistants
                     status = f"✅ {current_assistants} assistant(s) signed up - No limit, TA's welcome to join"
                     bg_color = "#d4edda"
                 elif current_assistants >= max_assistants:
@@ -176,21 +166,22 @@ class EmailService:
                     bg_color = "#d4edda"
 
                 table_html += f"<tr style='background-color: {bg_color};'>"
-                table_html += f"<td style='padding: 8px; text-align: center;'>{day}</td>"
-                table_html += f"<td style='padding: 8px; text-align: center;'>{teacher}</td>"
-                table_html += f"<td style='padding: 8px; text-align: center;'>{head_ta}</td>"
-                table_html += f"<td style='padding: 8px; text-align: center;'>{assistant}</td>"
-                table_html += f"<td style='padding: 8px; text-align: center;'>{status}</td>"
+                table_html += f"<td style='{cell}'>{day}</td>"
+                table_html += f"<td style='{cell}'>{teacher}</td>"
+                if block.has_head_ta:
+                    table_html += f"<td style='{cell}'>{head_ta}</td>"
+                table_html += f"<td style='{cell}'>{assistant}</td>"
+                table_html += f"<td style='{cell}'>{status}</td>"
                 table_html += "</tr>"
 
             table_html += "</tbody></table>"
-            return {"class_name": class_name, "table_html": table_html, "has_data": True}
+            return {"class_name": block.name, "table_html": table_html, "has_data": True}
 
         except Exception as e:
-            logger.error(f"Failed to build table for {class_name}: {str(e)}")
+            logger.error(f"Failed to build table for {getattr(block, 'name', '?')}: {str(e)}")
             return {
-                "class_name": class_name,
-                "table_html": f"<p>Error loading data for {class_name}</p>",
+                "class_name": getattr(block, "name", "?"),
+                "table_html": f"<p>Error loading data for {getattr(block, 'name', 'this class')}</p>",
                 "has_data": False,
             }
 
@@ -201,7 +192,6 @@ class EmailService:
         Returns:
             tuple: (html_body, subject)
         """
-        from app.services.classes_config import get_class_config
         from app.services.google_sheets import sheets_service
         from datetime import datetime, timedelta
 
@@ -213,13 +203,9 @@ class EmailService:
         # Get the reminder subject
         subject = self.get_reminder_subject(start_date, end_date)
 
-        # Build class tables using dynamic configuration from Google Sheets
-        class_config = get_class_config(db)
-        class_tables = []
-        for class_name, config in class_config.items():
-            class_tables.append(
-                self.build_class_table(class_name, config, sheets_service, db)
-            )
+        # Auto-discover class blocks from the schedule sheet (single source of truth)
+        class_blocks = sheets_service.get_schedule_blocks(db)
+        class_tables = [self.build_class_table(block) for block in class_blocks]
 
         # Get volunteer's first name
         first_name = volunteer.name.split()[0] if volunteer.name else "there"
