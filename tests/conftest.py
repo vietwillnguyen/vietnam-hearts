@@ -1,5 +1,8 @@
 import os
 os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared"
+# Keep app loggers from writing into the shared test DB; tests that verify
+# the persistence wiring opt back in with monkeypatch on fresh logger names.
+os.environ["PERSIST_LOGS_TO_DB"] = "false"
 import secrets
 import pytest
 from fastapi.testclient import TestClient
