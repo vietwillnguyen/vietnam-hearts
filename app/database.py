@@ -42,6 +42,13 @@ def init_db():
     Ensures default settings are present in the database.
     """
     try:
+        # Create any missing tables (idempotent: only creates what doesn't exist).
+        # Existing tables were provisioned manually; new models like SystemLog
+        # rely on this to appear in environments on first deploy.
+        from app.models import Base
+
+        Base.metadata.create_all(bind=engine)
+
         db = SessionLocal()
         initialize_default_settings(db)
         db.close()
