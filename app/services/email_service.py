@@ -81,7 +81,7 @@ class EmailService:
     def get_reminder_subject(self, start_date: datetime, end_date: datetime) -> str:
         """Generate the reminder email subject with date range"""
         return self.reminder_email_subject_template.format(
-            start_date=start_date.strftime("%m/%d"), end_date=end_date.strftime("%m/%d")
+            start_date=start_date.strftime("%d/%m"), end_date=end_date.strftime("%d/%m")
         )
 
     def build_class_table(self, block: "ClassBlock") -> dict:
