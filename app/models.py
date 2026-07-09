@@ -5,7 +5,7 @@ This file defines the structure of our database tables.
 SQLAlchemy ORM converts these Python classes into database tables.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON, Text
 from sqlalchemy.orm import DeclarativeBase, relationship
 from datetime import datetime, timezone
 from pydantic import ConfigDict
@@ -125,6 +125,26 @@ class EmailCommunication(Base):
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
     )
+
+    class Config:
+        from_attributes = True
+
+
+class SystemLog(Base):
+    """
+    Persisted application log record.
+
+    Backs the admin dashboard Logs page so log history survives Cloud Run
+    container restarts (the container filesystem is ephemeral).
+    """
+
+    __tablename__ = "system_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, index=True, nullable=False)
+    level = Column(String, index=True, nullable=False)
+    logger_name = Column(String, nullable=True)
+    message = Column(Text, nullable=False)
 
     class Config:
         from_attributes = True
