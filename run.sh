@@ -115,15 +115,34 @@ check_configuration() {
         mkdir -p secrets
     fi
     
-    # Check if Google credentials file exists
-    if [ ! -f "secrets/google_credentials.json" ]; then
-        print_warning "Google credentials file not found at secrets/google_credentials.json"
-        print_status "You'll need to:"
-        echo "  1. Create a service account in Google Cloud Console"
-        echo "  2. Download the credentials JSON file"
-        echo "  3. Place it at secrets/google_credentials.json"
-    else
+    # Check Google credentials: prefer Application Default Credentials (ADC), then env/file
+    ADC_CHECK=$(python3 - <<'PY'
+try:
+    from google.auth import default
+    creds, project = default()
+    print('ADC_OK')
+except Exception:
+    import os
+    # Check env var first if set
+    gce = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if gce and os.path.isfile(gce):
+        print('FILE_OK')
+    elif os.path.isfile('secrets/google_credentials.json'):
+        print('FILE_OK')
+    else:
+        print('NO_CREDS')
+PY
+)
+
+    if [ "$ADC_CHECK" = "ADC_OK" ]; then
+        print_success "Application Default Credentials available"
+    elif [ "$ADC_CHECK" = "FILE_OK" ]; then
         print_success "Google credentials file found"
+    else
+        print_warning "No Google credentials found (ADC not available and no credentials file)"
+        print_status "You'll need to:"
+        echo "  1. Attach a service account or enable ADC in your cloud runtime, or"
+        echo "  2. Create a service account in Google Cloud Console and place its JSON in secrets/google_credentials.json or set GOOGLE_APPLICATION_CREDENTIALS"
     fi
     
     # Check if templates directory exists
