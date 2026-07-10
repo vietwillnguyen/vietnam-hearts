@@ -1,0 +1,116 @@
+name: Deploy to Cloud Run
+
+# Post-merge pipeline: every push to main runs the test suite and, when green,
+# builds the Docker image and deploys it to Cloud Run.
+# Auth is keyless via Workload Identity Federation (no stored SA keys):
+#   pool "github" / provider "github-oidc", restricted to this repository,
+#   impersonating github-actions@refined-vector-457419-n6.iam.gserviceaccount.com
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v4
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction
+
+    - name: Run tests
+      run: poetry run pytest tests/ -v --tb=short
+      env:
+        DATABASE_URL: "sqlite:///file::memory:?cache=shared"
+        TESTING: "true"
+        DRY_RUN: "true"
+        ENVIRONMENT: "test"
+        PYTHONPATH: ${{ github.workspace }}
+        SUPABASE_URL: "https://fake-url.supabase.co"
+        SUPABASE_ANON_KEY: "fake-anon-key"
+        SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key"
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Load deploy config
+      id: config
+      run: |
+        source scripts/deploy.config
+        echo "project_id=${GCP_PROJECT_ID}" >> "$GITHUB_OUTPUT"
+        echo "image=${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+        echo "version=${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "service=${CLOUD_RUN_SERVICE}" >> "$GITHUB_OUTPUT"
+        echo "region=${CLOUD_RUN_REGION}" >> "$GITHUB_OUTPUT"
+        echo "base_url=${BASE_URL}" >> "$GITHUB_OUTPUT"
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: projects/367619842919/locations/global/workloadIdentityPools/github/providers/github-oidc
+        service_account: github-actions@refined-vector-457419-n6.iam.gserviceaccount.com
+
+    - name: Set up gcloud
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for GCR
+      run: gcloud auth configure-docker gcr.io --quiet
+
+    - name: Build image
+      run: |
+        docker build \
+          -t "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}" \
+          -t "${{ steps.config.outputs.image }}:sha-${GITHUB_SHA::7}" \
+          .
+
+    - name: Push image
+      run: |
+        docker push "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}"
+        docker push "${{ steps.config.outputs.image }}:sha-${GITHUB_SHA::7}"
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy "${{ steps.config.outputs.service }}" \
+          --image "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}" \
+          --region "${{ steps.config.outputs.region }}" \
+          --platform managed \
+          --project "${{ steps.config.outputs.project_id }}" \
+          --quiet
+
+    - name: Smoke check
+      run: |
+        for i in $(seq 1 12); do
+          code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.config.outputs.base_url }}/health") && \
+            [ "$code" = "200" ] && echo "Service healthy" && exit 0
+          sleep 5
+        done
+        echo "Health check failed after deploy" && exit 1

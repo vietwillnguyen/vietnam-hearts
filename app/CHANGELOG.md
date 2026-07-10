@@ -1,5 +1,19 @@
 CHANGELOG:
 
+## Version 3.2.0
+
+- Fix: Schedule rotation no longer aborts when a single sheet cannot be modified (e.g. protected 2025 sheets with no editors).
+  Failures are collected per sheet in `sheets_failed` and the rotation continues, so new week sheets are always created.
+- Fix: `/admin/rotate-schedule` returns HTTP 500 on failure instead of 200 with an error body, so Cloud Scheduler registers failed runs and can alert.
+- Change: Schedule sheets are now named `Schedule DD/MM/YYYY` (was `Schedule MM/DD`).
+  Existing sheets are matched by parsed date and renamed to the new format during rotation; in-sheet day headers and the weekly reminder subject use DD/MM.
+- Fix: Non-date tabs that share the `Schedule ` prefix (`Schedule Config`, `Schedule Template`) are excluded from rotation by parsing titles as dates.
+- Add: Persistent system logs — application logs are written to a new `system_logs` table (30-day retention) by a buffered fail-safe handler, surviving Cloud Run container restarts.
+- Add: System Logs tab in the admin dashboard (`GET /admin/logs`) with level filter, search, pagination, and auto-refresh.
+- Add: Structured JSON logging on Cloud Run so Cloud Logging parses severity levels (filterable in Logs Explorer).
+- Add: Post-merge CI/CD — pushes to main run tests then build and deploy to Cloud Run via GitHub Actions with keyless Workload Identity Federation auth.
+- Fix: `init_db()` creates missing database tables on startup (idempotent), so new models appear without manual provisioning.
+
 ## Version 3.1.4
 
 - Fix: Weekly reminder email no longer shows "No data available for {class} (missing Head Teaching Assistant row)". Root cause was a data-model mismatch — the schedule sheet was restructured (most classes no longer have a Head TA row, blank separator rows added) but the email parser still read rows by fixed position, and the Google Sheets API trims trailing empty rows so configured cell ranges silently dropped rows.
