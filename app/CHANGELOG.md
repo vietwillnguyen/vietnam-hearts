@@ -1,14 +1,5 @@
 CHANGELOG:
 
-## Version 3.2.1
-
-- Fix: CI/CD Docker build no longer fails with `"/build/secrets": not found`.
-  The image no longer bundles the `secrets/` directory - Cloud Run authenticates via Application Default Credentials, and local Docker runs mount credentials at runtime.
-  `secrets/` is also excluded via `.dockerignore` so locally built images cannot leak credentials.
-- Add: Rotation now protects each displayed schedule sheet (whole-sheet protection with rows 2+ left editable).
-  Volunteers can still sign up in the class grid, but anonymous link editors can no longer delete, rename, or hide the tab.
-  The automation service account is an editor of the protection so rotation keeps working; protection failures are reported in `sheets_failed` without aborting.
-
 ## Version 3.2.0
 
 - Fix: Schedule rotation no longer aborts when a single sheet cannot be modified (e.g. protected 2025 sheets with no editors).

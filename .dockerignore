@@ -27,11 +27,10 @@ coverage.xml
 # Poetry
 # poetry.lock
 
-# Environment files and credentials - never bake into the image
+# Environment files
 .env
 .env.*
 !.env.example
-secrets/
 
 # IDE
 .vscode
@@ -79,6 +78,4 @@ docker-*.sh
 
 # Temporary files
 *.tmp
-*.temp
-.venv/
-.lavish/ 
+*.temp 

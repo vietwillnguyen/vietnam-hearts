@@ -43,11 +43,10 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # Copy application files from builder (already copied there)
-# NOTE: no secrets/ in the image - Cloud Run authenticates via Application
-# Default Credentials; local Docker runs mount credentials at runtime instead.
 COPY --from=builder /build/app/ ./app/
 COPY --from=builder /build/static/ ./static/
 COPY --from=builder /build/templates/ ./templates/
+COPY --from=builder /build/secrets/ ./secrets/
 
 # Create logs directory and set permissions BEFORE switching user
 RUN mkdir -p /app/logs && chown -R app:app /app/logs

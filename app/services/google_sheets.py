@@ -94,7 +94,6 @@ class GoogleSheetsService:
         """Initialize Google Sheets service with lazy initialization"""
         self._service = None
         self._sheet = None
-        self._sa_email = None
         self._initialized = False
         logger.info("Google Sheets service created")
 
@@ -155,7 +154,6 @@ class GoogleSheetsService:
             # Build service with modern parameters to avoid file_cache warnings
             self._service = build("sheets", "v4", credentials=creds, cache_discovery=False)
             self._sheet = self._service.spreadsheets()
-            self._sa_email = getattr(creds, "service_account_email", None)
             self._initialized = True
             logger.info(f"Google Sheets service initialized successfully with service account email: {creds.service_account_email}")
             
@@ -631,42 +629,6 @@ class GoogleSheetsService:
             logger.error(f"Failed to set sheet visibility: {str(e)}", exc_info=True)
             raise
 
-    def ensure_sheet_protection(self, sheet_id: int, db: Session):
-        """
-        Protect a schedule sheet so it cannot be deleted/renamed/hidden by
-        link-based (anonymous) editors, while keeping the signup area editable.
-
-        Whole-sheet protection with rows 2+ unprotected: volunteers can still
-        write their names in the class grid, but deleting the tab would delete
-        the protected header row, which Google blocks for anyone who is not an
-        editor of the protection. The service account is added as an editor so
-        rotation can keep hiding/renaming managed sheets.
-        """
-        try:
-            protected_range = {
-                "range": {"sheetId": sheet_id},
-                "description": "Managed by Vietnam Hearts automation - please do not delete this tab",
-                "warningOnly": False,
-                "unprotectedRanges": [
-                    {"sheetId": sheet_id, "startRowIndex": 1}
-                ],
-            }
-            sa_email = getattr(self, "_sa_email", None)
-            if sa_email:
-                protected_range["editors"] = {"users": [sa_email]}
-            request = {
-                "requests": [
-                    {"addProtectedRange": {"protectedRange": protected_range}}
-                ]
-            }
-            self.sheet.batchUpdate(
-                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
-            ).execute()
-            logger.info(f"Added deletion protection to sheet {sheet_id}")
-        except Exception as e:
-            logger.error(f"Failed to protect sheet {sheet_id}: {str(e)}", exc_info=True)
-            raise
-
     def rename_sheet(self, sheet_id: int, new_title: str, db: Session):
         """Rename a sheet (used to migrate legacy MM/DD titles to DD/MM/YYYY)"""
         try:
@@ -926,15 +888,11 @@ class GoogleSheetsService:
                     None,
                 )
 
-                target_sheet_id = None
-                needs_protection = False
                 try:
                     if existing_sheet:
                         was_hidden = existing_sheet["properties"].get("hidden", False)
                         old_index = existing_sheet["properties"].get("index", 0)
                         old_title = existing_sheet["properties"]["title"]
-                        target_sheet_id = existing_sheet["properties"]["sheetId"]
-                        needs_protection = not existing_sheet.get("protectedRanges")
 
                         if old_title != sheet_name:
                             try:
@@ -965,20 +923,9 @@ class GoogleSheetsService:
                         self.set_sheet_visibility(int(new_sheet_id), False, db)
                         self.move_sheet(int(new_sheet_id), i + 1, db)
                         sheets_created.append(sheet_name)
-                        target_sheet_id = int(new_sheet_id)
-                        needs_protection = True
                 except Exception as e:
                     sheets_failed.append({"title": sheet_name, "action": "show", "error": str(e)})
                     logger.error(f"Failed to prepare sheet '{sheet_name}', continuing rotation: {e}", exc_info=True)
-
-                # Protect displayed sheets against deletion by anonymous editors.
-                # Best-effort: a protection failure must not break the rotation.
-                if target_sheet_id is not None and needs_protection:
-                    try:
-                        self.ensure_sheet_protection(target_sheet_id, db)
-                    except Exception as e:
-                        sheets_failed.append({"title": sheet_name, "action": "protect", "error": str(e)})
-                        logger.warning(f"Could not protect sheet '{sheet_name}', continuing: {e}")
 
             # Get final state after all changes
             final_sheets = self.get_schedule_sheets(db)
