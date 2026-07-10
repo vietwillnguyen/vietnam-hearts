@@ -331,3 +331,34 @@ class TestServiceIntegration:
 #     pytest.mark.integration,
 #     pytest.mark.slow  # Mark as slow since these are integration tests
 # ] 
+
+class TestRotateScheduleEndpoint:
+    """Rotation failures must surface as HTTP errors so Cloud Scheduler alerts."""
+
+    @pytest.fixture
+    def admin_client(self, client):
+        from app.dependencies.auth import get_current_admin_user
+        app.dependency_overrides[get_current_admin_user] = lambda: {
+            "id": "test-admin", "email": "admin@vietnamhearts.org"
+        }
+        yield client
+        app.dependency_overrides.pop(get_current_admin_user, None)
+
+    def test_rotation_failure_returns_500(self, admin_client):
+        with patch.object(sheets_service, "rotate_schedule_sheets", side_effect=Exception("boom")):
+            response = admin_client.post("/admin/rotate-schedule")
+        assert response.status_code == 500
+        assert "boom" in response.json()["detail"]
+
+    def test_partial_failure_returns_200_with_skip_message(self, admin_client):
+        result = {"sheets_failed": [{"title": "Schedule 07/07", "action": "hide", "error": "protected"}]}
+        with patch.object(sheets_service, "rotate_schedule_sheets", return_value=result):
+            response = admin_client.post("/admin/rotate-schedule")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "success"
+        assert "skipped" in body["message"]
+
+    def test_invalid_display_weeks_returns_400(self, admin_client):
+        response = admin_client.post("/admin/rotate-schedule?display_weeks=13")
+        assert response.status_code == 400

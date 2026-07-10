@@ -1,8 +1,12 @@
+import json
 import os
 import logging
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
+
+from app.utils.db_log_handler import DatabaseLogHandler
 
 # Environment configuration with validation
 def get_env_bool(key: str, default: str = "false") -> bool:
@@ -52,6 +56,46 @@ BACKUP_COUNT = get_env_int("LOG_BACKUP_COUNT", 5, 1, 20)
 # Shared formatter
 formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
+# Cloud Run sets K_SERVICE; there we emit one JSON object per line so Cloud
+# Logging parses severity and the Logs Explorer can filter by level.
+IS_CLOUD_RUN = bool(os.getenv("K_SERVICE"))
+
+
+class CloudRunJSONFormatter(logging.Formatter):
+    """Structured log formatter for Google Cloud Logging."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = record.getMessage()
+        if record.exc_info:
+            message = f"{message}\n{self.formatException(record.exc_info)}"
+        return json.dumps(
+            {
+                "severity": record.levelname,
+                "message": message,
+                "logger": record.name,
+                "time": datetime.fromtimestamp(
+                    record.created, tz=timezone.utc
+                ).isoformat(),
+            },
+            ensure_ascii=False,
+        )
+
+
+# Single shared DB handler so all component loggers batch into one buffer.
+_db_log_handler: Optional[DatabaseLogHandler] = None
+
+
+def _persist_logs_enabled() -> bool:
+    """Read at setup time (not import time) so tests can toggle via env."""
+    return os.getenv("PERSIST_LOGS_TO_DB", "true").lower() in ("true", "1")
+
+
+def _get_db_log_handler() -> DatabaseLogHandler:
+    global _db_log_handler
+    if _db_log_handler is None:
+        _db_log_handler = DatabaseLogHandler()
+    return _db_log_handler
+
 
 def setup_logger(name: str, log_file: Optional[str] = None, level: int = logging.INFO) -> logging.Logger:
     """
@@ -70,8 +114,10 @@ def setup_logger(name: str, log_file: Optional[str] = None, level: int = logging
     """
     logger = logging.getLogger(name)
     
-    # Check if logger already has handlers to avoid unnecessary work
-    if logger.hasHandlers():
+    # Check if logger already has its own handlers to avoid duplicate setup.
+    # (hasHandlers() would also match root handlers via propagation and skip
+    # configuration entirely when e.g. logging.basicConfig was called.)
+    if logger.handlers:
         return logger
 
     logger.setLevel(level)
@@ -92,8 +138,12 @@ def setup_logger(name: str, log_file: Optional[str] = None, level: int = logging
 
     # Always add console handler for stdout output
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
+    console_handler.setFormatter(CloudRunJSONFormatter() if IS_CLOUD_RUN else formatter)
     logger.addHandler(console_handler)
+
+    # Persist logs to the database so history survives container restarts
+    if _persist_logs_enabled():
+        logger.addHandler(_get_db_log_handler())
 
     return logger
 

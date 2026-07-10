@@ -1,8 +1,9 @@
 name: Run Tests
 
+# PRs are tested here; pushes to main are tested + deployed by deploy.yml
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ develop ]
   pull_request:
     branches: [ main, master, develop ]
 
@@ -52,6 +53,7 @@ jobs:
         SUPABASE_URL: "https://fake-url.supabase.co"
         SUPABASE_ANON_KEY: "fake-anon-key"
         SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key"
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     
     - name: Upload test results
       if: always()

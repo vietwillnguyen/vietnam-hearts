@@ -15,6 +15,10 @@ from app.config import (
     GOOGLE_APPLICATION_CREDENTIALS,
 )
 from app.utils.config_helper import ConfigHelper
+from app.utils.schedule_dates import (
+    format_schedule_sheet_title,
+    parse_schedule_sheet_title,
+)
 from google.auth import default
 from google.auth.exceptions import DefaultCredentialsError
 from sqlalchemy.orm import Session
@@ -356,7 +360,7 @@ class GoogleSheetsService:
             if not template_sheet_id:
                 raise ValueError(f"Template sheet {template_sheet_name} not found")
 
-            new_sheet_title = f"Schedule {new_sheet_date.strftime('%m/%d')}"
+            new_sheet_title = format_schedule_sheet_title(new_sheet_date)
 
             # Check if sheet already exists
             for sheet in sheet_metadata["sheets"]:
@@ -451,7 +455,7 @@ class GoogleSheetsService:
         Update the blue header and table header dates in the new sheet.
         """
         try:
-            sheet_title = f"Schedule {sheet_date.strftime('%m/%d')}"
+            sheet_title = format_schedule_sheet_title(sheet_date)
             spreadsheet_id = ConfigHelper.get_schedule_sheet_id(db)
             sheet_metadata = self.sheet.get(spreadsheetId=spreadsheet_id).execute()
             individual_sheet_id = next(
@@ -479,7 +483,7 @@ class GoogleSheetsService:
                 range=f"{sheet_title}!B1",
                 valueInputOption="USER_ENTERED",
                 body={
-                    "values": [[f"Schedule for Week {sheet_date.strftime('%m/%d')}"]]
+                    "values": [[f"Schedule for Week {sheet_date.strftime('%d/%m/%Y')}"]]
                 },
             ).execute()
 
@@ -489,7 +493,7 @@ class GoogleSheetsService:
             from app.services.schedule_parser import row_is_class_header
 
             dates = [
-                (sheet_date + timedelta(days=i)).strftime("%m/%d") for i in range(5)
+                (sheet_date + timedelta(days=i)).strftime("%d/%m") for i in range(5)
             ]
             grid = self.get_range_from_sheet(db, spreadsheet_id, f"{sheet_title}!A1:G100")
             for offset, row in enumerate(grid):
@@ -529,10 +533,13 @@ class GoogleSheetsService:
         ]
 
     def get_sheet_by_date(self, date: datetime, db: Session) -> Optional[Dict]:
-        """Get sheet metadata for a specific date"""
-        sheet_name = f"Schedule {date.strftime('%m/%d')}"
+        """Get sheet metadata for a specific date (matches both title formats)"""
         sheets = self.get_schedule_sheets(db)
-        return next((s for s in sheets if s["properties"]["title"] == sheet_name), None)
+        for sheet in sheets:
+            parsed = parse_schedule_sheet_title(sheet["properties"]["title"])
+            if parsed and parsed.date() == date.date():
+                return sheet
+        return None
 
     def get_current_schedule_dates(self, db: Session) -> tuple[datetime, datetime]:
         """
@@ -563,30 +570,13 @@ class GoogleSheetsService:
                 current_friday = current_monday + timedelta(days=4)
                 return current_monday, current_friday
 
-            # Extract date from sheet title (format: "Schedule MM/DD")
+            # Extract date from sheet title (DD/MM/YYYY, or legacy MM/DD)
             sheet_title = visible_sheet["properties"]["title"]
-            date_str = sheet_title.replace("Schedule ", "")
+            sheet_date = parse_schedule_sheet_title(sheet_title)
 
-            try:
-                # Parse the date (MM/DD format)
-                sheet_date = datetime.strptime(date_str, "%m/%d")
-                # Set the year to current year
-                current_year = datetime.now().year
-                sheet_date = sheet_date.replace(year=current_year)
-
-                # Calculate Monday and Friday for this week
-                days_since_monday = sheet_date.weekday()
-                monday_date = sheet_date - timedelta(days=days_since_monday)
-                friday_date = monday_date + timedelta(days=4)
-
-                logger.info(
-                    f"Extracted dates from sheet '{sheet_title}': Monday {monday_date.strftime('%Y-%m-%d')}, Friday {friday_date.strftime('%Y-%m-%d')}"
-                )
-                return monday_date, friday_date
-
-            except ValueError as e:
+            if sheet_date is None:
                 logger.warning(
-                    f"Could not parse date from sheet title '{sheet_title}': {e}"
+                    f"Could not parse date from sheet title '{sheet_title}'"
                 )
                 # Fallback to calculated dates
                 now = datetime.now()
@@ -594,6 +584,16 @@ class GoogleSheetsService:
                 current_monday = now - timedelta(days=days_since_monday)
                 current_friday = current_monday + timedelta(days=4)
                 return current_monday, current_friday
+
+            # Calculate Monday and Friday for this week
+            days_since_monday = sheet_date.weekday()
+            monday_date = sheet_date - timedelta(days=days_since_monday)
+            friday_date = monday_date + timedelta(days=4)
+
+            logger.info(
+                f"Extracted dates from sheet '{sheet_title}': Monday {monday_date.strftime('%Y-%m-%d')}, Friday {friday_date.strftime('%Y-%m-%d')}"
+            )
+            return monday_date, friday_date
 
         except Exception as e:
             logger.error(
@@ -627,6 +627,27 @@ class GoogleSheetsService:
             )
         except Exception as e:
             logger.error(f"Failed to set sheet visibility: {str(e)}", exc_info=True)
+            raise
+
+    def rename_sheet(self, sheet_id: int, new_title: str, db: Session):
+        """Rename a sheet (used to migrate legacy MM/DD titles to DD/MM/YYYY)"""
+        try:
+            request = {
+                "requests": [
+                    {
+                        "updateSheetProperties": {
+                            "properties": {"sheetId": sheet_id, "title": new_title},
+                            "fields": "title",
+                        }
+                    }
+                ]
+            }
+            self.sheet.batchUpdate(
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
+            ).execute()
+            logger.info(f"Renamed sheet {sheet_id} to '{new_title}'")
+        except Exception as e:
+            logger.error(f"Failed to rename sheet: {str(e)}", exc_info=True)
             raise
 
     def move_sheet(self, sheet_id: int, new_index: int, db: Session):
@@ -804,16 +825,16 @@ class GoogleSheetsService:
                 for i in range(display_weeks_count)
             ]
 
-            # Create a set of sheet names that should be visible
-            visible_sheet_names = {
-                f"Schedule {date.strftime('%m/%d')}" for date in display_dates
-            }
+            # Dates that should be visible after rotation
+            display_date_set = {date.date() for date in display_dates}
 
             # Track what we're doing
             sheets_created = []
             sheets_made_visible = []
             sheets_made_hidden = []
             sheets_reordered = []
+            sheets_renamed = []
+            sheets_failed = []
 
             # Hide the 'Schedule Template' sheet if it exists
             template_sheet = next(
@@ -828,59 +849,83 @@ class GoogleSheetsService:
                 except Exception as e:
                     logger.error(f"Failed to hide 'Schedule Template' sheet: {str(e)}", exc_info=True)
 
-            # PASS 1: Hide all schedule sheets outside the display range FIRST.
+            # PASS 1: Hide all dated schedule sheets outside the display range FIRST.
             # Running hide before show ensures visible count never exceeds display_weeks_count,
             # even if the operation is interrupted partway through.
+            # Only sheets whose title parses as a date are considered, which
+            # naturally excludes "Schedule Template" and "Schedule Config".
+            # A failure on one sheet (e.g. a protected sheet the service
+            # account cannot edit) must never abort the whole rotation.
             for sheet in existing_sheets:
                 title = sheet["properties"]["title"]
-                if not (title.startswith("Schedule ") and title != "Schedule Template"):
+                sheet_date = parse_schedule_sheet_title(title)
+                if sheet_date is None:
                     continue
 
-                if title not in visible_sheet_names:
-                    current_visibility = not sheet["properties"].get("hidden", False)
-                    if current_visibility:
+                if sheet_date.date() not in display_date_set:
+                    currently_visible = not sheet["properties"].get("hidden", False)
+                    if currently_visible:
                         try:
                             self.set_sheet_visibility(sheet["properties"]["sheetId"], True, db)
                             sheets_made_hidden.append(title)
                             logger.info(f"Set sheet {title} visibility to hidden")
-                        except ValueError:
-                            logger.warning(f"Skipping sheet with invalid date format: {title}")
+                        except Exception as e:
+                            sheets_failed.append({"title": title, "action": "hide", "error": str(e)})
+                            logger.warning(f"Could not hide sheet '{title}', continuing rotation: {e}")
 
             # PASS 2: Make each display-range sheet visible and move it into position.
+            # Existing sheets are matched by parsed date so legacy MM/DD titles
+            # are reused (and migrated to DD/MM/YYYY) instead of duplicated.
             for i, date in enumerate(display_dates):
-                sheet_name = f"Schedule {date.strftime('%m/%d')}"
+                sheet_name = format_schedule_sheet_title(date)
                 existing_sheet = next(
                     (
                         s
                         for s in existing_sheets
-                        if s["properties"]["title"] == sheet_name
+                        if (parsed := parse_schedule_sheet_title(s["properties"]["title"]))
+                        and parsed.date() == date.date()
                     ),
                     None,
                 )
 
-                if existing_sheet:
-                    was_hidden = existing_sheet["properties"].get("hidden", False)
-                    old_index = existing_sheet["properties"].get("index", 0)
+                try:
+                    if existing_sheet:
+                        was_hidden = existing_sheet["properties"].get("hidden", False)
+                        old_index = existing_sheet["properties"].get("index", 0)
+                        old_title = existing_sheet["properties"]["title"]
 
-                    self.set_sheet_visibility(
-                        existing_sheet["properties"]["sheetId"], False, db
-                    )
-                    self.move_sheet(
-                        existing_sheet["properties"]["sheetId"], i + 1, db
-                    )  # +1 to account for template sheet at index 0
+                        if old_title != sheet_name:
+                            try:
+                                self.rename_sheet(
+                                    existing_sheet["properties"]["sheetId"], sheet_name, db
+                                )
+                                sheets_renamed.append(sheet_name)
+                            except Exception as e:
+                                sheets_failed.append({"title": old_title, "action": "rename", "error": str(e)})
+                                logger.warning(f"Could not rename sheet '{old_title}', continuing: {e}")
 
-                    if was_hidden:
-                        sheets_made_visible.append(sheet_name)
-                    if old_index != i + 1:
-                        sheets_reordered.append(sheet_name)
-                else:
-                    new_sheet_id = self.create_sheet_from_template(
-                        "Schedule Template", date, db
-                    )
-                    self.update_sheet_dates(date, db)
-                    self.set_sheet_visibility(int(new_sheet_id), False, db)
-                    self.move_sheet(int(new_sheet_id), i + 1, db)
-                    sheets_created.append(sheet_name)
+                        self.set_sheet_visibility(
+                            existing_sheet["properties"]["sheetId"], False, db
+                        )
+                        self.move_sheet(
+                            existing_sheet["properties"]["sheetId"], i + 1, db
+                        )  # +1 to account for template sheet at index 0
+
+                        if was_hidden:
+                            sheets_made_visible.append(sheet_name)
+                        if old_index != i + 1:
+                            sheets_reordered.append(sheet_name)
+                    else:
+                        new_sheet_id = self.create_sheet_from_template(
+                            "Schedule Template", date, db
+                        )
+                        self.update_sheet_dates(date, db)
+                        self.set_sheet_visibility(int(new_sheet_id), False, db)
+                        self.move_sheet(int(new_sheet_id), i + 1, db)
+                        sheets_created.append(sheet_name)
+                except Exception as e:
+                    sheets_failed.append({"title": sheet_name, "action": "show", "error": str(e)})
+                    logger.error(f"Failed to prepare sheet '{sheet_name}', continuing rotation: {e}", exc_info=True)
 
             # Get final state after all changes
             final_sheets = self.get_schedule_sheets(db)
@@ -931,14 +976,22 @@ class GoogleSheetsService:
                         title for title, state in after_state.items() if state["hidden"]
                     ],
                 },
-                "display_dates": [date.strftime("%m/%d") for date in display_dates],
+                "display_dates": [date.strftime("%d/%m/%Y") for date in display_dates],
                 "display_weeks_count": display_weeks_count,
                 "display_weeks_override_used": display_weeks_override is not None,
+                "sheets_renamed": sheets_renamed,
+                "sheets_failed": sheets_failed,
             }
 
-            logger.info(
-                f"Successfully rotated schedule sheets for {display_weeks_count} weeks"
-            )
+            if sheets_failed:
+                logger.warning(
+                    f"Rotated schedule sheets for {display_weeks_count} weeks with "
+                    f"{len(sheets_failed)} failure(s): {sheets_failed}"
+                )
+            else:
+                logger.info(
+                    f"Successfully rotated schedule sheets for {display_weeks_count} weeks"
+                )
             return result
 
         except Exception as e:

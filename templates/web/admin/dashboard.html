@@ -159,6 +159,11 @@
                     Bot Management
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link" id="logs-tab" data-bs-toggle="tab" href="#logs" role="tab">
+                    System Logs
+                </a>
+            </li>
         </ul>
         
         <div class="tab-content" id="myTabContent">
@@ -878,6 +883,71 @@
                      </div>
                 </div>
             </div>
+
+            <!-- System Logs Tab -->
+            <div class="tab-pane fade" id="logs" role="tabpanel">
+                <div class="table-container">
+                    <h2>System Logs</h2>
+                    <p class="text-muted">Persistent application logs stored in the database. History survives server restarts.</p>
+
+                    <div class="row mb-3 align-items-end">
+                        <div class="col-md-2">
+                            <label for="logsLevelFilter" class="form-label">Level</label>
+                            <select class="form-select" id="logsLevelFilter" onchange="loadSystemLogs(1)">
+                                <option value="">All levels</option>
+                                <option value="DEBUG">Debug</option>
+                                <option value="INFO">Info</option>
+                                <option value="WARNING">Warning</option>
+                                <option value="ERROR">Error</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="logsSearchInput" class="form-label">Search</label>
+                            <input type="text" class="form-control" id="logsSearchInput"
+                                   placeholder="Search message or logger name"
+                                   onkeydown="if (event.key === 'Enter') loadSystemLogs(1)">
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-primary" onclick="loadSystemLogs(1)">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <div class="form-check form-check-inline ms-3">
+                                <input class="form-check-input" type="checkbox" id="logsAutoRefresh"
+                                       onchange="toggleLogsAutoRefresh()">
+                                <label class="form-check-label" for="logsAutoRefresh">Auto-refresh (10s)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="logsStatus" class="text-muted mb-2"></div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th style="white-space: nowrap;">Time (UTC)</th>
+                                    <th>Level</th>
+                                    <th>Logger</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logsTableBody">
+                                <tr><td colspan="4" class="text-muted">Open this tab to load logs.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="logsPrevBtn" onclick="loadSystemLogs(logsCurrentPage - 1)">
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </button>
+                        <span class="mx-3" id="logsPageInfo"></span>
+                        <button class="btn btn-outline-secondary btn-sm" id="logsNextBtn" onclick="loadSystemLogs(logsCurrentPage + 1)">
+                            Next <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -918,6 +988,10 @@
             
             // Load bot data when bot tab is shown
             document.getElementById('bot-tab').addEventListener('shown.bs.tab', loadBotData);
+
+            // Load system logs when logs tab is shown; stop auto-refresh when leaving it
+            document.getElementById('logs-tab').addEventListener('shown.bs.tab', () => loadSystemLogs(1));
+            document.getElementById('logs-tab').addEventListener('hidden.bs.tab', stopLogsAutoRefresh);
             
             // Add event listener for folder ID input to save changes
             document.getElementById('syncFolderId').addEventListener('input', saveFolderId);
@@ -2785,6 +2859,84 @@
         function clearDebugResults() {
             document.getElementById('debugResults').style.display = 'none';
             document.getElementById('debugContent').innerHTML = '';
+        }
+
+        // ===== System Logs tab =====
+        let logsCurrentPage = 1;
+        let logsAutoRefreshTimer = null;
+        const LOGS_PAGE_SIZE = 50;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text ?? '';
+            return div.innerHTML;
+        }
+
+        function logLevelBadge(level) {
+            const classes = {
+                'ERROR': 'bg-danger',
+                'WARNING': 'bg-warning text-dark',
+                'INFO': 'bg-info text-dark',
+                'DEBUG': 'bg-secondary',
+            };
+            return `<span class="badge ${classes[level] || 'bg-light text-dark'}">${escapeHtml(level)}</span>`;
+        }
+
+        async function loadSystemLogs(page = 1) {
+            const tbody = document.getElementById('logsTableBody');
+            const status = document.getElementById('logsStatus');
+            try {
+                const level = document.getElementById('logsLevelFilter').value;
+                const q = document.getElementById('logsSearchInput').value.trim();
+                const params = new URLSearchParams({ page: String(Math.max(1, page)), page_size: String(LOGS_PAGE_SIZE) });
+                if (level) params.set('level', level);
+                if (q) params.set('q', q);
+
+                const headers = await getAuthHeaders();
+                const response = await fetch(`/admin/logs?${params}`, { headers });
+                await handleApiResponse(response, 'Failed to load system logs');
+                const details = (await response.json()).details;
+
+                logsCurrentPage = details.page;
+                const totalPages = Math.max(1, Math.ceil(details.total / details.page_size));
+
+                if (details.logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No logs found.</td></tr>';
+                } else {
+                    tbody.innerHTML = details.logs.map(log => `
+                        <tr>
+                            <td style="white-space: nowrap;"><small>${escapeHtml((log.created_at || '').replace('T', ' ').slice(0, 19))}</small></td>
+                            <td>${logLevelBadge(log.level)}</td>
+                            <td><small>${escapeHtml(log.logger_name)}</small></td>
+                            <td><small style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(log.message)}</small></td>
+                        </tr>`).join('');
+                }
+
+                status.textContent = `${details.total} log entries`;
+                document.getElementById('logsPageInfo').textContent = `Page ${details.page} of ${totalPages}`;
+                document.getElementById('logsPrevBtn').disabled = details.page <= 1;
+                document.getElementById('logsNextBtn').disabled = details.page >= totalPages;
+            } catch (error) {
+                status.textContent = '';
+                tbody.innerHTML = `<tr><td colspan="4" class="text-danger">Error loading logs: ${escapeHtml(error.message)}</td></tr>`;
+            }
+        }
+
+        function toggleLogsAutoRefresh() {
+            if (document.getElementById('logsAutoRefresh').checked) {
+                logsAutoRefreshTimer = setInterval(() => loadSystemLogs(logsCurrentPage), 10000);
+            } else {
+                stopLogsAutoRefresh();
+            }
+        }
+
+        function stopLogsAutoRefresh() {
+            if (logsAutoRefreshTimer) {
+                clearInterval(logsAutoRefreshTimer);
+                logsAutoRefreshTimer = null;
+            }
+            const checkbox = document.getElementById('logsAutoRefresh');
+            if (checkbox) checkbox.checked = false;
         }
     </script>
 </body>
