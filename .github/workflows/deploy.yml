@@ -98,12 +98,18 @@ jobs:
         docker push "${{ steps.config.outputs.image }}:sha-${GITHUB_SHA::7}"
 
     - name: Deploy to Cloud Run
+      env:
+        # Provide the target service account email via a repository secret named CLOUD_RUN_SA
+        # (e.g., vh-sheets-sa@your-project.iam.gserviceaccount.com). The calling workload
+        # identity principal must be granted roles/iam.serviceAccountUser on this service account.
+        CLOUD_RUN_SA: ${{ secrets.CLOUD_RUN_SA }}
       run: |
         gcloud run deploy "${{ steps.config.outputs.service }}" \
           --image "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}" \
           --region "${{ steps.config.outputs.region }}" \
           --platform managed \
           --project "${{ steps.config.outputs.project_id }}" \
+          --service-account "${CLOUD_RUN_SA}" \
           --quiet
 
     - name: Smoke check
