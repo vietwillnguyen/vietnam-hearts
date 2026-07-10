@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth import default
+from google.auth.exceptions import DefaultCredentialsError
 from app.config import GOOGLE_APPLICATION_CREDENTIALS
 from app.utils.logging_config import get_api_logger
 
@@ -32,11 +34,22 @@ class DocumentService:
     def _get_drive_service(self):
         """Get Google Drive service"""
         try:
-            credentials = Credentials.from_service_account_file(
-                GOOGLE_APPLICATION_CREDENTIALS,
-                scopes=['https://www.googleapis.com/auth/drive.readonly']
-            )
-            return build('drive', 'v3', credentials=credentials, cache_discovery=False)
+            # Prefer Application Default Credentials (e.g., cloud runtime service account)
+            try:
+                creds, _ = default(scopes=['https://www.googleapis.com/auth/drive.readonly'])
+                return build('drive', 'v3', credentials=creds, cache_discovery=False)
+            except DefaultCredentialsError:
+                # Fall back to file-based credentials only if provided
+                if GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_APPLICATION_CREDENTIALS.exists():
+                    credentials = Credentials.from_service_account_file(
+                        str(GOOGLE_APPLICATION_CREDENTIALS),
+                        scopes=['https://www.googleapis.com/auth/drive.readonly']
+                    )
+                    return build('drive', 'v3', credentials=credentials, cache_discovery=False)
+                else:
+                    raise DefaultCredentialsError(
+                        "No Application Default Credentials and no valid GOOGLE_APPLICATION_CREDENTIALS for Drive service"
+                    )
         except Exception as e:
             logger.error(f"Failed to create Drive service: {e}")
             raise
@@ -44,11 +57,21 @@ class DocumentService:
     def _get_docs_service(self):
         """Get Google Docs service"""
         try:
-            credentials = Credentials.from_service_account_file(
-                GOOGLE_APPLICATION_CREDENTIALS,
-                scopes=['https://www.googleapis.com/auth/documents.readonly']
-            )
-            return build('docs', 'v1', credentials=credentials, cache_discovery=False)
+            # Prefer Application Default Credentials first
+            try:
+                creds, _ = default(scopes=['https://www.googleapis.com/auth/documents.readonly'])
+                return build('docs', 'v1', credentials=creds, cache_discovery=False)
+            except DefaultCredentialsError:
+                if GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_APPLICATION_CREDENTIALS.exists():
+                    credentials = Credentials.from_service_account_file(
+                        str(GOOGLE_APPLICATION_CREDENTIALS),
+                        scopes=['https://www.googleapis.com/auth/documents.readonly']
+                    )
+                    return build('docs', 'v1', credentials=credentials, cache_discovery=False)
+                else:
+                    raise DefaultCredentialsError(
+                        "No Application Default Credentials and no valid GOOGLE_APPLICATION_CREDENTIALS for Docs service"
+                    )
         except Exception as e:
             logger.error(f"Failed to create Docs service: {e}")
             raise

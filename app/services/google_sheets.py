@@ -119,13 +119,13 @@ class GoogleSheetsService:
             creds, project = default(scopes=SCOPES)
             logger.info(f"Application Default Credentials available with project: {project}")
             logger.info(f"Service account email: {creds.service_account_email}")
-        except Exception:
-            # ADC not available, check for file-based credentials
-            if not GOOGLE_APPLICATION_CREDENTIALS.exists():
+        except DefaultCredentialsError:
+            # ADC not available, check for file-based credentials only if an env var was provided
+            if not GOOGLE_APPLICATION_CREDENTIALS or not GOOGLE_APPLICATION_CREDENTIALS.exists():
                 errors.append(
                     "No Google credentials found. Please either:\n"
-                    "1. Run 'gcloud auth application-default login' for local development, or\n"
-                    f"2. Set GOOGLE_APPLICATION_CREDENTIALS to point to a valid credentials file"
+                    "1. Attach a service account / enable Application Default Credentials in your cloud runtime, or\n"
+                    "2. Set GOOGLE_APPLICATION_CREDENTIALS to point to a valid credentials file"
                 )
             else:
                 logger.info(f"File-based credentials found at {GOOGLE_APPLICATION_CREDENTIALS}")
@@ -145,12 +145,17 @@ class GoogleSheetsService:
                 creds, project = default(scopes=SCOPES)
                 logger.info(f"Using Application Default Credentials with project: {project}")
             except DefaultCredentialsError:
-                # Fall back to file-based credentials (local development)
-                logger.info("ADC not available, falling back to file-based credentials")
-                creds = Credentials.from_service_account_file(
-                    str(GOOGLE_APPLICATION_CREDENTIALS), scopes=SCOPES
-                )
-                logger.info(f"Using file-based Google credentials from {GOOGLE_APPLICATION_CREDENTIALS}")
+                # Fall back to file-based credentials only if explicitly provided
+                if GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_APPLICATION_CREDENTIALS.exists():
+                    logger.info("ADC not available, falling back to file-based credentials")
+                    creds = Credentials.from_service_account_file(
+                        str(GOOGLE_APPLICATION_CREDENTIALS), scopes=SCOPES
+                    )
+                    logger.info(f"Using file-based Google credentials from {GOOGLE_APPLICATION_CREDENTIALS}")
+                else:
+                    raise DefaultCredentialsError(
+                        "No Application Default Credentials were found and no valid GOOGLE_APPLICATION_CREDENTIALS file is configured."
+                    )
 
             # Build service with modern parameters to avoid file_cache warnings
             self._service = build("sheets", "v4", credentials=creds, cache_discovery=False)

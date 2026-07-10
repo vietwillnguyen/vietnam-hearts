@@ -31,11 +31,11 @@ EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
 # Google Sheets Configuration
-GOOGLE_APPLICATION_CREDENTIALS = Path(
-    os.getenv(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        PROJECT_ROOT / "secrets" / "google_credentials.json",
-    )
+# If the environment variable is provided, expose it as a Path; otherwise keep None so
+# the runtime can rely on Application Default Credentials (ADC) in cloud environments.
+_GOOGLE_APPLICATION_CREDENTIALS_ENV = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+GOOGLE_APPLICATION_CREDENTIALS = (
+    Path(_GOOGLE_APPLICATION_CREDENTIALS_ENV) if _GOOGLE_APPLICATION_CREDENTIALS_ENV else None
 )
 
 # Email Templates
