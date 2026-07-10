@@ -17,8 +17,11 @@ from app.services.google_sheets import GoogleSheetsService
 from app.utils.schedule_dates import format_schedule_sheet_title
 
 
-def sheet_props(title, sheet_id, index=0, hidden=False):
-    return {"properties": {"title": title, "sheetId": sheet_id, "index": index, "hidden": hidden}}
+def sheet_props(title, sheet_id, index=0, hidden=False, protected_ranges=None):
+    sheet = {"properties": {"title": title, "sheetId": sheet_id, "index": index, "hidden": hidden}}
+    if protected_ranges is not None:
+        sheet["protectedRanges"] = protected_ranges
+    return sheet
 
 
 def next_monday():
@@ -37,6 +40,7 @@ def service():
     svc.rename_sheet = MagicMock()
     svc.create_sheet_from_template = MagicMock(return_value=999)
     svc.update_sheet_dates = MagicMock()
+    svc.ensure_sheet_protection = MagicMock()
     return svc
 
 
@@ -107,6 +111,45 @@ class TestRotationNaming:
 
         service.rename_sheet.assert_not_called()
         service.create_sheet_from_template.assert_not_called()
+
+
+class TestRotationProtection:
+    """Rotation must protect displayed sheets so anonymous editors cannot delete the tab."""
+
+    def test_created_sheet_gets_protection(self, service):
+        rotate(service, [], weeks=1)
+
+        service.ensure_sheet_protection.assert_called_once()
+        assert service.ensure_sheet_protection.call_args.args[0] == 999
+
+    def test_existing_unprotected_sheet_gets_protection(self, service):
+        monday = next_monday()
+        existing = sheet_props(format_schedule_sheet_title(monday), sheet_id=60, hidden=True)
+
+        rotate(service, [existing], weeks=1)
+
+        service.ensure_sheet_protection.assert_called_once()
+        assert service.ensure_sheet_protection.call_args.args[0] == 60
+
+    def test_already_protected_sheet_skipped(self, service):
+        monday = next_monday()
+        existing = sheet_props(
+            format_schedule_sheet_title(monday), sheet_id=60, hidden=True,
+            protected_ranges=[{"protectedRangeId": 1, "range": {"sheetId": 60}}],
+        )
+
+        rotate(service, [existing], weeks=1)
+
+        service.ensure_sheet_protection.assert_not_called()
+
+    def test_protection_failure_does_not_abort_rotation(self, service):
+        service.ensure_sheet_protection.side_effect = Exception("HttpError 400")
+
+        result = rotate(service, [], weeks=2)
+
+        assert service.create_sheet_from_template.call_count == 2
+        actions = [f["action"] for f in result["sheets_failed"]]
+        assert actions == ["protect", "protect"]
 
 
 class TestCurrentScheduleDates:
