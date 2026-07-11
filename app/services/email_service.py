@@ -117,6 +117,8 @@ class EmailService:
             table_html += f"<th style='{cell}'>Status</th>"
             table_html += "</tr></thead><tbody>"
 
+            needs_volunteers = False
+
             for i, day in enumerate(days):
                 teacher = teachers[i] if i < len(teachers) else ""
                 head_ta = head_tas[i] if i < len(head_tas) else ""
@@ -165,6 +167,9 @@ class EmailService:
                     status = f"✅ Partially Covered ({current_assistants}/{max_assistants} assistants) - TA's welcome to join"
                     bg_color = "#d4edda"
 
+                if status.startswith("❌"):
+                    needs_volunteers = True
+
                 table_html += f"<tr style='background-color: {bg_color};'>"
                 table_html += f"<td style='{cell}'>{day}</td>"
                 table_html += f"<td style='{cell}'>{teacher}</td>"
@@ -175,14 +180,21 @@ class EmailService:
                 table_html += "</tr>"
 
             table_html += "</tbody></table>"
-            return {"class_name": block.name, "table_html": table_html, "has_data": True}
+            return {
+                "class_name": block.name,
+                "table_html": table_html,
+                "has_data": True,
+                "needs_volunteers": needs_volunteers,
+            }
 
         except Exception as e:
             logger.error(f"Failed to build table for {getattr(block, 'name', '?')}: {str(e)}")
+            # Unknown slot state on parse failure must not silently suppress reminders.
             return {
                 "class_name": getattr(block, "name", "?"),
                 "table_html": f"<p>Error loading data for {getattr(block, 'name', 'this class')}</p>",
                 "has_data": False,
+                "needs_volunteers": True,
             }
 
     def build_weekly_reminder_content(self, volunteer: VolunteerModel, db: Session) -> tuple[str, str]:

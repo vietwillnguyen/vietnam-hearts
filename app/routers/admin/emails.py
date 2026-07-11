@@ -104,6 +104,20 @@ async def send_weekly_reminder_emails(request: Request):
                     "message": "Weekly reminders are currently disabled globally. Enable them in the admin settings to send weekly reminders.",
                 }
 
+            class_tables = [
+                email_service.build_class_table(block)
+                for block in sheets_service.get_schedule_blocks(db)
+            ]
+            current_monday, current_friday = sheets_service.get_current_schedule_dates(db)
+            subject = email_service.get_reminder_subject(current_monday, current_friday)
+
+            if not any(ct.get("needs_volunteers") for ct in class_tables):
+                logger.info("No open volunteer slots this week, skipping weekly reminder emails")
+                return {
+                    "status": "skipped",
+                    "message": "No volunteer slots need filling this week, weekly reminder emails were not sent.",
+                }
+
             if ConfigHelper.get_dry_run(db):
                 logger.info("DRY_RUN is enabled, sending emails to dry run email recipient only")
                 dry_run_volunteer = (
@@ -124,13 +138,6 @@ async def send_weekly_reminder_emails(request: Request):
                 volunteer_lookup = {v.email: v for v in db_volunteers}
 
             logger.info(f"Sending weekly reminder emails to {len(volunteers)} volunteers")
-
-            class_tables = [
-                email_service.build_class_table(block)
-                for block in sheets_service.get_schedule_blocks(db)
-            ]
-            current_monday, current_friday = sheets_service.get_current_schedule_dates(db)
-            subject = email_service.get_reminder_subject(current_monday, current_friday)
 
             email_communications = []
             for volunteer in volunteers:

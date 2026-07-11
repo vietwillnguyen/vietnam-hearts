@@ -6,6 +6,8 @@ Tests the actual API endpoints using the test client and database.
 Focuses on integration testing rather than unit testing.
 """
 
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -362,3 +364,46 @@ class TestRotateScheduleEndpoint:
     def test_invalid_display_weeks_returns_400(self, admin_client):
         response = admin_client.post("/admin/rotate-schedule?display_weeks=13")
         assert response.status_code == 400
+
+
+class TestSendWeeklyRemindersSkipLogic:
+    """Weekly reminders must only go out when a class still needs volunteers."""
+
+    @pytest.fixture
+    def admin_client(self, client):
+        from app.dependencies.auth import get_current_admin_user
+        app.dependency_overrides[get_current_admin_user] = lambda: {
+            "id": "test-admin", "email": "admin@vietnamhearts.org"
+        }
+        yield client
+        app.dependency_overrides.pop(get_current_admin_user, None)
+
+    def test_skips_when_no_slots_need_filling(self, admin_client, mock_volunteer):
+        with patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]), \
+             patch.object(sheets_service, "get_current_schedule_dates", return_value=(datetime.now(), datetime.now())), \
+             patch.object(email_service, "build_class_table", return_value={
+                 "class_name": "Test Class", "table_html": "<table></table>",
+                 "has_data": True, "needs_volunteers": False,
+             }), \
+             patch.object(email_service, "send_custom_email") as mock_send:
+            response = admin_client.post("/admin/send-weekly-reminders")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "skipped"
+        mock_send.assert_not_called()
+
+    def test_sends_when_a_slot_needs_filling(self, admin_client, mock_volunteer):
+        with patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]), \
+             patch.object(sheets_service, "get_current_schedule_dates", return_value=(datetime.now(), datetime.now())), \
+             patch.object(email_service, "build_class_table", return_value={
+                 "class_name": "Test Class", "table_html": "<table></table>",
+                 "has_data": True, "needs_volunteers": True,
+             }), \
+             patch.object(email_service, "send_custom_email", return_value=True) as mock_send:
+            response = admin_client.post("/admin/send-weekly-reminders")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "success"
+        mock_send.assert_called_once()
