@@ -2,14 +2,12 @@
 Google Sheets Integration Service
 """
 
-import os
 import ssl
 from typing import List, Dict, Any, Optional
 
 import google.auth
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
-from pathlib import Path
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import safe_api_call, log_ssl_error
 from app.config import (
@@ -35,57 +33,57 @@ SCOPES = [
 # Column mapping for the volunteer signup form sheet.
 # Index 0 = col A.  Update here when the form adds/removes columns.
 SIGNUP_SHEET_HEADERS = [
-    "applicant_status",         # A  – Form Response Status
-    "timestamp",                # B  – Timestamp
-    "llm_judge_score",          # C  – LLM Judge Score (our output column)
-    "email_address",            # D  – Email Address
-    "quiz_score",               # E  – Score on Quiz
-    "first_name",               # F
-    "last_name",                # G
-    "passport_id_number",       # H
-    "passport_expiry_date",     # I
-    "date_of_birth",            # J
-    "passport_upload",          # K
-    "headshot_upload",          # L
-    "social_media_link",        # M  – Facebook or LinkedIn profile
-    "location",                 # N  – Where are you from?
-    "phone_number",             # O
-    "position_interest",        # P
-    "availability",             # Q
-    "start_date",               # R
-    "commitment_duration",      # S
-    "teaching_experience",      # T  – Prior teaching/TA experience?
-    "experience_details",       # U
-    "teaching_certificate",     # V
-    "vietnamese_speaking",      # W
-    "other_support",            # X
-    "referral_source",          # Y  – How did you hear about us?
-    "motivation",               # Z  – Why interested in volunteering?
-    "expected_gain",            # AA – What do you hope to gain?
-    "children_experience",      # AB – Worked with children before?
-    "preferred_age_group",      # AC
+    "applicant_status",  # A  – Form Response Status
+    "timestamp",  # B  – Timestamp
+    "llm_judge_score",  # C  – LLM Judge Score (our output column)
+    "email_address",  # D  – Email Address
+    "quiz_score",  # E  – Score on Quiz
+    "first_name",  # F
+    "last_name",  # G
+    "passport_id_number",  # H
+    "passport_expiry_date",  # I
+    "date_of_birth",  # J
+    "passport_upload",  # K
+    "headshot_upload",  # L
+    "social_media_link",  # M  – Facebook or LinkedIn profile
+    "location",  # N  – Where are you from?
+    "phone_number",  # O
+    "position_interest",  # P
+    "availability",  # Q
+    "start_date",  # R
+    "commitment_duration",  # S
+    "teaching_experience",  # T  – Prior teaching/TA experience?
+    "experience_details",  # U
+    "teaching_certificate",  # V
+    "vietnamese_speaking",  # W
+    "other_support",  # X
+    "referral_source",  # Y  – How did you hear about us?
+    "motivation",  # Z  – Why interested in volunteering?
+    "expected_gain",  # AA – What do you hope to gain?
+    "children_experience",  # AB – Worked with children before?
+    "preferred_age_group",  # AC
     "safeguarding_discomfort",  # AD – Team member made someone uncomfortable?
-    "safeguarding_physical",    # AE – Child seeks physical affection?
-    "safeguarding_contact",     # AF – Student asks for phone/social media?
-    "teacher_responsibilities", # AG
-    "tuesday_class_focus",      # AH
-    "agree_lesson_plan",        # AI
-    "warnings_response",        # AJ
-    "teacher_help_response",    # AK
-    "ta_role",                  # AL
-    "teacher_absence_response", # AM
-    "true_statement",           # AN
-    "agree_1",                  # AO
-    "agree_2",                  # AP
-    "agree_3",                  # AQ
-    "agree_4",                  # AR
-    "agree_5",                  # AS
-    "agree_6",                  # AT
-    "medical_conditions",       # AU
-    "agree_medical",            # AV
+    "safeguarding_physical",  # AE – Child seeks physical affection?
+    "safeguarding_contact",  # AF – Student asks for phone/social media?
+    "teacher_responsibilities",  # AG
+    "tuesday_class_focus",  # AH
+    "agree_lesson_plan",  # AI
+    "warnings_response",  # AJ
+    "teacher_help_response",  # AK
+    "ta_role",  # AL
+    "teacher_absence_response",  # AM
+    "true_statement",  # AN
+    "agree_1",  # AO
+    "agree_2",  # AP
+    "agree_3",  # AQ
+    "agree_4",  # AR
+    "agree_5",  # AS
+    "agree_6",  # AT
+    "medical_conditions",  # AU
+    "agree_medical",  # AV
     "legal_name_confirmation",  # AW
-    "ta_per_class",             # AX
-    "current_address",          # AY
+    "ta_per_class",  # AX
+    "current_address",  # AY
 ]
 
 
@@ -100,26 +98,32 @@ class GoogleSheetsService:
     def _validate_config(self, db: Optional[Session] = None):
         """Validate Google Sheets configuration"""
         errors = []
-        
+
         # Check required environment variables
         if db:
             # Use database settings if available
             if not ConfigHelper.get_schedule_sheet_id(db):
                 errors.append("SCHEDULE_SIGNUP_LINK setting is required")
-            
+
             if not ConfigHelper.get_new_signups_sheet_id(db):
                 errors.append("NEW_SIGNUPS_RESPONSES_LINK setting is required")
         else:
             # Fallback to environment variables or skip validation
-            logger.warning("No database session provided for config validation, skipping dynamic settings check")
-        
+            logger.warning(
+                "No database session provided for config validation, skipping dynamic settings check"
+            )
+
         # Check for credentials (either a service-account key file, or ADC on Cloud Run)
         if GOOGLE_APPLICATION_CREDENTIALS.exists():
-            logger.info(f"File-based credentials found at {GOOGLE_APPLICATION_CREDENTIALS}")
+            logger.info(
+                f"File-based credentials found at {GOOGLE_APPLICATION_CREDENTIALS}"
+            )
         else:
             try:
                 creds, project = google.auth.default()
-                logger.info(f"Application Default Credentials available with project: {project}")
+                logger.info(
+                    f"Application Default Credentials available with project: {project}"
+                )
             except Exception:
                 errors.append(
                     "No Google credentials found. Please either:\n"
@@ -130,7 +134,9 @@ class GoogleSheetsService:
         if errors:
             error_msg = "\n".join(errors)
             logger.error(f"Google Sheets configuration validation failed:\n{error_msg}")
-            raise ValueError(f"Google Sheets configuration validation failed:\n{error_msg}")
+            raise ValueError(
+                f"Google Sheets configuration validation failed:\n{error_msg}"
+            )
 
     def _initialize_service(self, db: Optional[Session] = None):
         """Initialize the Google Sheets service"""
@@ -140,13 +146,19 @@ class GoogleSheetsService:
             creds = get_scoped_credentials(SCOPES)
 
             # Build service with modern parameters to avoid file_cache warnings
-            self._service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+            self._service = build(
+                "sheets", "v4", credentials=creds, cache_discovery=False
+            )
             self._sheet = self._service.spreadsheets()
             self._initialized = True
-            logger.info(f"Google Sheets service initialized successfully with service account email: {creds.service_account_email}")
-            
+            logger.info(
+                f"Google Sheets service initialized successfully with service account email: {creds.service_account_email}"
+            )
+
         except Exception as e:
-            logger.error(f"Failed to initialize Google Sheets service: {str(e)}", exc_info=True)
+            logger.error(
+                f"Failed to initialize Google Sheets service: {str(e)}", exc_info=True
+            )
             raise
 
     def _ensure_initialized(self, db: Optional[Session] = None):
@@ -166,7 +178,9 @@ class GoogleSheetsService:
         self._ensure_initialized()
         return self._sheet
 
-    def get_range_from_sheet(self, db: Session, sheet_id: str, range_name: str) -> List[List[str]]:
+    def get_range_from_sheet(
+        self, db: Session, sheet_id: str, range_name: str
+    ) -> List[List[str]]:
         """
         Fetch a specific range from a given sheet (raw values) with retry logic
         Args:
@@ -178,7 +192,7 @@ class GoogleSheetsService:
         """
         # Get retry configuration from database
         max_attempts = ConfigHelper.get_google_sheets_max_retries(db)
-        
+
         def _fetch_range():
             result = (
                 self.sheet.values()
@@ -191,12 +205,12 @@ class GoogleSheetsService:
             )
             logger.info(f"Values: {values}")
             return values
-        
+
         try:
             return safe_api_call(
                 _fetch_range,
                 max_attempts=max_attempts,
-                context=f"fetch range {range_name} from sheet {sheet_id}"
+                context=f"fetch range {range_name} from sheet {sheet_id}",
             )
         except ssl.SSLEOFError as e:
             log_ssl_error(e, f"get_range_from_sheet({sheet_id}, {range_name})")
@@ -211,7 +225,9 @@ class GoogleSheetsService:
             )
             return []
 
-    def get_schedule_range(self, db: Session, range_name: Optional[str] = None) -> List[List[str]]:
+    def get_schedule_range(
+        self, db: Session, range_name: Optional[str] = None
+    ) -> List[List[str]]:
         """
         Fetch a specific range from the schedule sheet (raw values)
         Args:
@@ -252,13 +268,17 @@ class GoogleSheetsService:
         """
         # Get retry configuration from database
         max_attempts = ConfigHelper.get_google_sheets_max_retries(db)
-        
+
         def _fetch_submissions():
             sheet_id = ConfigHelper.get_new_signups_sheet_id(db)
             if not sheet_id:
-                raise ValueError("NEW_SIGNUPS_RESPONSES_LINK is not configured. Please set it in the admin settings.")
+                raise ValueError(
+                    "NEW_SIGNUPS_RESPONSES_LINK is not configured. Please set it in the admin settings."
+                )
             full_range = range_name or "A2:ZZ"
-            logger.info(f"Fetching signups from sheet {sheet_id} with range {full_range}")
+            logger.info(
+                f"Fetching signups from sheet {sheet_id} with range {full_range}"
+            )
             result = (
                 self.sheet.values()
                 .get(
@@ -281,21 +301,27 @@ class GoogleSheetsService:
                 # Skip submissions with empty email addresses or missing essential fields
                 email_address = submission.get("email_address", "").strip()
                 if not email_address:
-                    logger.debug(f"Skipping submission with empty email address: {submission}")
+                    logger.debug(
+                        f"Skipping submission with empty email address: {submission}"
+                    )
                     skipped_count += 1
                     continue
-                
+
                 # Skip submissions that are completely empty (no meaningful data)
-                has_meaningful_data = any([
-                    submission.get("first_name", "").strip(),
-                    submission.get("last_name", "").strip(),
-                    submission.get("phone_number", "").strip(),
-                    submission.get("position_interest", "").strip(),
-                    submission.get("availability", "").strip(),
-                ])
-                
+                has_meaningful_data = any(
+                    [
+                        submission.get("first_name", "").strip(),
+                        submission.get("last_name", "").strip(),
+                        submission.get("phone_number", "").strip(),
+                        submission.get("position_interest", "").strip(),
+                        submission.get("availability", "").strip(),
+                    ]
+                )
+
                 if not has_meaningful_data:
-                    logger.debug(f"Skipping submission with no meaningful data: {submission}")
+                    logger.debug(
+                        f"Skipping submission with no meaningful data: {submission}"
+                    )
                     skipped_count += 1
                     continue
 
@@ -312,14 +338,16 @@ class GoogleSheetsService:
 
                 submissions.append(submission)
 
-            logger.info(f"Processed {len(values)} total rows: {len(submissions)} valid submissions, {skipped_count} skipped")
+            logger.info(
+                f"Processed {len(values)} total rows: {len(submissions)} valid submissions, {skipped_count} skipped"
+            )
             return submissions
-        
+
         try:
             return safe_api_call(
                 _fetch_submissions,
                 max_attempts=max_attempts,
-                context="fetch signup form submissions"
+                context="fetch signup form submissions",
             )
         except ssl.SSLEOFError as e:
             log_ssl_error(e, "get_signup_form_submissions")
@@ -336,7 +364,9 @@ class GoogleSheetsService:
         Create a new sheet from a template, named 'Schedule MM/DD', and insert it after the last schedule sheet.
         """
         try:
-            sheet_metadata = self.sheet.get(spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)).execute()
+            sheet_metadata = self.sheet.get(
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)
+            ).execute()
             template_sheet_id = next(
                 (
                     s["properties"]["sheetId"]
@@ -403,7 +433,9 @@ class GoogleSheetsService:
             sheet_name: Name of the sheet to hide (in format Schedule MM/DD/YYYY)
         """
         try:
-            sheet_metadata = self.sheet.get(spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)).execute()
+            sheet_metadata = self.sheet.get(
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)
+            ).execute()
             available_sheets = [
                 sheet["properties"]["title"] for sheet in sheet_metadata["sheets"]
             ]
@@ -483,7 +515,9 @@ class GoogleSheetsService:
             dates = [
                 (sheet_date + timedelta(days=i)).strftime("%d/%m") for i in range(5)
             ]
-            grid = self.get_range_from_sheet(db, spreadsheet_id, f"{sheet_title}!A1:G100")
+            grid = self.get_range_from_sheet(
+                db, spreadsheet_id, f"{sheet_title}!A1:G100"
+            )
             for offset, row in enumerate(grid):
                 # title is in column B (index 1) when fetched from column A
                 if not row_is_class_header(row, title_index=1):
@@ -506,7 +540,9 @@ class GoogleSheetsService:
     def get_sheet_metadata(self, db: Session) -> Dict:
         """Get metadata for all sheets in the spreadsheet"""
         try:
-            return self.sheet.get(spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)).execute()
+            return self.sheet.get(
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db)
+            ).execute()
         except Exception as e:
             logger.error(f"Failed to get sheet metadata: {str(e)}", exc_info=True)
             raise
@@ -563,9 +599,7 @@ class GoogleSheetsService:
             sheet_date = parse_schedule_sheet_title(sheet_title)
 
             if sheet_date is None:
-                logger.warning(
-                    f"Could not parse date from sheet title '{sheet_title}'"
-                )
+                logger.warning(f"Could not parse date from sheet title '{sheet_title}'")
                 # Fallback to calculated dates
                 now = datetime.now()
                 days_since_monday = now.weekday()
@@ -692,7 +726,9 @@ class GoogleSheetsService:
             return result.get("values", [])
 
         try:
-            raw_rows = safe_api_call(_fetch, max_attempts=max_attempts, context="fetch pending submissions")
+            raw_rows = safe_api_call(
+                _fetch, max_attempts=max_attempts, context="fetch pending submissions"
+            )
         except Exception as e:
             logger.error(f"Failed to fetch pending submissions: {e}", exc_info=True)
             return []
@@ -718,7 +754,9 @@ class GoogleSheetsService:
                 row_number = index + 2  # header is row 1
                 pending.append((row_number, submission))
 
-        logger.info(f"Found {len(pending)} pending submissions out of {len(raw_rows)} total rows")
+        logger.info(
+            f"Found {len(pending)} pending submissions out of {len(raw_rows)} total rows"
+        )
         return pending
 
     def update_submission_judgment(
@@ -764,13 +802,23 @@ class GoogleSheetsService:
             )
 
         try:
-            safe_api_call(_write, max_attempts=max_attempts, context=f"update judgment for row {row_number}")
-            logger.info(f"Wrote judgment to row {row_number}: {status} / rating={rating}")
+            safe_api_call(
+                _write,
+                max_attempts=max_attempts,
+                context=f"update judgment for row {row_number}",
+            )
+            logger.info(
+                f"Wrote judgment to row {row_number}: {status} / rating={rating}"
+            )
         except Exception as e:
-            logger.error(f"Failed to write judgment for row {row_number}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to write judgment for row {row_number}: {e}", exc_info=True
+            )
             raise
 
-    def rotate_schedule_sheets(self, db: Session, display_weeks_override: Optional[int] = None) -> Dict[str, Any]:
+    def rotate_schedule_sheets(
+        self, db: Session, display_weeks_override: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Rotate schedule sheets.
 
@@ -804,13 +852,16 @@ class GoogleSheetsService:
             # Calculate the date range to display
             # Start from next Monday since current week is over
             next_monday = current_monday + timedelta(days=7)
-            
+
             # Use override if provided, otherwise use setting
-            display_weeks_count = display_weeks_override if display_weeks_override is not None else ConfigHelper.get_schedule_sheets_display_weeks_count(db)
-            
+            display_weeks_count = (
+                display_weeks_override
+                if display_weeks_override is not None
+                else ConfigHelper.get_schedule_sheets_display_weeks_count(db)
+            )
+
             display_dates = [
-                next_monday + timedelta(days=7 * i)
-                for i in range(display_weeks_count)
+                next_monday + timedelta(days=7 * i) for i in range(display_weeks_count)
             ]
 
             # Dates that should be visible after rotation
@@ -826,16 +877,25 @@ class GoogleSheetsService:
 
             # Hide the 'Schedule Template' sheet if it exists
             template_sheet = next(
-                (s for s in existing_sheets if s["properties"]["title"] == "Schedule Template"),
+                (
+                    s
+                    for s in existing_sheets
+                    if s["properties"]["title"] == "Schedule Template"
+                ),
                 None,
             )
             if template_sheet and not template_sheet["properties"].get("hidden", False):
                 try:
-                    self.set_sheet_visibility(template_sheet["properties"]["sheetId"], True, db)
+                    self.set_sheet_visibility(
+                        template_sheet["properties"]["sheetId"], True, db
+                    )
                     sheets_made_hidden.append("Schedule Template")
                     logger.info("Set 'Schedule Template' sheet to hidden")
                 except Exception as e:
-                    logger.error(f"Failed to hide 'Schedule Template' sheet: {str(e)}", exc_info=True)
+                    logger.error(
+                        f"Failed to hide 'Schedule Template' sheet: {str(e)}",
+                        exc_info=True,
+                    )
 
             # PASS 1: Hide all dated schedule sheets outside the display range FIRST.
             # Running hide before show ensures visible count never exceeds display_weeks_count,
@@ -854,12 +914,18 @@ class GoogleSheetsService:
                     currently_visible = not sheet["properties"].get("hidden", False)
                     if currently_visible:
                         try:
-                            self.set_sheet_visibility(sheet["properties"]["sheetId"], True, db)
+                            self.set_sheet_visibility(
+                                sheet["properties"]["sheetId"], True, db
+                            )
                             sheets_made_hidden.append(title)
                             logger.info(f"Set sheet {title} visibility to hidden")
                         except Exception as e:
-                            sheets_failed.append({"title": title, "action": "hide", "error": str(e)})
-                            logger.warning(f"Could not hide sheet '{title}', continuing rotation: {e}")
+                            sheets_failed.append(
+                                {"title": title, "action": "hide", "error": str(e)}
+                            )
+                            logger.warning(
+                                f"Could not hide sheet '{title}', continuing rotation: {e}"
+                            )
 
             # PASS 2: Make each display-range sheet visible and move it into position.
             # Existing sheets are matched by parsed date so legacy MM/DD titles
@@ -870,7 +936,11 @@ class GoogleSheetsService:
                     (
                         s
                         for s in existing_sheets
-                        if (parsed := parse_schedule_sheet_title(s["properties"]["title"]))
+                        if (
+                            parsed := parse_schedule_sheet_title(
+                                s["properties"]["title"]
+                            )
+                        )
                         and parsed.date() == date.date()
                     ),
                     None,
@@ -885,12 +955,22 @@ class GoogleSheetsService:
                         if old_title != sheet_name:
                             try:
                                 self.rename_sheet(
-                                    existing_sheet["properties"]["sheetId"], sheet_name, db
+                                    existing_sheet["properties"]["sheetId"],
+                                    sheet_name,
+                                    db,
                                 )
                                 sheets_renamed.append(sheet_name)
                             except Exception as e:
-                                sheets_failed.append({"title": old_title, "action": "rename", "error": str(e)})
-                                logger.warning(f"Could not rename sheet '{old_title}', continuing: {e}")
+                                sheets_failed.append(
+                                    {
+                                        "title": old_title,
+                                        "action": "rename",
+                                        "error": str(e),
+                                    }
+                                )
+                                logger.warning(
+                                    f"Could not rename sheet '{old_title}', continuing: {e}"
+                                )
 
                         self.set_sheet_visibility(
                             existing_sheet["properties"]["sheetId"], False, db
@@ -912,8 +992,13 @@ class GoogleSheetsService:
                         self.move_sheet(int(new_sheet_id), i + 1, db)
                         sheets_created.append(sheet_name)
                 except Exception as e:
-                    sheets_failed.append({"title": sheet_name, "action": "show", "error": str(e)})
-                    logger.error(f"Failed to prepare sheet '{sheet_name}', continuing rotation: {e}", exc_info=True)
+                    sheets_failed.append(
+                        {"title": sheet_name, "action": "show", "error": str(e)}
+                    )
+                    logger.error(
+                        f"Failed to prepare sheet '{sheet_name}', continuing rotation: {e}",
+                        exc_info=True,
+                    )
 
             # Get final state after all changes
             final_sheets = self.get_schedule_sheets(db)
