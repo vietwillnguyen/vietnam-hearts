@@ -59,7 +59,10 @@ The system maintains backward compatibility:
 ### Common Issues
 
 1. **Invalid URL Format**: Make sure you're using a Google Sheets URL, not a Google Docs URL
-2. **Permission Issues**: Ensure the service account has access to the sheets
+2. **Permission Issues**: Ensure the service account has access to the sheets. This is
+   either the service account for the key file at `GOOGLE_APPLICATION_CREDENTIALS`, or,
+   when no key file is present, the Cloud Run runtime service account (see
+   [SERVICE_ACCOUNT_SETUP.md](SERVICE_ACCOUNT_SETUP.md))
 3. **Sheet Not Found**: Verify the sheet ID is correct and the sheet exists
 
 ### Validation
