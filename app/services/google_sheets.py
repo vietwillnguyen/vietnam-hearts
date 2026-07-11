@@ -5,7 +5,8 @@ Google Sheets Integration Service
 import os
 import ssl
 from typing import List, Dict, Any, Optional
-from google.oauth2.service_account import Credentials
+
+import google.auth
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,12 +16,11 @@ from app.config import (
     GOOGLE_APPLICATION_CREDENTIALS,
 )
 from app.utils.config_helper import ConfigHelper
+from app.utils.google_credentials import get_scoped_credentials
 from app.utils.schedule_dates import (
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
 )
-from google.auth import default
-from google.auth.exceptions import DefaultCredentialsError
 from sqlalchemy.orm import Session
 
 logger = get_api_logger()
@@ -113,21 +113,19 @@ class GoogleSheetsService:
             # Fallback to environment variables or skip validation
             logger.warning("No database session provided for config validation, skipping dynamic settings check")
         
-        # Check for credentials (either ADC or file-based)
-        try:
-            creds, project = default(scopes=SCOPES)
-            logger.info(f"Application Default Credentials available with project: {project}")
-            logger.info(f"Service account email: {creds.service_account_email}")
-        except Exception:
-            # ADC not available, check for file-based credentials
-            if not GOOGLE_APPLICATION_CREDENTIALS.exists():
+        # Check for credentials (either a service-account key file, or ADC on Cloud Run)
+        if GOOGLE_APPLICATION_CREDENTIALS.exists():
+            logger.info(f"File-based credentials found at {GOOGLE_APPLICATION_CREDENTIALS}")
+        else:
+            try:
+                creds, project = google.auth.default()
+                logger.info(f"Application Default Credentials available with project: {project}")
+            except Exception:
                 errors.append(
                     "No Google credentials found. Please either:\n"
-                    "1. Run 'gcloud auth application-default login' for local development, or\n"
-                    f"2. Set GOOGLE_APPLICATION_CREDENTIALS to point to a valid credentials file"
+                    "1. Set GOOGLE_APPLICATION_CREDENTIALS to point to a valid credentials file, or\n"
+                    "2. Ensure Application Default Credentials are available (e.g. Cloud Run's attached service account)"
                 )
-            else:
-                logger.info(f"File-based credentials found at {GOOGLE_APPLICATION_CREDENTIALS}")
 
         if errors:
             error_msg = "\n".join(errors)
@@ -138,18 +136,8 @@ class GoogleSheetsService:
         """Initialize the Google Sheets service"""
         try:
             self._validate_config(db)
-            
-            # Try Application Default Credentials first (works in cloud and local with gcloud auth)
-            try:
-                creds, project = default(scopes=SCOPES)
-                logger.info(f"Using Application Default Credentials with project: {project}")
-            except DefaultCredentialsError:
-                # Fall back to file-based credentials (local development)
-                logger.info("ADC not available, falling back to file-based credentials")
-                creds = Credentials.from_service_account_file(
-                    str(GOOGLE_APPLICATION_CREDENTIALS), scopes=SCOPES
-                )
-                logger.info(f"Using file-based Google credentials from {GOOGLE_APPLICATION_CREDENTIALS}")
+
+            creds = get_scoped_credentials(SCOPES)
 
             # Build service with modern parameters to avoid file_cache warnings
             self._service = build("sheets", "v4", credentials=creds, cache_discovery=False)

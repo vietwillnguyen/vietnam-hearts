@@ -7,10 +7,9 @@ Handles fetching documents from Google Drive and splitting them into chunks for 
 import re
 import logging
 from typing import List, Dict, Any, Optional
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from app.config import GOOGLE_APPLICATION_CREDENTIALS
+from app.utils.google_credentials import get_scoped_credentials
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
@@ -32,22 +31,16 @@ class DocumentService:
     def _get_drive_service(self):
         """Get Google Drive service"""
         try:
-            credentials = Credentials.from_service_account_file(
-                GOOGLE_APPLICATION_CREDENTIALS,
-                scopes=['https://www.googleapis.com/auth/drive.readonly']
-            )
+            credentials = get_scoped_credentials(['https://www.googleapis.com/auth/drive.readonly'])
             return build('drive', 'v3', credentials=credentials, cache_discovery=False)
         except Exception as e:
             logger.error(f"Failed to create Drive service: {e}")
             raise
-    
+
     def _get_docs_service(self):
         """Get Google Docs service"""
         try:
-            credentials = Credentials.from_service_account_file(
-                GOOGLE_APPLICATION_CREDENTIALS,
-                scopes=['https://www.googleapis.com/auth/documents.readonly']
-            )
+            credentials = get_scoped_credentials(['https://www.googleapis.com/auth/documents.readonly'])
             return build('docs', 'v1', credentials=credentials, cache_discovery=False)
         except Exception as e:
             logger.error(f"Failed to create Docs service: {e}")
