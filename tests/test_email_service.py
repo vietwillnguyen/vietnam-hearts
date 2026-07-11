@@ -11,7 +11,6 @@ Tests cover:
 - Head TA column dropped when the class has no head TA row
 """
 
-import pytest
 from app.services.email_service import EmailService
 from app.services.schedule_parser import ClassBlock
 
@@ -53,7 +52,13 @@ class TestBuildClassTable:
         block = _block(
             max_assistants=2,
             days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-            teacher=["John Doe", "Jane Smith", "Bob Wilson", "Alice Brown", "Charlie Davis"],
+            teacher=[
+                "John Doe",
+                "Jane Smith",
+                "Bob Wilson",
+                "Alice Brown",
+                "Charlie Davis",
+            ],
             assistants=["TA1, TA2, TA3", "TA1", "TA1, TA2", "", "TA1, TA2, TA3, TA4"],
         )
         result = EmailService().build_class_table(block)
@@ -73,7 +78,11 @@ class TestBuildClassTable:
             max_assistants=5,
             days=["Monday", "Tuesday", "Wednesday"],
             teacher=["John", "Jane", "Bob"],
-            assistants=["A, B, C", "  ", "A,B,,C"],  # whitespace / empty entries ignored
+            assistants=[
+                "A, B, C",
+                "  ",
+                "A,B,,C",
+            ],  # whitespace / empty entries ignored
         )
         html = EmailService().build_class_table(block)["table_html"]
         assert "Partially Covered (3/5 assistants)" in html  # Monday: 3

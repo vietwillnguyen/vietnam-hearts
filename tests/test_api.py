@@ -30,7 +30,7 @@ def mock_google_sheets():
             ["", "Monday", "Tuesday", "Wednesday"],
             ["Teacher", "John Doe", "Jane Smith", "Bob Wilson"],
             ["Head TA", "TA1", "TA2", "TA3"],
-            ["Assistants", "A1, A2", "A1", "A1, A2, A3"]
+            ["Assistants", "A1, A2", "A1", "A1, A2, A3"],
         ]
         mock.get_volunteer_submissions.return_value = [
             {
@@ -38,7 +38,7 @@ def mock_google_sheets():
                 "email": "test@example.com",
                 "positions": ["Teacher"],
                 "teaching_experience": "Some experience",
-                "start_date": "ASAP"
+                "start_date": "ASAP",
             }
         ]
         yield mock
@@ -61,11 +61,11 @@ def mock_bot_service():
         mock_instance.chat.return_value = {
             "response": "Test response",
             "confidence": 0.9,
-            "context_used": 2
+            "context_used": 2,
         }
         mock_instance.test_response.return_value = {
             "status": "success",
-            "response": "Test response"
+            "response": "Test response",
         }
         mock.return_value = mock_instance
         yield mock
@@ -80,15 +80,15 @@ def mock_auth_service():
             "id": "test-admin-id",
             "email": "admin@vietnamhearts.org",
             "name": "Test Admin",
-            "email_verified": True
+            "email_verified": True,
         }
-        
+
         # Mock the is_admin method to return True
         mock_auth_service.is_admin.return_value = True
-        
+
         # Mock the get_current_user_from_token method to return our mock user
         mock_auth_service.get_current_user_from_token.return_value = mock_user
-        
+
         yield mock_auth_service
 
 
@@ -97,60 +97,62 @@ def authenticated_client(mock_auth_service):
     """Create a test client that bypasses authentication for testing"""
     # This fixture would be used to test admin endpoints with "valid" auth
     # It mocks the auth dependency to always return a valid admin user
-    
+
     # Note: This is a simplified approach - in production you might want
     # to create actual test users with proper tokens
-    
+
     return client
 
 
 class TestPublicEndpoints:
     """Test public endpoints that don't require authentication"""
-    
+
     def test_root_endpoint(self, client):
         """Test root endpoint"""
         response = client.get("/")
-        
+
         assert response.status_code == 200
         # Should return HTML content
         assert "text/html" in response.headers.get("content-type", "")
-    
+
     def test_unsubscribe_endpoint_get(self, client):
         """Test unsubscribe endpoint GET (shows form)"""
         # Test with an invalid token - should return 400
         response = client.get("/unsubscribe?token=invalid-token-123")
-        
+
         # Should return 400 for invalid token
         assert response.status_code == 400
         # Should return HTML error page
         assert "text/html" in response.headers.get("content-type", "")
-    
+
     @pytest.mark.skip(reason="Messenger integration disabled — not functional")
     def test_webhook_messenger_endpoint(self, client):
         """Test Facebook webhook endpoint"""
         # Test webhook verification
-        response = client.get("/webhook/messenger?mode=subscribe&verify_token=test&challenge=test123")
-        
+        response = client.get(
+            "/webhook/messenger?mode=subscribe&verify_token=test&challenge=test123"
+        )
+
         # Should handle webhook verification
         assert response.status_code in [200, 400, 500]  # Various possible responses
 
 
 class TestAuthEndpoints:
     """Test authentication endpoints"""
-    
+
     def test_auth_health_endpoint(self, client):
         """Test auth health endpoint"""
         response = client.get("/auth/health")
-        
+
         assert response.status_code == 200
         # Should return some health information
         data = response.json()
         assert "status" in data or "message" in data
-    
+
     def test_auth_login_endpoint(self, client):
         """Test auth login endpoint"""
         response = client.get("/auth/login")
-        
+
         # TestClient follows redirects automatically, so we get the final response
         # The login endpoint redirects to home page, so we should get the home page content
         assert response.status_code == 200
@@ -160,46 +162,63 @@ class TestAuthEndpoints:
 
 class TestAdminEndpoints:
     """Test admin endpoints authentication and functionality"""
-    
+
     def test_admin_volunteers_endpoint_requires_auth(self, client, mock_google_sheets):
         """Test that admin volunteers endpoint requires authentication"""
         response = client.get("/admin/volunteers")
-        
+
         # ✅ Security issue has been fixed - endpoint is now properly protected
-        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
-        
+        assert (
+            response.status_code == 401
+        ), f"Expected 401 Unauthorized, got {response.status_code}"
+
         data = response.json()
         assert "detail" in data
         error_detail = data["detail"].lower()
-        assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
-    
+        assert any(
+            word in error_detail
+            for word in ["unauthorized", "authentication", "auth", "login"]
+        )
+
     def test_admin_dashboard_endpoint_requires_auth(self, client, mock_google_sheets):
         """Test that admin dashboard endpoint requires authentication"""
         response = client.get("/admin/dashboard")
-        
+
         # ✅ Security issue has been fixed - endpoint now returns 401 Unauthorized
-        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
-        
+        assert (
+            response.status_code == 401
+        ), f"Expected 401 Unauthorized, got {response.status_code}"
+
         data = response.json()
         assert "detail" in data
         error_detail = data["detail"].lower()
-        assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
-    
-    def test_admin_sync_volunteers_endpoint_requires_auth(self, client, mock_google_sheets):
+        assert any(
+            word in error_detail
+            for word in ["unauthorized", "authentication", "auth", "login"]
+        )
+
+    def test_admin_sync_volunteers_endpoint_requires_auth(
+        self, client, mock_google_sheets
+    ):
         """Test that admin sync volunteers endpoint requires authentication"""
         response = client.post("/admin/sync-volunteers")
-        
+
         # ✅ Security issue has been fixed - endpoint is now properly protected
-        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
-        
+        assert (
+            response.status_code == 401
+        ), f"Expected 401 Unauthorized, got {response.status_code}"
+
         data = response.json()
         assert "detail" in data
         error_detail = data["detail"].lower()
-        assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
-    
+        assert any(
+            word in error_detail
+            for word in ["unauthorized", "authentication", "auth", "login"]
+        )
+
     def test_admin_endpoints_consistent_auth_behavior(self, client, mock_google_sheets):
         """Test that all admin endpoints consistently require authentication
-        
+
         All admin endpoints now return 401 Unauthorized when accessed without authentication.
         """
         admin_endpoints = [
@@ -212,32 +231,37 @@ class TestAdminEndpoints:
             ("GET", "/admin/schedule-status"),
             ("GET", "/admin/email-logs"),
         ]
-        
+
         for method, endpoint in admin_endpoints:
             if method == "GET":
                 response = client.get(endpoint)
             else:
                 response = client.post(endpoint)
-            
+
             # All endpoints should return 401 Unauthorized when accessed without authentication
-            assert response.status_code == 401, f"{method} {endpoint} should return 401, got {response.status_code}"
-            
+            assert (
+                response.status_code == 401
+            ), f"{method} {endpoint} should return 401, got {response.status_code}"
+
             # Verify error response format
             data = response.json()
             assert "detail" in data
             assert isinstance(data["detail"], str)
             error_detail = data["detail"].lower()
-            assert any(word in error_detail for word in ["unauthorized", "authentication", "auth", "login"])
+            assert any(
+                word in error_detail
+                for word in ["unauthorized", "authentication", "auth", "login"]
+            )
 
 
 class TestBotEndpoints:
     """Test bot-related endpoints"""
-    
+
     def test_bot_health_endpoint_structure(self, client, mock_bot_service):
         """Test bot health endpoint structure"""
         try:
             response = client.get("/bot/health")
-            
+
             if response.status_code == 200:
                 data = response.json()
                 assert "status" in data
@@ -252,17 +276,17 @@ class TestBotEndpoints:
         except Exception:
             # Endpoint might not exist - that's okay for integration tests
             pytest.skip("Bot health endpoint not accessible")
-    
+
     def test_bot_chat_endpoint_structure(self, client, mock_bot_service):
         """Test bot chat endpoint structure"""
         try:
             chat_data = {
                 "message": "What qualifications do I need to volunteer?",
-                "user_id": "test_user_123"
+                "user_id": "test_user_123",
             }
-            
+
             response = client.post("/bot/chat", json=chat_data)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 assert "response" in data
@@ -276,31 +300,31 @@ class TestBotEndpoints:
 
 class TestDatabaseIntegration:
     """Test database integration with the API"""
-    
+
     def test_database_connection(self, client):
         """Test that database is accessible through the app"""
         # This test verifies that the database connection works
         # by trying to access a simple endpoint that uses the database
-        
+
         # Test that we can at least make a request to the app
         response = client.get("/")
         assert response.status_code == 200
-        
+
         # The fact that we get a response means the app started successfully
         # which means the database connection was established
-    
+
     def test_models_importable(self):
         """Test that database models can be imported and used"""
         # This verifies that the database models are properly configured
-        
+
         # Test that we can create model instances
         volunteer = Volunteer(
             name="Test Volunteer",
             email="test@example.com",
             positions=["Teacher"],
-            teaching_experience="Some experience"
+            teaching_experience="Some experience",
         )
-        
+
         # Test that the model has the expected attributes
         assert volunteer.name == "Test Volunteer"
         assert volunteer.email == "test@example.com"
@@ -309,17 +333,17 @@ class TestDatabaseIntegration:
 
 class TestServiceIntegration:
     """Test service integration with the API"""
-    
+
     def test_google_sheets_service_importable(self):
         """Test that Google Sheets service can be imported"""
         # This verifies that the service dependencies are properly configured
         assert sheets_service is not None
-    
+
     def test_email_service_importable(self):
         """Test that email service can be imported"""
         # This verifies that the service dependencies are properly configured
         assert email_service is not None
-    
+
     def test_bot_service_importable(self):
         """Test that bot service can be imported"""
         # This verifies that the service dependencies are properly configured
@@ -332,7 +356,8 @@ class TestServiceIntegration:
 # pytestmark = [
 #     pytest.mark.integration,
 #     pytest.mark.slow  # Mark as slow since these are integration tests
-# ] 
+# ]
+
 
 class TestRotateScheduleEndpoint:
     """Rotation failures must surface as HTTP errors so Cloud Scheduler alerts."""
@@ -340,21 +365,31 @@ class TestRotateScheduleEndpoint:
     @pytest.fixture
     def admin_client(self, client):
         from app.dependencies.auth import get_current_admin_user
+
         app.dependency_overrides[get_current_admin_user] = lambda: {
-            "id": "test-admin", "email": "admin@vietnamhearts.org"
+            "id": "test-admin",
+            "email": "admin@vietnamhearts.org",
         }
         yield client
         app.dependency_overrides.pop(get_current_admin_user, None)
 
     def test_rotation_failure_returns_500(self, admin_client):
-        with patch.object(sheets_service, "rotate_schedule_sheets", side_effect=Exception("boom")):
+        with patch.object(
+            sheets_service, "rotate_schedule_sheets", side_effect=Exception("boom")
+        ):
             response = admin_client.post("/admin/rotate-schedule")
         assert response.status_code == 500
         assert "boom" in response.json()["detail"]
 
     def test_partial_failure_returns_200_with_skip_message(self, admin_client):
-        result = {"sheets_failed": [{"title": "Schedule 07/07", "action": "hide", "error": "protected"}]}
-        with patch.object(sheets_service, "rotate_schedule_sheets", return_value=result):
+        result = {
+            "sheets_failed": [
+                {"title": "Schedule 07/07", "action": "hide", "error": "protected"}
+            ]
+        }
+        with patch.object(
+            sheets_service, "rotate_schedule_sheets", return_value=result
+        ):
             response = admin_client.post("/admin/rotate-schedule")
         assert response.status_code == 200
         body = response.json()
@@ -372,20 +407,33 @@ class TestSendWeeklyRemindersSkipLogic:
     @pytest.fixture
     def admin_client(self, client):
         from app.dependencies.auth import get_current_admin_user
+
         app.dependency_overrides[get_current_admin_user] = lambda: {
-            "id": "test-admin", "email": "admin@vietnamhearts.org"
+            "id": "test-admin",
+            "email": "admin@vietnamhearts.org",
         }
         yield client
         app.dependency_overrides.pop(get_current_admin_user, None)
 
     def test_skips_when_no_slots_need_filling(self, admin_client, mock_volunteer):
-        with patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]), \
-             patch.object(sheets_service, "get_current_schedule_dates", return_value=(datetime.now(), datetime.now())), \
-             patch.object(email_service, "build_class_table", return_value={
-                 "class_name": "Test Class", "table_html": "<table></table>",
-                 "has_data": True, "needs_volunteers": False,
-             }), \
-             patch.object(email_service, "send_custom_email") as mock_send:
+        with patch.object(
+            sheets_service, "get_schedule_blocks", return_value=["block"]
+        ), patch.object(
+            sheets_service,
+            "get_current_schedule_dates",
+            return_value=(datetime.now(), datetime.now()),
+        ), patch.object(
+            email_service,
+            "build_class_table",
+            return_value={
+                "class_name": "Test Class",
+                "table_html": "<table></table>",
+                "has_data": True,
+                "needs_volunteers": False,
+            },
+        ), patch.object(
+            email_service, "send_custom_email"
+        ) as mock_send:
             response = admin_client.post("/admin/send-weekly-reminders")
 
         assert response.status_code == 200
@@ -394,13 +442,24 @@ class TestSendWeeklyRemindersSkipLogic:
         mock_send.assert_not_called()
 
     def test_sends_when_a_slot_needs_filling(self, admin_client, mock_volunteer):
-        with patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]), \
-             patch.object(sheets_service, "get_current_schedule_dates", return_value=(datetime.now(), datetime.now())), \
-             patch.object(email_service, "build_class_table", return_value={
-                 "class_name": "Test Class", "table_html": "<table></table>",
-                 "has_data": True, "needs_volunteers": True,
-             }), \
-             patch.object(email_service, "send_custom_email", return_value=True) as mock_send:
+        with patch.object(
+            sheets_service, "get_schedule_blocks", return_value=["block"]
+        ), patch.object(
+            sheets_service,
+            "get_current_schedule_dates",
+            return_value=(datetime.now(), datetime.now()),
+        ), patch.object(
+            email_service,
+            "build_class_table",
+            return_value={
+                "class_name": "Test Class",
+                "table_html": "<table></table>",
+                "has_data": True,
+                "needs_volunteers": True,
+            },
+        ), patch.object(
+            email_service, "send_custom_email", return_value=True
+        ) as mock_send:
             response = admin_client.post("/admin/send-weekly-reminders")
 
         assert response.status_code == 200
