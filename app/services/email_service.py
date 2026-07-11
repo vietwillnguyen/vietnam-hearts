@@ -151,12 +151,15 @@ class EmailService:
                     # off days are written explicitly as "No Class {reason}".
                     status = "❌ Missing Teacher"
                     bg_color = "#ffcccc"
+                    needs_volunteers = True
                 elif block.has_head_ta and (not head_ta or "need volunteers" in head_ta_lower):
                     status = "❌ Missing Head TA"
                     bg_color = "#ffe5b4"
+                    needs_volunteers = True
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
+                    needs_volunteers = True
                 elif max_assistants is None:
                     status = f"✅ {current_assistants} assistant(s) signed up - No limit, TA's welcome to join"
                     bg_color = "#d4edda"
@@ -166,9 +169,6 @@ class EmailService:
                 else:
                     status = f"✅ Partially Covered ({current_assistants}/{max_assistants} assistants) - TA's welcome to join"
                     bg_color = "#d4edda"
-
-                if status.startswith("❌"):
-                    needs_volunteers = True
 
                 table_html += f"<tr style='background-color: {bg_color};'>"
                 table_html += f"<td style='{cell}'>{day}</td>"
