@@ -94,7 +94,12 @@ async def send_confirmation_emails(request: Request, db: Session = Depends(get_d
 
 @router.post("/send-weekly-reminders")
 async def send_weekly_reminder_emails(request: Request):
-    """Send weekly reminder emails to all active subscribed volunteers"""
+    """Send weekly reminder emails to all active subscribed volunteers.
+
+    Skips the send (returning status "skipped") if weekly reminders are
+    disabled globally, or if no class has an open teacher/head TA/assistant
+    slot for the current week.
+    """
     try:
         with get_db_session() as db:
             if not ConfigHelper.get_weekly_reminders_enabled(db):

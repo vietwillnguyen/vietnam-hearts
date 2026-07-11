@@ -91,6 +91,11 @@ class EmailService:
         Columns: Day / Teacher / [Head Assistant] / Assistant(s) / Status.
         The Head Assistant column is only rendered for classes that actually have
         a head TA row (block.has_head_ta). max_assistants of None means no limit.
+
+        The returned dict includes a `needs_volunteers` flag (True if any day is
+        missing a teacher, head TA, or assistant) that callers use to decide
+        whether a class still has an open slot. On parse failure the flag
+        defaults to True so a parsing bug never silently suppresses a reminder.
         """
         try:
             days = block.days
