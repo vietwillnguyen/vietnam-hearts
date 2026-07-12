@@ -43,10 +43,13 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # Copy application files from builder (already copied there)
+# Note: secrets/ is intentionally not copied here - it's gitignored and never
+# present in the build context. The app falls back to Application Default
+# Credentials when secrets/google_credentials.json is missing (see
+# app/utils/google_credentials.py).
 COPY --from=builder /build/app/ ./app/
 COPY --from=builder /build/static/ ./static/
 COPY --from=builder /build/templates/ ./templates/
-COPY --from=builder /build/secrets/ ./secrets/
 
 # Create logs directory and set permissions BEFORE switching user
 RUN mkdir -p /app/logs && chown -R app:app /app/logs
