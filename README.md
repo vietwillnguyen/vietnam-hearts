@@ -84,7 +84,7 @@ The application uses the following environment variables (see `env.template` for
 
 #### Google Sheets Integration
 - `SCHEDULE_SIGNUP_LINK` - Main schedule Google Sheets ID
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON. Optional: if the file doesn't exist (e.g. on Cloud Run), the app falls back to Application Default Credentials, self-impersonating the runtime service account to get Sheets/Drive/Docs-scoped tokens
 - `SERVICE_ACCOUNT_EMAIL` - Google service account email
 
 #### AI & Knowledge Base
@@ -113,6 +113,10 @@ The application uses the following environment variables (see `env.template` for
    - Create a new service account
    - Download the JSON credentials file
    - Place it at `secrets/google_credentials.json`
+   - On Cloud Run, you can skip the key file entirely: grant the Cloud Run
+     service's runtime service account the `roles/iam.serviceAccountTokenCreator`
+     role on itself, and the app will self-impersonate to mint Sheets/Drive/Docs-scoped
+     tokens from Application Default Credentials (see `app/utils/google_credentials.py`)
 
 4. **Share Google Sheets**:
    - Share your schedule and signup sheets with the service account email
@@ -313,9 +317,12 @@ The workflow (`.github/workflows/test.yml`) includes:
    ```
 
 2. **"Google credentials not found"**:
-   - Ensure `secrets/google_credentials.json` exists
+   - Ensure `secrets/google_credentials.json` exists, or that Application Default
+     Credentials are available (e.g. Cloud Run's attached service account)
    - Check file permissions
    - Verify service account setup
+   - On Cloud Run with no key file, confirm the runtime service account has
+     `roles/iam.serviceAccountTokenCreator` on itself (required for self-impersonation)
 
 3. **"Email sending failed"**:
    - Verify Gmail app password is correct
@@ -325,7 +332,8 @@ The workflow (`.github/workflows/test.yml`) includes:
 4. **"Google Sheets access denied"**:
    - Share sheets with service account email
    - Verify API is enabled in Google Cloud Console
-   - Check credentials file path in `.env`
+   - Check credentials file path in `.env`, or Application Default Credentials
+     setup if no credentials file is used
 
 ### Debug Mode
 

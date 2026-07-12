@@ -96,6 +96,9 @@ GOOGLE_OAUTH_CLIENT_ID=your-google-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-client-secret
 
 # Google Service Account (for Google Sheets)
+# Optional: if this path doesn't exist, the app falls back to Application
+# Default Credentials, self-impersonating the runtime service account
+# (e.g. on Cloud Run) to obtain Sheets/Drive/Docs-scoped tokens.
 GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 ```
 
