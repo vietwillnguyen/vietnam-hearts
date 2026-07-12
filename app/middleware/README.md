@@ -66,6 +66,7 @@ Provides consistent error handling and response formatting.
 - Standardized error response format
 - Request ID tracking
 - Environment-based error detail level
+- Reports unhandled exceptions to Sentry via `sentry_sdk.capture_exception()` (no-op if `SENTRY_DSN` is unset). This middleware catches exceptions before Sentry's own ASGI instrumentation would see them, so reporting must happen here explicitly.
 
 **Configuration:**
 ```python
