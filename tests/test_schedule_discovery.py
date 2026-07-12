@@ -13,8 +13,7 @@ sheet shapes that broke the weekly reminder email:
 - non-class header/announcement rows that must be ignored
 """
 
-import pytest
-from app.services.schedule_parser import discover_schedule_blocks, ClassBlock
+from app.services.schedule_parser import ClassBlock, discover_schedule_blocks
 
 
 def _grade2a_rows():
@@ -48,7 +47,11 @@ class TestDiscoverScheduleBlocks:
         rows = [
             ["Combined 3 & 4\n9:30 - 10:30 AM", "Mon", "Tue"],
             ["Teacher", "Lydie", "Need Volunteers"],
-            ["Head Assistant (min 1), must handle attendance and supply box", "Thanh Thao", "Michael"],
+            [
+                "Head Assistant (min 1), must handle attendance and supply box",
+                "Thanh Thao",
+                "Michael",
+            ],
             ["Assistants MAX 1", "Hai Chau, Florian", "Trang Vo"],
             ["Curriculum & Lesson Plan", "1-20", "[link]"],
         ]
@@ -73,8 +76,8 @@ class TestDiscoverScheduleBlocks:
         # header. Padding must happen on the RIGHT to keep day alignment correct.
         rows = [
             ["Grade Y\n10 AM", "Mon", "Tue", "Wed"],
-            ["Teacher", "A"],          # Tue, Wed trimmed away
-            ["Assistants MAX 2"],      # all day values trimmed away
+            ["Teacher", "A"],  # Tue, Wed trimmed away
+            ["Assistants MAX 2"],  # all day values trimmed away
         ]
         b = discover_schedule_blocks(rows)[0]
         assert b.days == ("Mon", "Tue", "Wed")
@@ -83,11 +86,15 @@ class TestDiscoverScheduleBlocks:
         assert b.max_assistants == 2
 
     def test_multiple_blocks_separated_by_blank_rows(self):
-        rows = _grade2a_rows() + [[]] + [
-            ["Grade 2B\n9:30 - 10:30 AM", "Mon", "Tue", "Wed", "Thu", "Fri"],
-            ["Teacher", "", "Trúc", "", "Thanh Thao", ""],
-            ["Assistants MAX 2", "", "Yến, Thomas", "", "Trâm Võ; Vi", ""],
-        ]
+        rows = (
+            _grade2a_rows()
+            + [[]]
+            + [
+                ["Grade 2B\n9:30 - 10:30 AM", "Mon", "Tue", "Wed", "Thu", "Fri"],
+                ["Teacher", "", "Trúc", "", "Thanh Thao", ""],
+                ["Assistants MAX 2", "", "Yến, Thomas", "", "Trâm Võ; Vi", ""],
+            ]
+        )
         blocks = discover_schedule_blocks(rows)
         assert [b.name for b in blocks] == ["Grade 2A", "Grade 2B"]
         assert blocks[1].max_assistants == 2

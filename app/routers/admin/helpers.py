@@ -3,6 +3,7 @@ Shared helpers used across multiple admin sub-routers.
 """
 
 from datetime import datetime
+
 from app.models import Volunteer as VolunteerModel
 from app.utils.logging_config import get_api_logger
 
@@ -45,7 +46,9 @@ def get_volunteer_summary(volunteers):
                 "weekly_reminders_subscribed": volunteer.weekly_reminders_subscribed,
                 "all_emails_subscribed": volunteer.all_emails_subscribed,
                 "confirmation_sent": confirmation_sent,
-                "last_confirmation_date": last_confirmation.sent_at if last_confirmation else None,
+                "last_confirmation_date": last_confirmation.sent_at
+                if last_confirmation
+                else None,
                 "positions": volunteer.positions or [],
                 "created_at": volunteer.created_at,
             }
@@ -83,16 +86,24 @@ def create_new_volunteer_object(submission: dict) -> VolunteerModel:
         name=full_name,
         email=submission["email_address"],
         phone=submission["phone_number"],
-        positions=[pos.strip() for pos in submission["position_interest"].split(",")] if submission.get("position_interest") else [],
+        positions=[pos.strip() for pos in submission["position_interest"].split(",")]
+        if submission.get("position_interest")
+        else [],
         location=submission["location"],
-        availability=[slot.strip() for slot in submission["availability"].split(",")] if submission.get("availability") else [],
+        availability=[slot.strip() for slot in submission["availability"].split(",")]
+        if submission.get("availability")
+        else [],
         start_date=parse_start_date(submission["start_date"]),
         commitment_duration=submission["commitment_duration"],
         teaching_experience=submission["teaching_experience"],
         experience_details=submission["experience_details"],
         teaching_certificate=submission["teaching_certificate"],
         vietnamese_proficiency=submission["vietnamese_speaking"],
-        additional_support=[support.strip() for support in submission["other_support"].split(",")] if submission.get("other_support") else [],
+        additional_support=[
+            support.strip() for support in submission["other_support"].split(",")
+        ]
+        if submission.get("other_support")
+        else [],
         additional_info=f"Social Media: {submission.get('social_media_link', 'N/A')}\nReferral Source: {submission.get('referral_source', 'N/A')}",
         is_active=True,
     )

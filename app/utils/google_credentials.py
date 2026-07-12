@@ -8,8 +8,7 @@ Self-impersonation via the IAM Credentials API mints a token with the literal
 scopes requested, sidestepping that limitation without needing a stored key.
 """
 
-from functools import lru_cache
-from typing import List, Tuple
+from functools import cache
 
 import google.auth
 from google.auth import impersonated_credentials
@@ -20,13 +19,13 @@ from google.oauth2 import service_account
 from app.config import GOOGLE_APPLICATION_CREDENTIALS
 
 
-def get_scoped_credentials(scopes: List[str]):
+def get_scoped_credentials(scopes: list[str]):
     """Return credentials authorized for the given OAuth scopes."""
     return _get_scoped_credentials_cached(tuple(sorted(scopes)))
 
 
-@lru_cache(maxsize=None)
-def _get_scoped_credentials_cached(scopes: Tuple[str, ...]):
+@cache
+def _get_scoped_credentials_cached(scopes: tuple[str, ...]):
     if GOOGLE_APPLICATION_CREDENTIALS.exists():
         return service_account.Credentials.from_service_account_file(
             str(GOOGLE_APPLICATION_CREDENTIALS), scopes=list(scopes)

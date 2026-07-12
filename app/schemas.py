@@ -5,9 +5,9 @@ These schemas define the structure of data that can be sent to and received from
 They provide automatic validation and serialization of data.
 """
 
-from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
 
 
 class VolunteerBase(BaseModel):
@@ -15,18 +15,18 @@ class VolunteerBase(BaseModel):
 
     name: str
     email: str
-    phone: Optional[str] = None
-    location: Optional[str] = None
-    positions: Optional[List[str]] = None
-    availability: Optional[List[str]] = None
-    start_date: Optional[datetime] = None
-    commitment_duration: Optional[str] = None
-    teaching_experience: Optional[str] = None
-    experience_details: Optional[str] = None
-    teaching_certificate: Optional[str] = None
-    vietnamese_proficiency: Optional[str] = None
-    additional_support: Optional[List[str]] = None
-    additional_info: Optional[str] = None
+    phone: str | None = None
+    location: str | None = None
+    positions: list[str] | None = None
+    availability: list[str] | None = None
+    start_date: datetime | None = None
+    commitment_duration: str | None = None
+    teaching_experience: str | None = None
+    experience_details: str | None = None
+    teaching_certificate: str | None = None
+    vietnamese_proficiency: str | None = None
+    additional_support: list[str] | None = None
+    additional_info: str | None = None
     is_active: bool = True
 
 
@@ -41,8 +41,8 @@ class Volunteer(VolunteerBase):
 
     id: int
     created_at: datetime
-    email_unsubscribe_token: Optional[str] = None
-    last_email_sent_at: Optional[datetime] = None
+    email_unsubscribe_token: str | None = None
+    last_email_sent_at: datetime | None = None
 
     # Granular unsubscribe options
     weekly_reminders_subscribed: bool = True
@@ -58,9 +58,9 @@ class EmailCommunicationBase(BaseModel):
     recipient_email: str
     email_type: str
     subject: str
-    template_name: Optional[str] = None
+    template_name: str | None = None
     status: str = "PENDING"
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class EmailCommunicationCreate(EmailCommunicationBase):
@@ -73,38 +73,48 @@ class EmailCommunication(EmailCommunicationBase):
     """Schema for email communication responses"""
 
     id: int
-    sent_at: Optional[datetime] = None
-    delivered_at: Optional[datetime] = None
+    sent_at: datetime | None = None
+    delivered_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
+
 # Settings schemas
 class SettingBase(BaseModel):
     """Base schema for setting data"""
+
     key: str
     value: str
-    description: Optional[str] = None
+    description: str | None = None
+
 
 class SettingCreate(SettingBase):
     """Schema for creating a new setting"""
+
     pass
+
 
 class SettingUpdate(BaseModel):
     """Schema for updating a setting"""
+
     value: str
-    description: Optional[str] = None
+    description: str | None = None
+
 
 class Setting(SettingBase):
     """Schema for setting responses"""
+
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
+
 class SettingsList(BaseModel):
     """Schema for listing all settings"""
-    settings: List[Setting]
+
+    settings: list[Setting]
     total: int

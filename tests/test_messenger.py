@@ -7,10 +7,10 @@ Tests cover:
 - Echo functionality (Phase 1)
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-from app.main import app
 
 pytestmark = pytest.mark.skip(reason="Messenger integration disabled — not functional")
 
@@ -26,10 +26,10 @@ class TestMessengerWebhook:
                 params={
                     "mode": "subscribe",
                     "verify_token": "test_token",
-                    "challenge": "1234567890"
-                }
+                    "challenge": "1234567890",
+                },
             )
-            
+
             assert response.status_code == 200
             assert response.json() == 1234567890
 
@@ -41,10 +41,10 @@ class TestMessengerWebhook:
                 params={
                     "mode": "subscribe",
                     "verify_token": "wrong_token",
-                    "challenge": "1234567890"
-                }
+                    "challenge": "1234567890",
+                },
             )
-            
+
             assert response.status_code == 200
             assert "error" in response.json()
 
@@ -56,10 +56,10 @@ class TestMessengerWebhook:
                 params={
                     "mode": "subscribe",
                     "verify_token": "test_token",
-                    "challenge": "1234567890"
-                }
+                    "challenge": "1234567890",
+                },
             )
-            
+
             assert response.status_code == 200
             assert "error" in response.json()
 
@@ -69,7 +69,7 @@ class TestMessengerWebhook:
             mock_sender = MagicMock()
             mock_sender.send_text_message.return_value = True
             mock_get_sender.return_value = mock_sender
-            
+
             webhook_payload = {
                 "object": "page",
                 "entry": [
@@ -81,31 +81,24 @@ class TestMessengerWebhook:
                                 "sender": {"id": "user_id"},
                                 "recipient": {"id": "page_id"},
                                 "timestamp": 1234567890,
-                                "message": {
-                                    "mid": "message_id",
-                                    "text": "Hello, bot!"
-                                }
+                                "message": {"mid": "message_id", "text": "Hello, bot!"},
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
-            
+
             response = client.post("/webhook/messenger", json=webhook_payload)
-            
+
             assert response.status_code == 200
             assert response.json()["status"] == "success"
-            
 
     def test_handle_webhook_invalid_object(self, client: TestClient):
         """Test handling webhook with invalid object type"""
-        webhook_payload = {
-            "object": "user",
-            "entry": []
-        }
-        
+        webhook_payload = {"object": "user", "entry": []}
+
         response = client.post("/webhook/messenger", json=webhook_payload)
-        
+
         assert response.status_code == 200
         assert response.json()["status"] == "error"
 
@@ -115,7 +108,7 @@ class TestMessengerWebhook:
             mock_sender = MagicMock()
             mock_sender.send_text_message.return_value = True
             mock_get_sender.return_value = mock_sender
-            
+
             webhook_payload = {
                 "object": "page",
                 "entry": [
@@ -129,19 +122,19 @@ class TestMessengerWebhook:
                                 "timestamp": 1234567890,
                                 "postback": {
                                     "mid": "postback_id",
-                                    "payload": "GET_STARTED"
-                                }
+                                    "payload": "GET_STARTED",
+                                },
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
-            
+
             response = client.post("/webhook/messenger", json=webhook_payload)
-            
+
             assert response.status_code == 200
             assert response.json()["status"] == "success"
-            
+
             # Verify message sender was called
             mock_sender.send_text_message.assert_called_once_with(
                 "user_id", "Postback received: GET_STARTED"
@@ -159,37 +152,34 @@ class TestMessengerWebhook:
                         {
                             "recipient": {"id": "page_id"},
                             "timestamp": 1234567890,
-                            "message": {
-                                "mid": "message_id",
-                                "text": "Hello, bot!"
-                            }
+                            "message": {"mid": "message_id", "text": "Hello, bot!"},
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         response = client.post("/webhook/messenger", json=webhook_payload)
-        
+
         assert response.status_code == 200
         assert response.json()["status"] == "success"
 
     def test_messenger_configuration_endpoint(self, client: TestClient):
         """Test the messenger configuration test endpoint"""
-        with patch("app.routers.messenger.FACEBOOK_VERIFY_TOKEN", "test_token"), \
-             patch("app.routers.messenger.FACEBOOK_ACCESS_TOKEN", "test_access_token"), \
-             patch("app.routers.messenger.MessageSender") as mock_sender_class:
-            
+        with (
+            patch("app.routers.messenger.FACEBOOK_VERIFY_TOKEN", "test_token"),
+            patch("app.routers.messenger.FACEBOOK_ACCESS_TOKEN", "test_access_token"),
+            patch("app.routers.messenger.MessageSender") as mock_sender_class,
+        ):
             mock_sender = MagicMock()
             mock_sender.get_page_info.return_value = {"name": "Test Page", "id": "123"}
             mock_sender_class.return_value = mock_sender
-            
+
             response = client.get("/test-messenger")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "success"
             assert data["config"]["FACEBOOK_VERIFY_TOKEN"] is True
             assert data["config"]["FACEBOOK_ACCESS_TOKEN"] is True
             assert data["webhook_url"] == "/webhook/messenger"
-

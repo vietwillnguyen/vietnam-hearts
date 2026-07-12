@@ -7,15 +7,16 @@ Focuses on integration testing rather than unit testing.
 """
 
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+
 from app.main import app
 from app.models import Volunteer
-from app.services.google_sheets import sheets_service
-from app.services.email_service import email_service
 from app.services.bot_service import BotService
-from unittest.mock import patch, MagicMock
+from app.services.email_service import email_service
+from app.services.google_sheets import sheets_service
 
 # Test client
 client = TestClient(app)
@@ -416,24 +417,25 @@ class TestSendWeeklyRemindersSkipLogic:
         app.dependency_overrides.pop(get_current_admin_user, None)
 
     def test_skips_when_no_slots_need_filling(self, admin_client, mock_volunteer):
-        with patch.object(
-            sheets_service, "get_schedule_blocks", return_value=["block"]
-        ), patch.object(
-            sheets_service,
-            "get_current_schedule_dates",
-            return_value=(datetime.now(), datetime.now()),
-        ), patch.object(
-            email_service,
-            "build_class_table",
-            return_value={
-                "class_name": "Test Class",
-                "table_html": "<table></table>",
-                "has_data": True,
-                "needs_volunteers": False,
-            },
-        ), patch.object(
-            email_service, "send_custom_email"
-        ) as mock_send:
+        with (
+            patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]),
+            patch.object(
+                sheets_service,
+                "get_current_schedule_dates",
+                return_value=(datetime.now(), datetime.now()),
+            ),
+            patch.object(
+                email_service,
+                "build_class_table",
+                return_value={
+                    "class_name": "Test Class",
+                    "table_html": "<table></table>",
+                    "has_data": True,
+                    "needs_volunteers": False,
+                },
+            ),
+            patch.object(email_service, "send_custom_email") as mock_send,
+        ):
             response = admin_client.post("/admin/send-weekly-reminders")
 
         assert response.status_code == 200
@@ -442,24 +444,27 @@ class TestSendWeeklyRemindersSkipLogic:
         mock_send.assert_not_called()
 
     def test_sends_when_a_slot_needs_filling(self, admin_client, mock_volunteer):
-        with patch.object(
-            sheets_service, "get_schedule_blocks", return_value=["block"]
-        ), patch.object(
-            sheets_service,
-            "get_current_schedule_dates",
-            return_value=(datetime.now(), datetime.now()),
-        ), patch.object(
-            email_service,
-            "build_class_table",
-            return_value={
-                "class_name": "Test Class",
-                "table_html": "<table></table>",
-                "has_data": True,
-                "needs_volunteers": True,
-            },
-        ), patch.object(
-            email_service, "send_custom_email", return_value=True
-        ) as mock_send:
+        with (
+            patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]),
+            patch.object(
+                sheets_service,
+                "get_current_schedule_dates",
+                return_value=(datetime.now(), datetime.now()),
+            ),
+            patch.object(
+                email_service,
+                "build_class_table",
+                return_value={
+                    "class_name": "Test Class",
+                    "table_html": "<table></table>",
+                    "has_data": True,
+                    "needs_volunteers": True,
+                },
+            ),
+            patch.object(
+                email_service, "send_custom_email", return_value=True
+            ) as mock_send,
+        ):
             response = admin_client.post("/admin/send-weekly-reminders")
 
         assert response.status_code == 200

@@ -5,9 +5,11 @@ Handles fetching documents from Google Drive and splitting them into chunks for 
 """
 
 import re
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
 from app.utils.google_credentials import get_scoped_credentials
 from app.utils.logging_config import get_api_logger
 
@@ -77,7 +79,7 @@ class DocumentService:
             logger.error(f"Error fetching document {doc_id}: {e}")
             raise
 
-    def _extract_text(self, document: Dict[str, Any]) -> str:
+    def _extract_text(self, document: dict[str, Any]) -> str:
         """
         Extract plain text from Google Doc structure
 
@@ -117,7 +119,7 @@ class DocumentService:
 
     def split_into_chunks(
         self, content: str, chunk_size: int = 1000, overlap: int = 100
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Split document into overlapping chunks for embedding
 
@@ -176,8 +178,8 @@ class DocumentService:
             raise
 
     async def list_available_docs(
-        self, folder_id: Optional[str] = None
-    ) -> List[Dict[str, str]]:
+        self, folder_id: str | None = None
+    ) -> list[dict[str, str]]:
         """
         List available Google Docs
 

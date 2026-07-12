@@ -13,7 +13,8 @@ def admin_client(client):
     from app.dependencies.auth import get_current_admin_user
 
     app.dependency_overrides[get_current_admin_user] = lambda: {
-        "id": "test-admin", "email": "admin@vietnamhearts.org"
+        "id": "test-admin",
+        "email": "admin@vietnamhearts.org",
     }
     yield client
     app.dependency_overrides.pop(get_current_admin_user, None)
@@ -23,13 +24,20 @@ def admin_client(client):
 def seeded_logs(test_db):
     base = datetime(2026, 7, 9, 12, 0, 0)
     rows = [
-        SystemLog(created_at=base + timedelta(minutes=i), level=level, logger_name=name, message=msg)
-        for i, (level, name, msg) in enumerate([
-            ("INFO", "app", "server started"),
-            ("ERROR", "api", "rotation failed: protected sheet"),
-            ("WARNING", "api", "could not hide sheet"),
-            ("INFO", "scheduler", "weekly reminder sent"),
-        ])
+        SystemLog(
+            created_at=base + timedelta(minutes=i),
+            level=level,
+            logger_name=name,
+            message=msg,
+        )
+        for i, (level, name, msg) in enumerate(
+            [
+                ("INFO", "app", "server started"),
+                ("ERROR", "api", "rotation failed: protected sheet"),
+                ("WARNING", "api", "could not hide sheet"),
+                ("INFO", "scheduler", "weekly reminder sent"),
+            ]
+        )
     ]
     test_db.add_all(rows)
     test_db.commit()

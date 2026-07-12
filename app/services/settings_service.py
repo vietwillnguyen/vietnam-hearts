@@ -5,20 +5,22 @@ This service provides functions to get and set configuration settings
 that are stored in the database rather than environment variables.
 """
 
-from sqlalchemy.orm import Session
-from typing import Optional, Dict, List
-from app.models import Setting
 from datetime import datetime, timezone
 
-def get_setting(db: Session, key: str, default: Optional[str] = None) -> Optional[str]:
+from sqlalchemy.orm import Session
+
+from app.models import Setting
+
+
+def get_setting(db: Session, key: str, default: str | None = None) -> str | None:
     """
     Get a setting value from the database
-    
+
     Args:
         db: Database session
         key: Setting key to retrieve
         default: Default value if setting doesn't exist
-        
+
     Returns:
         The setting value or default if not found
     """
@@ -28,34 +30,32 @@ def get_setting(db: Session, key: str, default: Optional[str] = None) -> Optiona
     return setting.value if setting else default
 
 
-def set_setting(db: Session, key: str, value: str, description: Optional[str] = None) -> Setting:
+def set_setting(
+    db: Session, key: str, value: str, description: str | None = None
+) -> Setting:
     """
     Set a setting value in the database
-    
+
     Args:
         db: Database session
         key: Setting key to set
         value: Value to set
         description: Optional description of the setting
-        
+
     Returns:
         The Setting object that was created or updated
     """
     setting = db.query(Setting).filter(Setting.key == key).first()
-    
+
     if setting:
         setting.value = value
         setting.updated_at = datetime.now(timezone.utc)
         if description:
             setting.description = description
     else:
-        setting = Setting(
-            key=key, 
-            value=value, 
-            description=description
-        )
+        setting = Setting(key=key, value=value, description=description)
         db.add(setting)
-    
+
     db.commit()
     db.refresh(setting)
     return setting
@@ -64,11 +64,11 @@ def set_setting(db: Session, key: str, value: str, description: Optional[str] = 
 def delete_setting(db: Session, key: str) -> bool:
     """
     Delete a setting from the database
-    
+
     Args:
         db: Database session
         key: Setting key to delete
-        
+
     Returns:
         True if setting was deleted, False if it didn't exist
     """
@@ -80,26 +80,26 @@ def delete_setting(db: Session, key: str) -> bool:
     return False
 
 
-def get_all_settings(db: Session) -> List[Setting]:
+def get_all_settings(db: Session) -> list[Setting]:
     """
     Get all settings from the database
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         List of all Setting objects
     """
     return db.query(Setting).all()
 
 
-def get_settings_dict(db: Session) -> Dict[str, str]:
+def get_settings_dict(db: Session) -> dict[str, str]:
     """
     Get all settings as a dictionary
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         Dictionary mapping setting keys to values
     """
@@ -110,73 +110,65 @@ def get_settings_dict(db: Session) -> Dict[str, str]:
 def initialize_default_settings(db: Session) -> None:
     """
     Initialize default settings in the database if they don't exist
-    
+
     This should be called during application startup to ensure
     all required settings have default values.
     """
     default_settings = {
         "DRY_RUN": {
             "value": "false",
-            "description": "If true, the system will only send emails to the dry run email recipient"
+            "description": "If true, the system will only send emails to the dry run email recipient",
         },
         "DRY_RUN_EMAIL_RECIPIENT": {
             "value": "",
-            "description": "Email address to send dry run emails to"
+            "description": "Email address to send dry run emails to",
         },
         "WEEKLY_REMINDERS_ENABLED": {
             "value": "true",
-            "description": "If false, weekly reminder emails will be disabled globally"
+            "description": "If false, weekly reminder emails will be disabled globally",
         },
-"INVITE_LINK_ZALO": {
+        "INVITE_LINK_ZALO": {
             "value": "https://zalo.me/g/gcmgkowx6gvotsghvsji",
-            "description": "Zalo group chat invite link"
+            "description": "Zalo group chat invite link",
         },
         "ONBOARDING_GUIDE_LINK": {
             "value": "",
-            "description": "Link to the onboarding guide for new volunteers"
+            "description": "Link to the onboarding guide for new volunteers",
         },
-        "INSTAGRAM_LINK": {
-            "value": "",
-            "description": "Link to Instagram profile"
-        },
-        "FACEBOOK_PAGE_LINK": {
-            "value": "",
-            "description": "Link to Facebook page"
-        },
+        "INSTAGRAM_LINK": {"value": "", "description": "Link to Instagram profile"},
+        "FACEBOOK_PAGE_LINK": {"value": "", "description": "Link to Facebook page"},
         "SCHEDULE_SIGNUP_LINK": {
             "value": "",
-            "description": "Google Sheets URL for the schedule spreadsheet. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)"
+            "description": "Google Sheets URL for the schedule spreadsheet. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)",
         },
         "NEW_SIGNUPS_RESPONSES_LINK": {
             "value": "",
-            "description": "Google Sheets URL for new volunteer signups. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)"
+            "description": "Google Sheets URL for new volunteer signups. You can paste the full URL (e.g. https://docs.google.com/spreadsheets/d/1234567890/edit) or just the sheet ID (1234567890)",
         },
         "SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT": {
             "value": "4",
-            "description": "The default number of weeks to display in the schedule sheets"
+            "description": "The default number of weeks to display in the schedule sheets",
         },
         "CRON_SYNC_VOLUNTEERS": {
             "value": "0 */2 * * *",
-            "description": "Cron schedule for syncing volunteers from Google Sheets (default: every 2 hours)"
+            "description": "Cron schedule for syncing volunteers from Google Sheets (default: every 2 hours)",
         },
         "CRON_SEND_WEEKLY_REMINDERS": {
             "value": "0 12 * * 0",
-            "description": "Cron schedule for sending weekly reminder emails (default: every Sunday at 12:00 PM)"
+            "description": "Cron schedule for sending weekly reminder emails (default: every Sunday at 12:00 PM)",
         },
         "CRON_ROTATE_SCHEDULE": {
             "value": "0 17 * * 5",
-            "description": "Cron schedule for rotating schedule sheets (default: every Friday at 5:00 PM)"
+            "description": "Cron schedule for rotating schedule sheets (default: every Friday at 5:00 PM)",
         },
     }
-    
+
     for key, config in default_settings.items():
         existing = db.query(Setting).filter(Setting.key == key).first()
         if not existing:
             setting = Setting(
-                key=key,
-                value=config["value"],
-                description=config["description"]
+                key=key, value=config["value"], description=config["description"]
             )
             db.add(setting)
-    
-    db.commit() 
+
+    db.commit()

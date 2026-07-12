@@ -1,28 +1,34 @@
 import os
+
 os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared"
 # Keep app loggers from writing into the shared test DB; tests that verify
 # the persistence wiring opt back in with monkeypatch on fresh logger names.
 os.environ["PERSIST_LOGS_TO_DB"] = "false"
+import logging
 import secrets
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from unittest.mock import patch, MagicMock
+from app.models import Base
+from app.models import Volunteer as VolunteerModel
 
-from app.models import Base, Volunteer as VolunteerModel
-
-import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def mock_supabase_dependencies():
     """Mock Supabase dependencies to prevent import errors during testing"""
-    with patch("app.services.auth_service.auth_service", MagicMock()), \
-         patch("app.services.admin_service.admin_service", MagicMock()):
+    with (
+        patch("app.services.auth_service.auth_service", MagicMock()),
+        patch("app.services.admin_service.admin_service", MagicMock()),
+    ):
         yield
+
 
 @pytest.fixture(scope="session", autouse=True)
 def set_test_env():
@@ -35,7 +41,7 @@ def set_test_env():
 def test_engine():
     engine = create_engine(
         "sqlite:///file::memory:?cache=shared",
-        connect_args={"check_same_thread": False, "uri": True}
+        connect_args={"check_same_thread": False, "uri": True},
     )
     return engine
 
@@ -56,6 +62,7 @@ def test_db(test_engine):
 @pytest.fixture
 def client(test_engine, test_db):
     import app.database as app_db
+
     app_db.engine = test_engine
     app_db.SessionLocal = sessionmaker(bind=test_engine)
 
@@ -64,6 +71,7 @@ def client(test_engine, test_db):
 
     with patch("app.config.validate_config"):
         from app.main import app
+
         app.dependency_overrides[app_db.get_db] = override_get_db
 
         # ✅ Use TestClient as a context manager to trigger `lifespan`
@@ -71,6 +79,7 @@ def client(test_engine, test_db):
             yield test_client
 
         app.dependency_overrides.clear()
+
 
 @pytest.fixture(autouse=True, scope="session")
 def enable_logging_for_tests():
@@ -84,6 +93,7 @@ def enable_logging_for_tests():
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.DEBUG)
         logger.propagate = True
+
 
 @pytest.fixture
 def mock_volunteer(test_db):
@@ -101,6 +111,7 @@ def mock_volunteer(test_db):
     test_db.commit()
     test_db.refresh(volunteer)
     return volunteer
+
 
 @pytest.fixture
 def mock_inactive_volunteer(test_db):

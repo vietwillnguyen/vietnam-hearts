@@ -8,6 +8,7 @@ Dynamic configuration (database settings) are managed via the settings service.
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -48,8 +49,9 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
 SUPABASE_JWKS_URL = os.getenv("SUPABASE_JWKS_URL")
-ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAILS") else []
-
+ADMIN_EMAILS = (
+    os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAILS") else []
+)
 
 
 # Google OAuth Configuration for Supabase Auth
@@ -61,6 +63,10 @@ FACEBOOK_VERIFY_TOKEN = os.getenv("FACEBOOK_VERIFY_TOKEN")
 FACEBOOK_ACCESS_TOKEN = os.getenv("FACEBOOK_ACCESS_TOKEN")
 FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
+
+# Sentry Error Tracking (optional - error tracking disabled if unset)
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
 
 # Required Environment Variables (only in production)
 REQUIRED_ENV_VARS = [

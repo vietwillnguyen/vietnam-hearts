@@ -9,7 +9,6 @@ parse to None and are therefore excluded from rotation logic.
 """
 
 from datetime import datetime
-from typing import Optional
 
 SCHEDULE_TITLE_PREFIX = "Schedule "
 
@@ -20,8 +19,8 @@ def format_schedule_sheet_title(date: datetime) -> str:
 
 
 def parse_schedule_sheet_title(
-    title: str, default_year: Optional[int] = None
-) -> Optional[datetime]:
+    title: str, default_year: int | None = None
+) -> datetime | None:
     """
     Parse a schedule sheet title into a datetime.
 
@@ -32,7 +31,7 @@ def parse_schedule_sheet_title(
     """
     if not title or not title.startswith(SCHEDULE_TITLE_PREFIX):
         return None
-    date_part = title[len(SCHEDULE_TITLE_PREFIX):].strip()
+    date_part = title[len(SCHEDULE_TITLE_PREFIX) :].strip()
     if not date_part:
         return None
 

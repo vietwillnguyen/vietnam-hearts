@@ -1,115 +1,127 @@
 from app.models import EmailCommunication as EmailCommunicationModel
 
+
 class TestUpdateEmailPreferences:
     """Test the POST /unsubscribe endpoint"""
-    
+
     def test_unsubscribe_weekly_reminders(self, client, test_db, mock_volunteer):
         """Test unsubscribing from weekly reminders only"""
         print(f"Testing with volunteer token: {mock_volunteer.email_unsubscribe_token}")
-        print(f"Volunteer in DB: {test_db.query(type(mock_volunteer)).filter_by(email_unsubscribe_token=mock_volunteer.email_unsubscribe_token).first()}")
-        
+        print(
+            f"Volunteer in DB: {test_db.query(type(mock_volunteer)).filter_by(email_unsubscribe_token=mock_volunteer.email_unsubscribe_token).first()}"
+        )
+
         response = client.post(
             f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
-            files={"unsubscribe_type": (None, "weekly_reminders")}
+            files={"unsubscribe_type": (None, "weekly_reminders")},
         )
-        
+
         print(f"Response status: {response.status_code}")
         print(f"Response text: {response.text[:500]}")
-        
+
         assert response.status_code == 200
         assert "unsubscribed from weekly reminders" in response.text
-        
+
         # Check database state
         test_db.refresh(mock_volunteer)
-        assert mock_volunteer.weekly_reminders_subscribed == False
-        assert mock_volunteer.all_emails_subscribed == True
-        assert mock_volunteer.is_active == True
-        
+        assert mock_volunteer.weekly_reminders_subscribed is False
+        assert mock_volunteer.all_emails_subscribed is True
+        assert mock_volunteer.is_active is True
+
         # Check email communication was logged
-        email_comm = test_db.query(EmailCommunicationModel).filter_by(
-            volunteer_id=mock_volunteer.id,
-            email_type="preference_update_weekly_reminders"
-        ).first()
+        email_comm = (
+            test_db.query(EmailCommunicationModel)
+            .filter_by(
+                volunteer_id=mock_volunteer.id,
+                email_type="preference_update_weekly_reminders",
+            )
+            .first()
+        )
         assert email_comm is not None
         assert email_comm.status == "sent"
-    
+
     def test_unsubscribe_all_emails(self, client, test_db, mock_volunteer):
         """Test unsubscribing from all emails"""
         response = client.post(
             f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
-            files={"unsubscribe_type": (None, "all_emails")}
+            files={"unsubscribe_type": (None, "all_emails")},
         )
-        
+
         assert response.status_code == 200
         assert "unsubscribed from all emails" in response.text
         assert "account has been deactivated" in response.text
-        
+
         # Check database state
         test_db.refresh(mock_volunteer)
-        assert mock_volunteer.weekly_reminders_subscribed == False
-        assert mock_volunteer.all_emails_subscribed == False
-        assert mock_volunteer.is_active == False
-        
+        assert mock_volunteer.weekly_reminders_subscribed is False
+        assert mock_volunteer.all_emails_subscribed is False
+        assert mock_volunteer.is_active is False
+
         # Check email communication was logged
-        email_comm = test_db.query(EmailCommunicationModel).filter_by(
-            volunteer_id=mock_volunteer.id,
-            email_type="preference_update_all_emails"
-        ).first()
+        email_comm = (
+            test_db.query(EmailCommunicationModel)
+            .filter_by(
+                volunteer_id=mock_volunteer.id,
+                email_type="preference_update_all_emails",
+            )
+            .first()
+        )
         assert email_comm is not None
         assert email_comm.status == "sent"
-    
+
     def test_resubscribe_all_emails(self, client, test_db, mock_inactive_volunteer):
         """Test resubscribing to all emails"""
         response = client.post(
             f"/unsubscribe?token={mock_inactive_volunteer.email_unsubscribe_token}",
-            files={"unsubscribe_type": (None, "resubscribe")}
+            files={"unsubscribe_type": (None, "resubscribe")},
         )
-        
+
         assert response.status_code == 200
         assert "resubscribed to all emails" in response.text
         assert "account has been reactivated" in response.text
-        
+
         # Check database state
         test_db.refresh(mock_inactive_volunteer)
-        assert mock_inactive_volunteer.weekly_reminders_subscribed == True
-        assert mock_inactive_volunteer.all_emails_subscribed == True
-        assert mock_inactive_volunteer.is_active == True
-        
+        assert mock_inactive_volunteer.weekly_reminders_subscribed is True
+        assert mock_inactive_volunteer.all_emails_subscribed is True
+        assert mock_inactive_volunteer.is_active is True
+
         # Check email communication was logged
-        email_comm = test_db.query(EmailCommunicationModel).filter_by(
-            volunteer_id=mock_inactive_volunteer.id,
-            email_type="preference_update_resubscribe"
-        ).first()
+        email_comm = (
+            test_db.query(EmailCommunicationModel)
+            .filter_by(
+                volunteer_id=mock_inactive_volunteer.id,
+                email_type="preference_update_resubscribe",
+            )
+            .first()
+        )
         assert email_comm is not None
         assert email_comm.status == "sent"
-    
+
     def test_invalid_unsubscribe_type(self, client, mock_volunteer):
         """Test handling of invalid unsubscribe type"""
         response = client.post(
             f"/unsubscribe?token={mock_volunteer.email_unsubscribe_token}",
-            files={"unsubscribe_type": (None, "invalid_type")}
+            files={"unsubscribe_type": (None, "invalid_type")},
         )
-        
+
         # Should return an error or redirect to error page
         assert response.status_code in [400, 422]
-    
+
     def test_post_with_invalid_token(self, client):
         """Test POST request with invalid token"""
         response = client.post(
             "/unsubscribe?token=invalid_token",
-            files={"unsubscribe_type": (None, "all_emails")}
+            files={"unsubscribe_type": (None, "all_emails")},
         )
-        
+
         # The endpoint returns 400 for invalid tokens
         assert response.status_code == 400
         assert "Invalid or expired unsubscribe link" in response.text
-    
+
     def test_post_without_token(self, client):
         """Test POST request without token"""
-        response = client.post(
-            "/unsubscribe",
-            data={"unsubscribe_type": "all_emails"}
-        )
+        response = client.post("/unsubscribe", data={"unsubscribe_type": "all_emails"})
 
         assert response.status_code == 422  # FastAPI validation error
 
@@ -130,5 +142,5 @@ class TestUpdateEmailPreferences:
         assert "unsubscribed from weekly reminders" in response.text
 
         test_db.refresh(mock_volunteer)
-        assert mock_volunteer.weekly_reminders_subscribed == False
-        assert mock_volunteer.all_emails_subscribed == True
+        assert mock_volunteer.weekly_reminders_subscribed is False
+        assert mock_volunteer.all_emails_subscribed is True

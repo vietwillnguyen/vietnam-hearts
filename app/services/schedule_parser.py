@@ -22,8 +22,8 @@ label/title column and index 1+ are the per-day values.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
 
 # Matches a weekday at a word boundary, full or 3-letter abbreviation
 # (e.g. "Monday 6/22" or "Mon"), so header detection is robust to either format.
@@ -43,12 +43,12 @@ class ClassBlock:
 
     name: str
     time: str
-    max_assistants: Optional[int]
+    max_assistants: int | None
     has_head_ta: bool
-    days: Tuple[str, ...]
-    teacher: Tuple[str, ...]
-    head_ta: Tuple[str, ...]
-    assistants: Tuple[str, ...]
+    days: tuple[str, ...]
+    teacher: tuple[str, ...]
+    head_ta: tuple[str, ...]
+    assistants: tuple[str, ...]
 
 
 def _cell(row: Sequence[str], idx: int) -> str:
@@ -64,14 +64,14 @@ def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:
     """
     if not row or not _cell(row, title_index):
         return False
-    return any(_WEEKDAY_RE.search(str(c)) for c in row[title_index + 1:])
+    return any(_WEEKDAY_RE.search(str(c)) for c in row[title_index + 1 :])
 
 
 def _is_header_row(row: Sequence[str]) -> bool:
     return row_is_class_header(row, title_index=0)
 
 
-def _pad(values: Sequence[str], length: int) -> Tuple[str, ...]:
+def _pad(values: Sequence[str], length: int) -> tuple[str, ...]:
     """Right-pad/truncate day values to align with the header day count."""
     cleaned = [str(v).strip() for v in values]
     if len(cleaned) < length:
@@ -79,7 +79,7 @@ def _pad(values: Sequence[str], length: int) -> Tuple[str, ...]:
     return tuple(cleaned[:length])
 
 
-def discover_schedule_blocks(rows: List[List[str]]) -> List[ClassBlock]:
+def discover_schedule_blocks(rows: list[list[str]]) -> list[ClassBlock]:
     """Parse the raw schedule grid into a list of :class:`ClassBlock`.
 
     Args:
@@ -90,7 +90,7 @@ def discover_schedule_blocks(rows: List[List[str]]) -> List[ClassBlock]:
         Class blocks in sheet order. Non-class rows (titles, announcements,
         curriculum, blank separators) are ignored.
     """
-    blocks: List[ClassBlock] = []
+    blocks: list[ClassBlock] = []
     i = 0
     n = len(rows)
 
@@ -107,11 +107,11 @@ def discover_schedule_blocks(rows: List[List[str]]) -> List[ClassBlock]:
         time = " ".join(p for p in title_parts[1:] if p)
         days = tuple(str(c).strip() for c in row[1:])
 
-        teacher: Tuple[str, ...] = ()
-        head_ta: Tuple[str, ...] = ()
-        assistants: Tuple[str, ...] = ()
+        teacher: tuple[str, ...] = ()
+        head_ta: tuple[str, ...] = ()
+        assistants: tuple[str, ...] = ()
         has_head_ta = False
-        max_assistants: Optional[int] = None
+        max_assistants: int | None = None
 
         # Consume rows until the next header row or end of grid.
         i += 1

@@ -40,7 +40,13 @@ jobs:
     - name: Install dependencies
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-interaction
-    
+
+    - name: Run ruff lint
+      run: poetry run ruff check .
+
+    - name: Run ruff format check
+      run: poetry run ruff format --check .
+
     - name: Run tests
       run: |
         poetry run pytest tests/ -v --tb=short

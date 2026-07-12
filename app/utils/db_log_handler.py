@@ -17,8 +17,8 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional
 
 _SKIPPED_LOGGER_PREFIXES = ("sqlalchemy",)
 
@@ -26,10 +26,10 @@ _SKIPPED_LOGGER_PREFIXES = ("sqlalchemy",)
 class DatabaseLogHandler(logging.Handler):
     def __init__(
         self,
-        session_factory: Optional[Callable] = None,
+        session_factory: Callable | None = None,
         buffer_size: int = 20,
         flush_interval: float = 5.0,
-        retention_days: Optional[int] = None,
+        retention_days: int | None = None,
     ):
         super().__init__()
         self._session_factory = session_factory
@@ -46,7 +46,7 @@ class DatabaseLogHandler(logging.Handler):
             else int(os.getenv("LOG_RETENTION_DAYS", "30"))
         )
 
-    def _get_session_factory(self) -> Optional[Callable]:
+    def _get_session_factory(self) -> Callable | None:
         if self._session_factory is None:
             # Lazy import to avoid a circular import at module load time
             # (database.py loggers are created before SessionLocal exists).
@@ -63,10 +63,14 @@ class DatabaseLogHandler(logging.Handler):
             if record.name.startswith(_SKIPPED_LOGGER_PREFIXES):
                 return
             entry = {
-                "created_at": datetime.fromtimestamp(record.created, tz=timezone.utc).replace(tzinfo=None),
+                "created_at": datetime.fromtimestamp(
+                    record.created, tz=timezone.utc
+                ).replace(tzinfo=None),
                 "level": record.levelname,
                 "logger_name": record.name,
-                "message": self.format(record) if self.formatter else record.getMessage(),
+                "message": self.format(record)
+                if self.formatter
+                else record.getMessage(),
             }
             with self._buffer_lock:
                 self._buffer.append(entry)

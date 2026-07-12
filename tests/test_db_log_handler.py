@@ -19,8 +19,13 @@ def session_factory(test_engine, test_db):
 
 def make_record(name="app", level=logging.INFO, msg="hello"):
     return logging.LogRecord(
-        name=name, level=level, pathname=__file__, lineno=1,
-        msg=msg, args=(), exc_info=None,
+        name=name,
+        level=level,
+        pathname=__file__,
+        lineno=1,
+        msg=msg,
+        args=(),
+        exc_info=None,
     )
 
 
@@ -62,7 +67,9 @@ class TestDatabaseLogHandler:
     def test_retention_deletes_old_rows(self, session_factory, test_db):
         old = SystemLog(
             created_at=datetime.utcnow() - timedelta(days=60),
-            level="INFO", logger_name="app", message="ancient",
+            level="INFO",
+            logger_name="app",
+            message="ancient",
         )
         test_db.add(old)
         test_db.commit()

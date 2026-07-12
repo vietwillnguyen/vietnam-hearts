@@ -5,35 +5,45 @@ RESTful API service for managing volunteer scheduling and communications.
 API documentation available at /docs and /redoc
 """
 
+import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from .utils.logging_config import get_logger, get_log_file_path, print_log_paths
-from .database import init_db, get_db
-from .config import (
-    APPLICATION_VERSION,
-    API_URL,
-    ENVIRONMENT,
-    DATABASE_URL,
-)
-from app.utils.config_helper import ConfigHelper
-import os
+
 from app.routers.admin import admin_router
-from app.routers.public import public_router
 from app.routers.auth import router as auth_router
+from app.routers.public import public_router
 from app.routers.settings import router as settings_router
+from app.utils.config_helper import ConfigHelper
+
+from .config import (
+    API_URL,
+    APPLICATION_VERSION,
+    DATABASE_URL,
+    ENVIRONMENT,
+)
+from .database import get_db, init_db
+from .middleware import setup_middleware
+from .utils.logging_config import get_log_file_path, get_logger, print_log_paths
+from .utils.sentry_config import init_sentry
+
 # from app.routers.messenger import messenger_router
 # from app.routers.bot import public_bot_router, admin_router as bot_admin_router
 
 # Configure logging
 logger = get_logger("main")
 
+# Error tracking (no-op if SENTRY_DSN is unset)
+init_sentry()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
     # Startup
     try:
-        logger.info(f"🚀 Starting API server")
+        logger.info("🚀 Starting API server")
         logger.info("-" * 50)
         logger.info(f"- ENVIRONMENT={ENVIRONMENT}")
         logger.info(f"- TESTING={os.getenv('TESTING')}")
@@ -54,16 +64,13 @@ async def lifespan(app: FastAPI):
             logger.info(f"    All logs: {get_log_file_path()}")
         logger.info("-" * 50)
 
-        logger.info(
-            "📖 API Documentation will be available at: %s/docs", API_URL
-        )
-        logger.info(
-            "🔍 Health check available at: %s/health", API_URL
-        )
+        logger.info("📖 API Documentation will be available at: %s/docs", API_URL)
+        logger.info("🔍 Health check available at: %s/health", API_URL)
         logger.info("⏹️  Press Ctrl+C to stop the server")
 
         # Validate Google Sheets configuration
         from app.config import validate_config
+
         validate_config()
         logger.info("Configuration validated successfully")
 
@@ -75,7 +82,9 @@ async def lifespan(app: FastAPI):
         try:
             db = next(get_db())
             logger.info(f"- DRY_RUN={ConfigHelper.get_dry_run(db)}")
-            logger.info(f"- DRY_RUN_EMAIL_RECIPIENT={ConfigHelper.get_dry_run_email_recipient(db)}")
+            logger.info(
+                f"- DRY_RUN_EMAIL_RECIPIENT={ConfigHelper.get_dry_run_email_recipient(db)}"
+            )
         except Exception as e:
             logger.warning(f"Could not read dry run settings from database: {e}")
             logger.info("- DRY_RUN=Unknown (database not accessible)")
@@ -87,10 +96,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to start application: {str(e)}", exc_info=True)
         raise
-    
+
     # Yield control to FastAPI
     yield
-    
+
     # Shutdown
     logger.info("Shutting down API server...")
 
@@ -106,7 +115,6 @@ app = FastAPI(
 )
 
 # Setup all middleware
-from .middleware import setup_middleware
 setup_middleware(app)
 
 # Mount static files

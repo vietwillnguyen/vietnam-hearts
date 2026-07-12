@@ -5,10 +5,20 @@ This file defines the structure of our database tables.
 SQLAlchemy ORM converts these Python classes into database tables.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON, Text
-from sqlalchemy.orm import DeclarativeBase, relationship
 from datetime import datetime, timezone
+
 from pydantic import ConfigDict
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 # Base class for all our models
@@ -153,14 +163,17 @@ class SystemLog(Base):
 class Setting(Base):
     """
     Stores dynamic configuration settings that can be updated by admins
-    
+
     This allows runtime configuration changes without requiring code deployments
     """
+
     __tablename__ = "settings"
 
     key = Column(String, primary_key=True, index=True)
     value = Column(String, nullable=False)
-    description = Column(String, nullable=True)  # Human-readable description of the setting
+    description = Column(
+        String, nullable=True
+    )  # Human-readable description of the setting
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,

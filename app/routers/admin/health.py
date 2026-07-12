@@ -3,26 +3,29 @@ Admin health check, dashboard, and config-validation endpoints
 """
 
 import asyncio
+from datetime import datetime
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
-from typing import Dict, Any
 
+from app.config import ENVIRONMENT
 from app.database import get_db
+from app.dependencies.auth import get_current_admin_user
 from app.models import (
-    Volunteer as VolunteerModel,
     EmailCommunication as EmailCommunicationModel,
 )
-from app.services.google_sheets import sheets_service
+from app.models import (
+    Volunteer as VolunteerModel,
+)
+from app.routers.admin.helpers import get_email_summary, get_volunteer_summary
 from app.services.email_service import email_service
-from app.utils.logging_config import get_api_logger
+from app.services.google_sheets import sheets_service
 from app.utils.config_helper import ConfigHelper
+from app.utils.logging_config import get_api_logger
 from app.utils.timeout import timeout_handler
-from app.dependencies.auth import get_current_admin_user
-from app.config import ENVIRONMENT
-from app.routers.admin.helpers import get_volunteer_summary, get_email_summary
 
 logger = get_api_logger()
 
@@ -35,13 +38,15 @@ templates = Jinja2Templates(directory="templates/web")
 async def admin_dashboard(
     request: Request,
     db: Session = Depends(get_db),
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user),
+    current_admin: dict[str, Any] = Depends(get_current_admin_user),
 ):
     """Render the admin dashboard page"""
     try:
-        volunteers = db.query(VolunteerModel).options(
-            joinedload(VolunteerModel.email_communications)
-        ).all()
+        volunteers = (
+            db.query(VolunteerModel)
+            .options(joinedload(VolunteerModel.email_communications))
+            .all()
+        )
         volunteer_data = get_volunteer_summary(volunteers)
 
         communications = (
@@ -54,12 +59,14 @@ async def admin_dashboard(
         email_data = get_email_summary(communications)
 
         from app.services.settings_service import get_all_settings
+
         settings = [
             {"key": s.key, "value": s.value, "description": s.description}
             for s in get_all_settings(db)
         ]
 
         from app.config import APPLICATION_VERSION
+
         return templates.TemplateResponse(
             request,
             "admin/dashboard.html",
@@ -75,6 +82,7 @@ async def admin_dashboard(
     except Exception as e:
         logger.error(f"Failed to render admin dashboard: {str(e)}", exc_info=True)
         from fastapi.responses import RedirectResponse
+
         return RedirectResponse(url="/?error=Authentication failed", status_code=302)
 
 
@@ -106,7 +114,9 @@ def validate_configuration(db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"Configuration validation failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Configuration validation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Configuration validation failed: {str(e)}"
+        )
 
 
 @router.get("/health")
@@ -135,21 +145,26 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
             health_status["status"] = "degraded"
 
         try:
-            email_service.get_reminder_subject(datetime.now().date(), datetime.now().date())
+            email_service.get_reminder_subject(
+                datetime.now().date(), datetime.now().date()
+            )
             health_status["services"]["email_service"] = "available"
         except Exception as e:
             health_status["services"]["email_service"] = f"error: {str(e)}"
             health_status["status"] = "degraded"
 
         try:
+            from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
             from app.services.admin_service import admin_service
-            from app.config import SUPABASE_URL, SUPABASE_SECRET_KEY
+
             supabase_configured = bool(SUPABASE_URL and SUPABASE_SECRET_KEY)
             supabase_client_initialized = admin_service.admin_supabase is not None
             admin_service_available = False
             if supabase_configured and supabase_client_initialized:
                 try:
-                    await asyncio.wait_for(admin_service._check_admin_db("test@example.com"), timeout=5.0)
+                    await asyncio.wait_for(
+                        admin_service._check_admin_db("test@example.com"), timeout=5.0
+                    )
                     admin_service_available = True
                 except (asyncio.TimeoutError, Exception):
                     pass
@@ -166,6 +181,7 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
 
         try:
             from app.services.bot_service import BotService
+
             bot_service = BotService()
             bot_status = await bot_service.get_knowledge_status()
             health_status["services"]["bot_service"] = {
@@ -176,17 +192,29 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
                 "supabase": bot_status["supabase_available"],
                 "documents_count": bot_status["documents_count"],
             }
-            if not any([bot_status["knowledge_service_available"], bot_status["embeddings_available"], bot_status["gemini_available"]]):
+            if not any(
+                [
+                    bot_status["knowledge_service_available"],
+                    bot_status["embeddings_available"],
+                    bot_status["gemini_available"],
+                ]
+            ):
                 health_status["status"] = "degraded"
         except Exception as e:
             health_status["services"]["bot_service"] = f"error: {str(e)}"
             health_status["status"] = "degraded"
 
-        if health_status["status"] == "healthy" and any("error" in str(s) for s in health_status["services"].values()):
+        if health_status["status"] == "healthy" and any(
+            "error" in str(s) for s in health_status["services"].values()
+        ):
             health_status["status"] = "degraded"
 
         return health_status
 
     except Exception as e:
         logger.error(f"Comprehensive health check failed: {str(e)}", exc_info=True)
-        return {"status": "unhealthy", "timestamp": datetime.now().isoformat(), "error": str(e)}
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+        }
