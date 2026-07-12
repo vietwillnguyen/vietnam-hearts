@@ -53,11 +53,11 @@ class KnowledgeStatusResponse(BaseModel):
 @lru_cache
 def get_bot_service() -> BotService:
     try:
-        from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+        from app.config import SUPABASE_URL, SUPABASE_SECRET_KEY
         from supabase import create_client
         supabase_client = None
-        if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
-            supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        if SUPABASE_URL and SUPABASE_SECRET_KEY:
+            supabase_client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
             logger.info("Bot service initialized with Supabase client")
         else:
             logger.warning("Supabase credentials missing; using memory storage")

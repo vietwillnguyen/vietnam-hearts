@@ -143,8 +143,8 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
 
         try:
             from app.services.admin_service import admin_service
-            from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-            supabase_configured = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+            from app.config import SUPABASE_URL, SUPABASE_SECRET_KEY
+            supabase_configured = bool(SUPABASE_URL and SUPABASE_SECRET_KEY)
             supabase_client_initialized = admin_service.admin_supabase is not None
             admin_service_available = False
             if supabase_configured and supabase_client_initialized:

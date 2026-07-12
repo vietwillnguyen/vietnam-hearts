@@ -11,7 +11,7 @@ import asyncio
 import time
 from supabase import create_client, Client
 from fastapi import HTTPException, Request
-from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ADMIN_EMAILS
+from app.config import SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, ADMIN_EMAILS
 from app.utils.logging_config import get_logger
 
 logger = get_logger("auth_service")
@@ -27,15 +27,15 @@ class AuthService:
     """
     
     def __init__(self):
-        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
             raise ValueError("Supabase configuration missing")
-        
+
         # Initialize Supabase clients
-        self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
         self.admin_supabase: Optional[Client] = None
-        
-        if SUPABASE_SERVICE_ROLE_KEY:
-            self.admin_supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        if SUPABASE_SECRET_KEY:
+            self.admin_supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
         
         # Admin status cache
         self._admin_cache: Dict[str, Dict[str, Any]] = {email: {"is_admin": True, "timestamp": time.time(), "source": "environment"} for email in ADMIN_EMAILS}
@@ -195,13 +195,13 @@ class AuthService:
     async def _get_user_from_apikey(self, apikey: str) -> Dict[str, Any]:
         """Get user information from service role key"""
         try:
-            # Check if it's a valid service role key
-            if not self._is_service_role_key(apikey):
-                raise HTTPException(status_code=401, detail="Invalid service role key")
-            
-            # Validate against configured service role key
-            if apikey != SUPABASE_SERVICE_ROLE_KEY:
-                raise HTTPException(status_code=401, detail="Invalid service role key")
+            # Check if it's a valid secret key
+            if not self._is_secret_key(apikey):
+                raise HTTPException(status_code=401, detail="Invalid secret key")
+
+            # Validate against configured secret key
+            if apikey != SUPABASE_SECRET_KEY:
+                raise HTTPException(status_code=401, detail="Invalid secret key")
             
             # Return service account user info
             return {
@@ -217,8 +217,8 @@ class AuthService:
             logger.error(f"Failed to get user from apikey: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid service role key")
     
-    def _is_service_role_key(self, token: str) -> bool:
-        """Check if the token is a valid service role key"""
+    def _is_secret_key(self, token: str) -> bool:
+        """Check if the token is a valid secret key"""
         try:
             return (token.startswith("eyJ") and len(token) > 100) or (token.startswith("sb_") and len(token) > 50)
         except Exception:

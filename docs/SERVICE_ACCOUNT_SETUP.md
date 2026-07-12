@@ -85,8 +85,8 @@ Make sure you have these environment variables set in your `.env` file:
 ```env
 # Supabase Configuration
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SECRET_KEY=your-secret-key
 
 # Admin Access Control
 ADMIN_EMAILS=auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
@@ -106,8 +106,8 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 
 ### "Failed to get Supabase authentication token"
 
-1. Check that `SUPABASE_SERVICE_ROLE_KEY` is set in your `.env` file
-2. Verify the service role key is correct
+1. Check that `SUPABASE_SECRET_KEY` is set in your `.env` file
+2. Verify the secret key is correct
 3. Make sure PyJWT is installed: `poetry install`
 
 ### "Access denied" for admin endpoints
@@ -127,7 +127,7 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 ### For Production
 
 1. **Use HTTPS**: Always use HTTPS in production
-2. **Secure Service Role Key**: Keep the Supabase service role key secure
+2. **Secure Secret Key**: Keep the Supabase secret key secure
 3. **Limit Admin Access**: Only add necessary emails to `ADMIN_EMAILS`
 4. **Regular Review**: Review admin access regularly
 5. **Monitor Logs**: Monitor authentication logs for suspicious activity
@@ -150,7 +150,7 @@ For automated testing in CI/CD pipelines:
     python tests/test_api.py all --auth-type=supabase
   env:
     SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-    SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     ADMIN_EMAILS: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
 ```
 

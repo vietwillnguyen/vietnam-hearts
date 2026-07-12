@@ -22,7 +22,7 @@ You should see something like:
   "message": "Authentication service is running (using mock auth)",
   "configuration": {
     "supabase_url": false,
-    "supabase_anon_key": false,
+    "supabase_publishable_key": false,
     "GOOGLE_OAUTH_CLIENT_ID": false,
     "GOOGLE_OAUTH_CLIENT_SECRET": false
   },
@@ -46,11 +46,12 @@ You should see something like:
 
 ### 2.2 Get Project Credentials
 
-1. In your Supabase dashboard, go to **Settings** > **API**
+1. In your Supabase dashboard, go to **Settings** > **API Keys**
 2. Copy the following values:
    - **Project URL** (e.g., `https://your-project-id.supabase.co`)
-   - **anon public** key
-   - **service_role** key (keep this secret!)
+   - **publishable** key (safe to expose client-side, replaces the legacy "anon" key)
+   - **secret** key (keep this secret! replaces the legacy "service_role" key)
+   - **JWKS URL**, for verifying user access tokens (`{Project URL}/auth/v1/.well-known/jwks.json`)
 
 ## Step 3: Configure Google OAuth
 
@@ -118,8 +119,9 @@ You should see something like:
    ```env
    # Supabase Configuration
    SUPABASE_URL=https://your-project-id.supabase.co
-   SUPABASE_ANON_KEY=your-anon-key-here
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+   SUPABASE_PUBLISHABLE_KEY=your-publishable-key-here
+   SUPABASE_SECRET_KEY=your-secret-key-here
+   SUPABASE_JWKS_URL=https://your-project-id.supabase.co/auth/v1/.well-known/jwks.json
    
    # Google OAuth for Supabase Auth
    GOOGLE_OAUTH_CLIENT_ID=your-google-client-id-here
@@ -150,7 +152,7 @@ You should now see:
   "message": "Authentication service is running",
   "configuration": {
     "supabase_url": true,
-    "supabase_anon_key": true,
+    "supabase_publishable_key": true,
     "GOOGLE_OAUTH_CLIENT_ID": true,
     "GOOGLE_OAUTH_CLIENT_SECRET": true
   },
@@ -219,8 +221,8 @@ Supabase not configured, using mock response
 ### 3. Security Considerations
 
 1. Use HTTPS in production
-2. Keep service role key secure
-3. Regularly rotate OAuth credentials
+2. Keep the secret key secure
+3. Regularly rotate OAuth credentials and the secret key
 4. Monitor authentication logs
 
 ## Next Steps

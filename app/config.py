@@ -42,9 +42,12 @@ GOOGLE_APPLICATION_CREDENTIALS = Path(
 EMAIL_TEMPLATES_PATH = PROJECT_ROOT / "templates" / "email"
 
 # Supabase Configuration
+# Uses Supabase's new API key format (publishable/secret) rather than the
+# legacy anon/service_role JWTs. See docs/SUPABASE_SETUP.md.
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
+SUPABASE_JWKS_URL = os.getenv("SUPABASE_JWKS_URL")
 ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",") if os.getenv("ADMIN_EMAILS") else []
 
 
@@ -66,8 +69,8 @@ REQUIRED_ENV_VARS = [
     "GOOGLE_OAUTH_CLIENT_SECRET",  # Required for Google OAuth
     "SERVICE_ACCOUNT_EMAIL",  # Required for Google Sheets access
     "SUPABASE_URL",  # Required for Supabase auth
-    "SUPABASE_ANON_KEY",  # Required for Supabase auth
-    "SUPABASE_SERVICE_ROLE_KEY",  # Required for Supabase auth
+    "SUPABASE_PUBLISHABLE_KEY",  # Required for Supabase auth
+    "SUPABASE_SECRET_KEY",  # Required for Supabase auth
     "EMAIL_SENDER",  # Required for sending emails
 ]
 

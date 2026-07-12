@@ -51,8 +51,8 @@ jobs:
         ENVIRONMENT: "test"
         PYTHONPATH: ${{ github.workspace }}
         SUPABASE_URL: "https://fake-url.supabase.co"
-        SUPABASE_ANON_KEY: "fake-anon-key"
-        SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key"
+        SUPABASE_PUBLISHABLE_KEY: "fake-publishable-key"
+        SUPABASE_SECRET_KEY: "fake-secret-key"
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     
     - name: Upload test results

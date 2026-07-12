@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import asyncio
 from supabase import create_client
-from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+from app.config import SUPABASE_URL, SUPABASE_SECRET_KEY
 from app.utils.logging_config import get_logger
 
 logger = get_logger("admin_service")
@@ -36,10 +36,10 @@ class AdminService:
     """
     
     def __init__(self):
-        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
             raise ValueError("Supabase admin credentials not configured")
-        
-        self.admin_supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        self.admin_supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
         logger.info("AdminService initialized")
     
     async def get_admin_users(self, requester_email: str) -> List[AdminUser]:

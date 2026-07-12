@@ -12,14 +12,14 @@ from datetime import datetime
 
 # Configuration
 BASE_URL = "https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app"
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
 
 def make_request(endpoint: str, method: str = "POST", data: Dict[str, Any] = None) -> Dict[str, Any]:
     """Make authenticated request to scheduler endpoint"""
     url = f"{BASE_URL}/admin/{endpoint}"
     headers = {
         "Content-Type": "application/json",
-        "apikey": SUPABASE_SERVICE_ROLE_KEY
+        "apikey": SUPABASE_SECRET_KEY
     }
     
     try:

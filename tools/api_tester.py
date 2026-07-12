@@ -59,16 +59,16 @@ class APITester:
             return self._get_gcloud_token()
     
     def _get_supabase_token(self) -> Optional[str]:
-        """Get Supabase service role key"""
+        """Get Supabase secret key"""
         try:
             print("🔑 Getting Supabase authentication token...")
-            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-            if not service_role_key:
-                print("❌ SUPABASE_SERVICE_ROLE_KEY not set")
+            secret_key = os.getenv("SUPABASE_SECRET_KEY")
+            if not secret_key:
+                print("❌ SUPABASE_SECRET_KEY not set")
                 return None
-            
-            print("✅ Supabase service role key obtained successfully")
-            return service_role_key
+
+            print("✅ Supabase secret key obtained successfully")
+            return secret_key
         except Exception as e:
             print(f"❌ Error getting Supabase token: {e}")
             return None

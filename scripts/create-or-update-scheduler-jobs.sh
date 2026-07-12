@@ -28,12 +28,12 @@ ENV_FILE="${SCRIPT_DIR}/../.env"  # secrets stay at project root
 if [ -f "$ENV_FILE" ]; then
   export $(grep -v '^#' "$ENV_FILE" | xargs)
 else
-  echo -e "${RED}[ERROR] .env file not found at ${ENV_FILE}. Please create it and set SUPABASE_SERVICE_ROLE_KEY.${NC}"
+  echo -e "${RED}[ERROR] .env file not found at ${ENV_FILE}. Please create it and set SUPABASE_SECRET_KEY.${NC}"
   exit 1
 fi
 
-if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-  echo -e "${RED}[ERROR] SUPABASE_SERVICE_ROLE_KEY is not set in .env.${NC}"
+if [ -z "$SUPABASE_SECRET_KEY" ]; then
+  echo -e "${RED}[ERROR] SUPABASE_SECRET_KEY is not set in .env.${NC}"
   exit 1
 fi
 
@@ -53,7 +53,7 @@ create_or_update_job() {
             --schedule="$schedule" \
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
-            --headers="Content-Type=application/json,apikey=$SUPABASE_SERVICE_ROLE_KEY" \
+            --headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
             --time-zone="$TIMEZONE" \
             --location="$REGION" \
             --description="$description"
@@ -64,7 +64,7 @@ create_or_update_job() {
             --schedule="$schedule" \
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
-            --headers="Content-Type=application/json,apikey=$SUPABASE_SERVICE_ROLE_KEY" \
+            --headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
             --time-zone="$TIMEZONE" \
             --location="$REGION" \
             --description="$description"

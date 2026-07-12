@@ -76,8 +76,8 @@ This guide will walk you through setting up Google OAuth authentication for the 
    ```env
    # Supabase Configuration
    SUPABASE_URL=https://your-project-id.supabase.co
-   SUPABASE_ANON_KEY=your-anon-key
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+   SUPABASE_SECRET_KEY=your-secret-key
    
    # Google OAuth for Supabase Auth
    GOOGLE_OAUTH_CLIENT_ID=your-google-client-id

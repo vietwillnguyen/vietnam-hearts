@@ -246,11 +246,11 @@ async def auth_health_check() -> Dict[str, Any]:
     
     Returns the status of the authentication service and configuration.
     """
-    from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET
-    
+    from app.config import SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET
+
     config_status = {
         "supabase_url": bool(SUPABASE_URL),
-        "supabase_anon_key": bool(SUPABASE_ANON_KEY),
+        "supabase_publishable_key": bool(SUPABASE_PUBLISHABLE_KEY),
         "GOOGLE_OAUTH_CLIENT_ID": bool(GOOGLE_OAUTH_CLIENT_ID),
         "GOOGLE_OAUTH_CLIENT_SECRET": bool(GOOGLE_OAUTH_CLIENT_SECRET)
     }

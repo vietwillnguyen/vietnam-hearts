@@ -90,7 +90,9 @@ The application uses the following environment variables (see `env.template` for
 #### AI & Knowledge Base
 - `GEMINI_API_KEY` - Google API key for Gemini AI integration (free tier: 15 RPM, 1M tokens/day)
 - `SUPABASE_URL` - Supabase project URL for knowledge base storage
-- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for database operations
+- `SUPABASE_PUBLISHABLE_KEY` - Publishable key for client-facing Supabase auth (replaces legacy "anon" key)
+- `SUPABASE_SECRET_KEY` - Secret key for privileged database operations (replaces legacy "service_role" key)
+- `SUPABASE_JWKS_URL` - JWKS endpoint for verifying Supabase-issued user access tokens
 - **Note**: Uses hybrid approach - Sentence Transformers for embeddings (free, local) + Gemini for chat responses
 
 #### Optional
