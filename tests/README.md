@@ -89,7 +89,7 @@ poetry run python tests/test_db.py
 | `/api/scheduler/health` | GET | Health check and Google Sheets connectivity test |
 | `/api/scheduler/send-confirmation-emails` | POST | Process and send confirmation emails to new volunteers |
 | `/api/scheduler/sync-volunteers` | POST | Sync volunteers from Google Sheets signup form |
-| `/api/scheduler/send-weekly-reminders` | POST | Send weekly reminder emails to subscribed volunteers |
+| `/api/scheduler/send-weekly-reminders` | POST | Send weekly reminder emails to subscribed volunteers (skipped if no class has an open volunteer slot) |
 | `/api/scheduler/rotate-schedule` | POST | Rotate schedule sheets to show next week |
 
 ## Authentication

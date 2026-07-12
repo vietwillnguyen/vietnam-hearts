@@ -17,10 +17,10 @@ from app.models import (
     EmailCommunication as EmailCommunicationModel,
     Volunteer as VolunteerModel,
 )
-from app.services.schedule_parser import ClassBlock, discover_schedule_blocks
+from app.services.schedule_parser import ClassBlock
 from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import config
-from jinja2 import Template, Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 
 logger = get_api_logger()
 
@@ -51,12 +51,16 @@ class EmailService:
         self.email_env = Environment(loader=FileSystemLoader(str(templates_dir)))
 
         # Welcome email template
-        welcome_EMAIL_TEMPLATES_PATH = config.EMAIL_TEMPLATES_PATH / "confirmation-email.html"
+        welcome_EMAIL_TEMPLATES_PATH = (
+            config.EMAIL_TEMPLATES_PATH / "confirmation-email.html"
+        )
         with open(welcome_EMAIL_TEMPLATES_PATH, "r") as f:
             self.welcome_template = f.read()
 
         # Weekly reminder template
-        reminder_EMAIL_TEMPLATES_PATH = config.EMAIL_TEMPLATES_PATH / "weekly-reminder-email.html"
+        reminder_EMAIL_TEMPLATES_PATH = (
+            config.EMAIL_TEMPLATES_PATH / "weekly-reminder-email.html"
+        )
         with open(reminder_EMAIL_TEMPLATES_PATH, "r") as f:
             self.reminder_template = f.read()
 
@@ -64,7 +68,9 @@ class EmailService:
         """Generate a secure unsubscribe token"""
         return secrets.token_urlsafe(32)
 
-    def get_volunteer_unsubscribe_link(self, volunteer: VolunteerModel, db: Session) -> str:
+    def get_volunteer_unsubscribe_link(
+        self, volunteer: VolunteerModel, db: Session
+    ) -> str:
         """Generate a personalized unsubscribe link for a volunteer"""
         if not volunteer.email_unsubscribe_token:
             # Generate and save token if it doesn't exist
@@ -72,6 +78,7 @@ class EmailService:
 
         # Use API_URL for the unsubscribe link
         from app.config import API_URL
+
         base_url = f"{API_URL.rstrip('/')}/unsubscribe"
         logger.info(
             f"Unsubscribe link: {base_url}?token={volunteer.email_unsubscribe_token}"
@@ -91,6 +98,11 @@ class EmailService:
         Columns: Day / Teacher / [Head Assistant] / Assistant(s) / Status.
         The Head Assistant column is only rendered for classes that actually have
         a head TA row (block.has_head_ta). max_assistants of None means no limit.
+
+        The returned dict includes a `needs_volunteers` flag (True if any day is
+        missing a teacher, head TA, or assistant) that callers use to decide
+        whether a class still has an open slot. On parse failure the flag
+        defaults to True so a parsing bug never silently suppresses a reminder.
         """
         try:
             days = block.days
@@ -107,7 +119,9 @@ class EmailService:
             cell = "padding: 8px; text-align: center;"
 
             table_html = f"<h3>{block.name} ({block.time}) - {cap_label}</h3>"
-            table_html += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
+            table_html += (
+                "<table border='1' style='border-collapse: collapse; width: 100%;'>"
+            )
             table_html += "<thead><tr style='background-color: #f0f0f0;'>"
             table_html += f"<th style='{cell}'>Day</th>"
             table_html += f"<th style='{cell}'>Teacher</th>"
@@ -116,6 +130,8 @@ class EmailService:
             table_html += f"<th style='{cell}'>Assistant(s)</th>"
             table_html += f"<th style='{cell}'>Status</th>"
             table_html += "</tr></thead><tbody>"
+
+            needs_volunteers = False
 
             for i, day in enumerate(days):
                 teacher = teachers[i] if i < len(teachers) else ""
@@ -126,9 +142,7 @@ class EmailService:
                 current_assistants = 0
                 if assistant and assistant.strip():
                     assistant_list = [
-                        a.strip()
-                        for a in re.split(r"[,;]", assistant)
-                        if a.strip()
+                        a.strip() for a in re.split(r"[,;]", assistant) if a.strip()
                     ]
                     current_assistants = len(assistant_list)
 
@@ -139,22 +153,33 @@ class EmailService:
                 assistant_lower = assistant.strip().lower() if assistant else ""
 
                 if "optional" in teacher_lower:
-                    status = "optional day, volunteers welcome to support existing classes"
+                    status = (
+                        "optional day, volunteers welcome to support existing classes"
+                    )
                     bg_color = "#f5f5f5"
                 elif "no class" in teacher_lower:
-                    status = "No class: holiday" if "holiday" in teacher_lower else "No class"
+                    status = (
+                        "No class: holiday"
+                        if "holiday" in teacher_lower
+                        else "No class"
+                    )
                     bg_color = "#f5f5f5"
                 elif not teacher_lower or "need volunteers" in teacher_lower:
                     # A blank teacher cell defaults to "Need Volunteers"; genuinely
                     # off days are written explicitly as "No Class {reason}".
                     status = "❌ Missing Teacher"
                     bg_color = "#ffcccc"
-                elif block.has_head_ta and (not head_ta or "need volunteers" in head_ta_lower):
+                    needs_volunteers = True
+                elif block.has_head_ta and (
+                    not head_ta or "need volunteers" in head_ta_lower
+                ):
                     status = "❌ Missing Head TA"
                     bg_color = "#ffe5b4"
+                    needs_volunteers = True
                 elif "need volunteers" in assistant_lower:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
+                    needs_volunteers = True
                 elif max_assistants is None:
                     status = f"✅ {current_assistants} assistant(s) signed up - No limit, TA's welcome to join"
                     bg_color = "#d4edda"
@@ -175,20 +200,31 @@ class EmailService:
                 table_html += "</tr>"
 
             table_html += "</tbody></table>"
-            return {"class_name": block.name, "table_html": table_html, "has_data": True}
+            return {
+                "class_name": block.name,
+                "table_html": table_html,
+                "has_data": True,
+                "needs_volunteers": needs_volunteers,
+            }
 
         except Exception as e:
-            logger.error(f"Failed to build table for {getattr(block, 'name', '?')}: {str(e)}")
+            logger.error(
+                f"Failed to build table for {getattr(block, 'name', '?')}: {str(e)}"
+            )
+            # Unknown slot state on parse failure must not silently suppress reminders.
             return {
                 "class_name": getattr(block, "name", "?"),
                 "table_html": f"<p>Error loading data for {getattr(block, 'name', 'this class')}</p>",
                 "has_data": False,
+                "needs_volunteers": True,
             }
 
-    def build_weekly_reminder_content(self, volunteer: VolunteerModel, db: Session) -> tuple[str, str]:
+    def build_weekly_reminder_content(
+        self, volunteer: VolunteerModel, db: Session
+    ) -> tuple[str, str]:
         """
         Build the HTML content and subject for a weekly reminder email
-        
+
         Returns:
             tuple: (html_body, subject)
         """
@@ -221,7 +257,7 @@ class EmailService:
         template = self.email_env.get_template("weekly-reminder-email.html")
         html_body = template.render(
             first_name=first_name,
-            class_tables=[ct['table_html'] for ct in class_tables],
+            class_tables=[ct["table_html"] for ct in class_tables],
             SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
             INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
@@ -271,8 +307,12 @@ class EmailService:
             to_email = volunteer.email
 
             # DRY_RUN logic
-            if config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
-                logger.info(f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database")
+            if config.get_dry_run(
+                db
+            ) and to_email != config.get_dry_run_email_recipient(db):
+                logger.info(
+                    f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database"
+                )
                 return True
 
             # Create message
@@ -288,34 +328,56 @@ class EmailService:
             # Attach images as embedded content
             try:
                 # Banner image
-                banner_path = Path(__file__).parent.parent.parent / "static" / "banner.jpg"
+                banner_path = (
+                    Path(__file__).parent.parent.parent / "static" / "banner.jpg"
+                )
                 if banner_path.exists():
                     with open(banner_path, "rb") as f:
                         banner_img = MIMEImage(f.read(), _subtype="jpeg")
                         banner_img.add_header("Content-ID", "<banner_image>")
-                        banner_img.add_header("Content-Disposition", "inline", filename="banner.jpg")
+                        banner_img.add_header(
+                            "Content-Disposition", "inline", filename="banner.jpg"
+                        )
                         message.attach(banner_img)
 
                 # Logo image
-                logo_path = Path(__file__).parent.parent.parent / "static" / "vietnam-hearts-logo.ico"
+                logo_path = (
+                    Path(__file__).parent.parent.parent
+                    / "static"
+                    / "vietnam-hearts-logo.ico"
+                )
                 if logo_path.exists():
                     with open(logo_path, "rb") as f:
                         logo_img = MIMEImage(f.read(), _subtype="x-icon")
                         logo_img.add_header("Content-ID", "<logo_image>")
-                        logo_img.add_header("Content-Disposition", "inline", filename="vietnam-hearts-logo.ico")
+                        logo_img.add_header(
+                            "Content-Disposition",
+                            "inline",
+                            filename="vietnam-hearts-logo.ico",
+                        )
                         message.attach(logo_img)
 
                 # Field day goodbye image
-                field_day_path = Path(__file__).parent.parent.parent / "static" / "field-day-goodbye.png"
+                field_day_path = (
+                    Path(__file__).parent.parent.parent
+                    / "static"
+                    / "field-day-goodbye.png"
+                )
                 if field_day_path.exists():
                     with open(field_day_path, "rb") as f:
                         field_day_img = MIMEImage(f.read(), _subtype="png")
                         field_day_img.add_header("Content-ID", "<field_day_image>")
-                        field_day_img.add_header("Content-Disposition", "inline", filename="field-day-goodbye.png")
+                        field_day_img.add_header(
+                            "Content-Disposition",
+                            "inline",
+                            filename="field-day-goodbye.png",
+                        )
                         message.attach(field_day_img)
 
             except Exception as e:
-                logger.warning(f"Failed to attach images to confirmation email: {str(e)}")
+                logger.warning(
+                    f"Failed to attach images to confirmation email: {str(e)}"
+                )
                 # Continue without images if attachment fails
 
             # Connect to SMTP server and send email
@@ -365,9 +427,13 @@ class EmailService:
 
             for volunteer in volunteers:
                 if "@" not in (volunteer.email or ""):
-                    logger.warning(f"Skipping malformed email for volunteer id={volunteer.id}: {volunteer.email!r}")
+                    logger.warning(
+                        f"Skipping malformed email for volunteer id={volunteer.id}: {volunteer.email!r}"
+                    )
                     continue
-                logger.info(f"Volunteer is a volunteer without a confirmation email, sending confirmation email to {volunteer.email}")
+                logger.info(
+                    f"Volunteer is a volunteer without a confirmation email, sending confirmation email to {volunteer.email}"
+                )
                 self.send_confirmation_email(db, volunteer)
 
         except Exception as e:
@@ -398,8 +464,14 @@ class EmailService:
         """
         try:
             # DRY_RUN logic - only check if db is provided
-            if db is not None and config.get_dry_run(db) and to_email != config.get_dry_run_email_recipient(db):
-                logger.info(f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database")
+            if (
+                db is not None
+                and config.get_dry_run(db)
+                and to_email != config.get_dry_run_email_recipient(db)
+            ):
+                logger.info(
+                    f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database"
+                )
                 email_comm = EmailCommunicationModel(
                     volunteer_id=volunteer_id,
                     recipient_email=to_email,

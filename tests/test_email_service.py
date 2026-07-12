@@ -11,7 +11,6 @@ Tests cover:
 - Head TA column dropped when the class has no head TA row
 """
 
-import pytest
 from app.services.email_service import EmailService
 from app.services.schedule_parser import ClassBlock
 
@@ -53,7 +52,13 @@ class TestBuildClassTable:
         block = _block(
             max_assistants=2,
             days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-            teacher=["John Doe", "Jane Smith", "Bob Wilson", "Alice Brown", "Charlie Davis"],
+            teacher=[
+                "John Doe",
+                "Jane Smith",
+                "Bob Wilson",
+                "Alice Brown",
+                "Charlie Davis",
+            ],
             assistants=["TA1, TA2, TA3", "TA1", "TA1, TA2", "", "TA1, TA2, TA3, TA4"],
         )
         result = EmailService().build_class_table(block)
@@ -73,7 +78,11 @@ class TestBuildClassTable:
             max_assistants=5,
             days=["Monday", "Tuesday", "Wednesday"],
             teacher=["John", "Jane", "Bob"],
-            assistants=["A, B, C", "  ", "A,B,,C"],  # whitespace / empty entries ignored
+            assistants=[
+                "A, B, C",
+                "  ",
+                "A,B,,C",
+            ],  # whitespace / empty entries ignored
         )
         html = EmailService().build_class_table(block)["table_html"]
         assert "Partially Covered (3/5 assistants)" in html  # Monday: 3
@@ -234,3 +243,55 @@ class TestBuildClassTable:
         assert "❌ Missing Teacher" in html
         assert "optional day, volunteers welcome to support existing classes" in html
         assert "No class" in html
+
+    def test_needs_volunteers_true_when_teacher_missing(self):
+        block = _block(
+            max_assistants=3,
+            days=["Monday", "Tuesday"],
+            teacher=["Need Volunteers", "John Doe"],
+            assistants=["TA1, TA2", "TA1"],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["needs_volunteers"] is True
+
+    def test_needs_volunteers_true_when_head_ta_missing(self):
+        block = _block(
+            max_assistants=3,
+            has_head_ta=True,
+            days=["Monday"],
+            teacher=["John Doe"],
+            head_ta=["Need Volunteers"],
+            assistants=["TA1, TA2"],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["needs_volunteers"] is True
+
+    def test_needs_volunteers_true_when_assistants_missing(self):
+        block = _block(
+            max_assistants=3,
+            days=["Monday"],
+            teacher=["John Doe"],
+            assistants=["Need Volunteers"],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["needs_volunteers"] is True
+
+    def test_needs_volunteers_false_when_fully_covered(self):
+        block = _block(
+            max_assistants=2,
+            days=["Monday", "Tuesday"],
+            teacher=["John Doe", "Jane Smith"],
+            assistants=["TA1, TA2", "TA1, TA2"],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["needs_volunteers"] is False
+
+    def test_needs_volunteers_false_for_optional_and_no_class_days(self):
+        block = _block(
+            max_assistants=3,
+            days=["Monday", "Tuesday"],
+            teacher=["Optional Day", "No Class - Holiday"],
+            assistants=["TA1", ""],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["needs_volunteers"] is False
