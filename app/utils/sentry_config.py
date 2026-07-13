@@ -29,5 +29,9 @@ def init_sentry() -> None:
         environment=ENVIRONMENT,
         release=APPLICATION_VERSION,
         traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        # Attaches request IP, headers, and any explicitly-set user info to
+        # every event. Deliberate choice for easier "which request/user hit
+        # this" debugging - means that data is sent to Sentry on every error.
+        send_default_pii=True,
     )
     logger.info(f"Sentry error tracking initialized for environment={ENVIRONMENT}")
