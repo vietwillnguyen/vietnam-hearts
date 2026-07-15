@@ -4,23 +4,26 @@ Email service for sending automated emails to volunteers
 
 import os
 import re
-import smtplib
 import secrets
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
-from typing import Optional
+import smtplib
 from datetime import datetime
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
+
 from app.models import (
     EmailCommunication as EmailCommunicationModel,
+)
+from app.models import (
     Volunteer as VolunteerModel,
 )
 from app.services.schedule_parser import ClassBlock
-from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import config
-from jinja2 import Environment, FileSystemLoader
+from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
@@ -38,7 +41,9 @@ class EmailService:
 
         # Email subjects
         self.welcome_email_subject = "[ACTION REQUIRED] Welcome to Vietnam Hearts! ❤️🇻🇳"
-        self.reminder_email_subject_template = "🗓️ Weekly Volunteer Reminder – Schedule Update ({start_date} to {end_date})"
+        self.reminder_email_subject_template = (
+            "🗓️ Weekly Volunteer Reminder – Schedule Update ({start_date} to {end_date})"
+        )
 
         # External links - these will be loaded dynamically from database
         self.schedule_signup_link = None  # Will be loaded per request
@@ -54,14 +59,14 @@ class EmailService:
         welcome_EMAIL_TEMPLATES_PATH = (
             config.EMAIL_TEMPLATES_PATH / "confirmation-email.html"
         )
-        with open(welcome_EMAIL_TEMPLATES_PATH, "r") as f:
+        with open(welcome_EMAIL_TEMPLATES_PATH) as f:
             self.welcome_template = f.read()
 
         # Weekly reminder template
         reminder_EMAIL_TEMPLATES_PATH = (
             config.EMAIL_TEMPLATES_PATH / "weekly-reminder-email.html"
         )
-        with open(reminder_EMAIL_TEMPLATES_PATH, "r") as f:
+        with open(reminder_EMAIL_TEMPLATES_PATH) as f:
             self.reminder_template = f.read()
 
     def generate_unsubscribe_token(self) -> str:
@@ -228,8 +233,9 @@ class EmailService:
         Returns:
             tuple: (html_body, subject)
         """
-        from app.services.google_sheets import sheets_service
         from datetime import datetime, timedelta
+
+        from app.services.google_sheets import sheets_service
 
         # Calculate date range for the reminder (current week)
         today = datetime.now()
@@ -416,7 +422,7 @@ class EmailService:
             volunteers = (
                 db.query(VolunteerModel)
                 .filter(
-                    VolunteerModel.is_active == True,
+                    VolunteerModel.is_active.is_(True),
                     VolunteerModel.email.contains("@"),
                     ~VolunteerModel.email_communications.any(
                         EmailCommunicationModel.email_type == "volunteer_confirmation"
@@ -446,8 +452,8 @@ class EmailService:
         to_email: str,
         subject: str,
         html_body: str,
-        db: Optional[Session] = None,
-        volunteer_id: Optional[int] = None,
+        db: Session | None = None,
+        volunteer_id: int | None = None,
         email_type: str = "custom",
     ) -> bool:
         """

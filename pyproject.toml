@@ -26,12 +26,48 @@ tenacity = "^8.2.3"
 httpx = "0.28.1"
 PyJWT = "^2.8.0"
 google-generativeai = "^0.3.0"
+sentry-sdk = {extras = ["fastapi"], version = "^2.19.0"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "7.4.3"
-black = "23.11.0"
-flake8 = "6.1.0"
+ruff = "^0.8.0"
+pre-commit = "^4.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api" 
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line length is handled by the formatter
+    "B904",  # pre-existing debt: ~52 call sites raise without `from err`/`from None`
+             # inside except blocks (routers/services). Fixing needs a per-site read
+             # to pick the right cause, so it's tracked as follow-up, not folded into
+             # this lint-tooling change.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+# Disabled/WIP feature (messenger bot router not mounted in app/main.py); the
+# star import predates this ruff config and isn't part of the active app.
+"app/routers/bot.py" = ["F403"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern relies on calls like Depends()/Query()
+# as default argument values by design - not the mutable-default-arg bug B008
+# normally flags.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Path", "fastapi.Header"] 

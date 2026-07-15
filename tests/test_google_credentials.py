@@ -30,11 +30,14 @@ def clear_credentials_cache():
 
 
 def test_uses_file_based_credentials_when_key_file_present():
-    with patch(
-        "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
-    ) as mock_path, patch(
-        "app.utils.google_credentials.service_account.Credentials.from_service_account_file"
-    ) as mock_from_file:
+    with (
+        patch(
+            "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
+        ) as mock_path,
+        patch(
+            "app.utils.google_credentials.service_account.Credentials.from_service_account_file"
+        ) as mock_from_file,
+    ):
         mock_path.exists.return_value = True
         mock_from_file.return_value = "file-creds"
 
@@ -49,13 +52,15 @@ def test_self_impersonates_when_no_key_file_present():
     source_creds = MagicMock()
     source_creds.service_account_email = "runtime-sa@project.iam.gserviceaccount.com"
 
-    with patch(
-        "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
-    ) as mock_path, patch(
-        "app.utils.google_credentials.google.auth.default"
-    ) as mock_default, patch(
-        "app.utils.google_credentials.impersonated_credentials.Credentials"
-    ) as mock_impersonated:
+    with (
+        patch(
+            "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
+        ) as mock_path,
+        patch("app.utils.google_credentials.google.auth.default") as mock_default,
+        patch(
+            "app.utils.google_credentials.impersonated_credentials.Credentials"
+        ) as mock_impersonated,
+    ):
         mock_path.exists.return_value = False
         mock_default.return_value = (source_creds, "some-project")
         mock_impersonated.return_value = "impersonated-creds"
@@ -76,11 +81,12 @@ def test_raises_clear_error_for_user_adc_without_service_account_email():
     """gcloud user-based ADC has no service_account_email; must not raise a raw AttributeError."""
     source_creds = MagicMock(spec=["refresh"])
 
-    with patch(
-        "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
-    ) as mock_path, patch(
-        "app.utils.google_credentials.google.auth.default"
-    ) as mock_default:
+    with (
+        patch(
+            "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
+        ) as mock_path,
+        patch("app.utils.google_credentials.google.auth.default") as mock_default,
+    ):
         mock_path.exists.return_value = False
         mock_default.return_value = (source_creds, "some-project")
 
@@ -93,13 +99,15 @@ def test_reuses_cached_credentials_for_same_scopes():
     source_creds = MagicMock()
     source_creds.service_account_email = "runtime-sa@project.iam.gserviceaccount.com"
 
-    with patch(
-        "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
-    ) as mock_path, patch(
-        "app.utils.google_credentials.google.auth.default"
-    ) as mock_default, patch(
-        "app.utils.google_credentials.impersonated_credentials.Credentials"
-    ) as mock_impersonated:
+    with (
+        patch(
+            "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
+        ) as mock_path,
+        patch("app.utils.google_credentials.google.auth.default") as mock_default,
+        patch(
+            "app.utils.google_credentials.impersonated_credentials.Credentials"
+        ) as mock_impersonated,
+    ):
         mock_path.exists.return_value = False
         mock_default.return_value = (source_creds, "some-project")
         mock_impersonated.return_value = "impersonated-creds"

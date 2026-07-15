@@ -2,21 +2,23 @@
 Admin volunteer management endpoints
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from typing import List, Dict, Any
-from datetime import datetime
 
 from app.database import get_db
 from app.models import (
-    Volunteer as VolunteerModel,
     EmailCommunication as EmailCommunicationModel,
 )
+from app.models import (
+    Volunteer as VolunteerModel,
+)
+from app.routers.admin.helpers import get_volunteer_summary
 from app.schemas import Volunteer
 from app.services.email_service import email_service
-from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import ConfigHelper
-from app.routers.admin.helpers import get_volunteer_summary
+from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
@@ -27,9 +29,11 @@ router = APIRouter()
 def view_volunteers(db: Session = Depends(get_db)):
     """View all volunteers and their email status"""
     try:
-        volunteers = db.query(VolunteerModel).options(
-            joinedload(VolunteerModel.email_communications)
-        ).all()
+        volunteers = (
+            db.query(VolunteerModel)
+            .options(joinedload(VolunteerModel.email_communications))
+            .all()
+        )
         volunteer_data = get_volunteer_summary(volunteers)
         return {
             "status": "success",
@@ -38,17 +42,19 @@ def view_volunteers(db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"Failed to fetch volunteer data: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch volunteer data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch volunteer data: {str(e)}"
+        )
 
 
 @router.get(
     "/volunteers/active",
     summary="List active volunteers",
-    response_model=List[Volunteer],
+    response_model=list[Volunteer],
 )
 def list_active_volunteers(db: Session = Depends(get_db)):
     """Get only active volunteers"""
-    return db.query(VolunteerModel).filter(VolunteerModel.is_active == True).all()
+    return db.query(VolunteerModel).filter(VolunteerModel.is_active.is_(True)).all()
 
 
 @router.get("/volunteers/announcement-recipients")
@@ -57,8 +63,8 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
     try:
         recipients = (
             db.query(VolunteerModel)
-            .filter(VolunteerModel.is_active == True)
-            .filter(VolunteerModel.all_emails_subscribed == True)
+            .filter(VolunteerModel.is_active.is_(True))
+            .filter(VolunteerModel.all_emails_subscribed.is_(True))
             .order_by(VolunteerModel.name)
             .all()
         )
@@ -81,7 +87,9 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"Failed to get announcement recipients: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get announcement recipients: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get announcement recipients: {str(e)}"
+        )
 
 
 @router.get(
@@ -90,17 +98,23 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
     response_model=Volunteer,
 )
 def get_volunteer_by_id(volunteer_id: int, db: Session = Depends(get_db)):
-    volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+    volunteer = (
+        db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+    )
     if not volunteer:
         raise HTTPException(status_code=404, detail="Volunteer not found")
     return volunteer
 
 
 @router.post("/volunteers/{volunteer_id}/send-confirmation")
-def send_confirmation_email_to_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
+def send_confirmation_email_to_volunteer(
+    volunteer_id: int, db: Session = Depends(get_db)
+):
     """Manually send a confirmation email to a specific volunteer"""
     try:
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
 
@@ -128,20 +142,30 @@ def send_confirmation_email_to_volunteer(volunteer_id: int, db: Session = Depend
                 "message": f"Confirmation email sent successfully to {volunteer.email}",
                 "volunteer_email": volunteer.email,
             }
-        raise HTTPException(status_code=500, detail=f"Failed to send confirmation email to {volunteer.email}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send confirmation email to {volunteer.email}",
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to send confirmation email to volunteer {volunteer_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to send confirmation email: {str(e)}")
+        logger.error(
+            f"Failed to send confirmation email to volunteer {volunteer_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send confirmation email: {str(e)}"
+        )
 
 
 @router.post("/volunteers/{volunteer_id}/reset-confirmation")
 def reset_confirmation_email_status(volunteer_id: int, db: Session = Depends(get_db)):
     """Reset confirmation email status for a volunteer"""
     try:
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
 
@@ -164,28 +188,37 @@ def reset_confirmation_email_status(volunteer_id: int, db: Session = Depends(get
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to reset confirmation status for volunteer {volunteer_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to reset confirmation status: {str(e)}")
+        logger.error(
+            f"Failed to reset confirmation status for volunteer {volunteer_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reset confirmation status: {str(e)}"
+        )
 
 
 @router.post("/volunteers/{volunteer_id}/resubscribe")
 def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
     """Resubscribe a volunteer to all emails"""
     try:
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
 
         volunteer.weekly_reminders_subscribed = True
         volunteer.all_emails_subscribed = True
-        db.add(EmailCommunicationModel(
-            volunteer_id=volunteer.id,
-            recipient_email=volunteer.email,
-            email_type="resubscribe_all",
-            subject="Resubscribe Request - All Emails",
-            status="sent",
-            sent_at=datetime.now(),
-        ))
+        db.add(
+            EmailCommunicationModel(
+                volunteer_id=volunteer.id,
+                recipient_email=volunteer.email,
+                email_type="resubscribe_all",
+                subject="Resubscribe Request - All Emails",
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
         db.commit()
         logger.info(f"Volunteer {volunteer.email} resubscribed to all emails by admin")
         return {
@@ -197,29 +230,39 @@ def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to resubscribe volunteer {volunteer_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to resubscribe volunteer: {str(e)}")
+        logger.error(
+            f"Failed to resubscribe volunteer {volunteer_id}: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to resubscribe volunteer: {str(e)}"
+        )
 
 
 @router.post("/volunteers/{volunteer_id}/resubscribe-weekly")
 def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db)):
     """Resubscribe a volunteer to weekly reminders only"""
     try:
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
 
         volunteer.weekly_reminders_subscribed = True
-        db.add(EmailCommunicationModel(
-            volunteer_id=volunteer.id,
-            recipient_email=volunteer.email,
-            email_type="resubscribe_weekly",
-            subject="Resubscribe Request - Weekly Reminders",
-            status="sent",
-            sent_at=datetime.now(),
-        ))
+        db.add(
+            EmailCommunicationModel(
+                volunteer_id=volunteer.id,
+                recipient_email=volunteer.email,
+                email_type="resubscribe_weekly",
+                subject="Resubscribe Request - Weekly Reminders",
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} resubscribed to weekly reminders by admin")
+        logger.info(
+            f"Volunteer {volunteer.email} resubscribed to weekly reminders by admin"
+        )
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been resubscribed to weekly reminders",
@@ -229,70 +272,107 @@ def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to resubscribe volunteer {volunteer_id} to weekly: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to resubscribe volunteer: {str(e)}")
+        logger.error(
+            f"Failed to resubscribe volunteer {volunteer_id} to weekly: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to resubscribe volunteer: {str(e)}"
+        )
 
 
 @router.post("/volunteers/{volunteer_id}/deactivate")
 def deactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
     """Soft-delete a volunteer by setting is_active to False"""
     try:
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
 
         if not volunteer.is_active:
-            return {"status": "info", "message": f"Volunteer {volunteer.email} is already deactivated", "volunteer_email": volunteer.email}
+            return {
+                "status": "info",
+                "message": f"Volunteer {volunteer.email} is already deactivated",
+                "volunteer_email": volunteer.email,
+            }
 
         volunteer.is_active = False
-        db.add(EmailCommunicationModel(
-            volunteer_id=volunteer.id,
-            recipient_email=volunteer.email,
-            email_type="volunteer_deactivated",
-            subject="Volunteer Account Deactivated",
-            status="sent",
-            sent_at=datetime.now(),
-        ))
+        db.add(
+            EmailCommunicationModel(
+                volunteer_id=volunteer.id,
+                recipient_email=volunteer.email,
+                email_type="volunteer_deactivated",
+                subject="Volunteer Account Deactivated",
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
         db.commit()
         logger.info(f"Volunteer {volunteer.email} deactivated by admin")
-        return {"status": "success", "message": f"Volunteer {volunteer.email} has been deactivated", "volunteer_email": volunteer.email}
+        return {
+            "status": "success",
+            "message": f"Volunteer {volunteer.email} has been deactivated",
+            "volunteer_email": volunteer.email,
+        }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to deactivate volunteer {volunteer_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to deactivate volunteer: {str(e)}")
+        logger.error(
+            f"Failed to deactivate volunteer {volunteer_id}: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to deactivate volunteer: {str(e)}"
+        )
 
 
 @router.post("/volunteers/{volunteer_id}/reactivate")
 def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
     """Reactivate a volunteer"""
     try:
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
 
         if volunteer.is_active:
-            return {"status": "info", "message": f"Volunteer {volunteer.email} is already active", "volunteer_email": volunteer.email}
+            return {
+                "status": "info",
+                "message": f"Volunteer {volunteer.email} is already active",
+                "volunteer_email": volunteer.email,
+            }
 
         volunteer.is_active = True
-        db.add(EmailCommunicationModel(
-            volunteer_id=volunteer.id,
-            recipient_email=volunteer.email,
-            email_type="volunteer_reactivated",
-            subject="Volunteer Account Reactivated",
-            status="sent",
-            sent_at=datetime.now(),
-        ))
+        db.add(
+            EmailCommunicationModel(
+                volunteer_id=volunteer.id,
+                recipient_email=volunteer.email,
+                email_type="volunteer_reactivated",
+                subject="Volunteer Account Reactivated",
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
         db.commit()
         logger.info(f"Volunteer {volunteer.email} reactivated by admin")
-        return {"status": "success", "message": f"Volunteer {volunteer.email} has been reactivated", "volunteer_email": volunteer.email}
+        return {
+            "status": "success",
+            "message": f"Volunteer {volunteer.email} has been reactivated",
+            "volunteer_email": volunteer.email,
+        }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to reactivate volunteer {volunteer_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to reactivate volunteer: {str(e)}")
+        logger.error(
+            f"Failed to reactivate volunteer {volunteer_id}: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reactivate volunteer: {str(e)}"
+        )
 
 
 @router.post("/volunteers/{volunteer_id}/send-weekly-reminder")
@@ -305,13 +385,20 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
                 detail="Weekly reminders are currently disabled globally. Enable them in the Settings tab to send weekly reminders.",
             )
 
-        volunteer = db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        volunteer = (
+            db.query(VolunteerModel).filter(VolunteerModel.id == volunteer_id).first()
+        )
         if not volunteer:
             raise HTTPException(status_code=404, detail="Volunteer not found")
         if not volunteer.is_active:
-            raise HTTPException(status_code=400, detail=f"Volunteer {volunteer.email} is not active")
+            raise HTTPException(
+                status_code=400, detail=f"Volunteer {volunteer.email} is not active"
+            )
         if not volunteer.weekly_reminders_subscribed:
-            raise HTTPException(status_code=400, detail=f"Volunteer {volunteer.email} is not subscribed to weekly reminders")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Volunteer {volunteer.email} is not subscribed to weekly reminders",
+            )
 
         html_body, subject = email_service.build_weekly_reminder_content(volunteer, db)
         success = email_service.send_custom_email(
@@ -330,13 +417,21 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
                 "volunteer_id": volunteer_id,
                 "email": volunteer.email,
             }
-        raise HTTPException(status_code=500, detail=f"Failed to send weekly reminder email to {volunteer.email}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send weekly reminder email to {volunteer.email}",
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to send weekly reminder to volunteer {volunteer_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to send weekly reminder email: {str(e)}")
+        logger.error(
+            f"Failed to send weekly reminder to volunteer {volunteer_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send weekly reminder email: {str(e)}"
+        )
 
 
 @router.post("/volunteers/cleanup-malformed-emails")
@@ -350,14 +445,11 @@ def cleanup_malformed_emails(db: Session = Depends(get_db), dry_run: bool = True
     After deletion, re-run sync to re-import correctly from the sheet.
     """
     bad_volunteers = (
-        db.query(VolunteerModel)
-        .filter(~VolunteerModel.email.contains("@"))
-        .all()
+        db.query(VolunteerModel).filter(~VolunteerModel.email.contains("@")).all()
     )
 
     preview = [
-        {"id": v.id, "name": v.name, "bad_email": v.email}
-        for v in bad_volunteers
+        {"id": v.id, "name": v.name, "bad_email": v.email} for v in bad_volunteers
     ]
 
     if dry_run:
@@ -379,9 +471,7 @@ def cleanup_malformed_emails(db: Session = Depends(get_db), dry_run: bool = True
         )
 
     deleted_volunteers = (
-        db.query(VolunteerModel)
-        .filter(~VolunteerModel.email.contains("@"))
-        .delete()
+        db.query(VolunteerModel).filter(~VolunteerModel.email.contains("@")).delete()
     )
     db.commit()
 

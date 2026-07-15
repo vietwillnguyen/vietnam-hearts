@@ -6,11 +6,15 @@ Catches unhandled exceptions and returns standardized error responses.
 """
 
 import traceback
-from typing import Callable, Dict, Any
-from fastapi import Request, HTTPException, status
+from collections.abc import Callable
+from typing import Any
+
+import sentry_sdk
+from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
 from app.utils.logging_config import get_logger
 
 logger = get_logger("error_handling")
@@ -19,26 +23,26 @@ logger = get_logger("error_handling")
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     """
     Middleware for handling unhandled exceptions and providing consistent error responses
-    
+
     This middleware:
     1. Catches all unhandled exceptions
     2. Logs detailed error information
     3. Returns consistent error response format
     4. Handles different types of errors appropriately
     """
-    
+
     def __init__(self, app, include_traceback: bool = False):
         super().__init__(app)
         self.include_traceback = include_traceback
-    
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
         Process the request through error handling middleware
-        
+
         Args:
             request: FastAPI request object
             call_next: Next middleware or endpoint handler
-            
+
         Returns:
             Response from the next handler or error response
         """
@@ -46,31 +50,38 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             # Process the request
             response = await call_next(request)
             return response
-            
-        except HTTPException as e:
+
+        except HTTPException:
             # Re-raise HTTP exceptions (they're already properly formatted)
             raise
-            
+
         except Exception as e:
             # Handle all other unhandled exceptions
             return await self._handle_unexpected_error(request, e)
-    
-    async def _handle_unexpected_error(self, request: Request, error: Exception) -> JSONResponse:
+
+    async def _handle_unexpected_error(
+        self, request: Request, error: Exception
+    ) -> JSONResponse:
         """
         Handle unexpected errors and return consistent error response
-        
+
         Args:
             request: FastAPI request object
             error: Exception that occurred
-            
+
         Returns:
             JSONResponse with error details
         """
         # Get request details for logging
         method = request.method
         path = request.url.path
-        request_id = getattr(request.state, 'request_id', 'unknown')
-        
+        request_id = getattr(request.state, "request_id", "unknown")
+
+        # Report to Sentry (no-op if SENTRY_DSN is unset). This middleware
+        # catches the exception before it would otherwise reach Sentry's
+        # own ASGI instrumentation, so it must be reported explicitly here.
+        sentry_sdk.capture_exception(error)
+
         # Log the error with full details
         logger.error(
             f"❌ Unhandled exception | ID: {request_id} | {method} {path}",
@@ -80,14 +91,14 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
                 "path": path,
                 "error": str(error),
                 "error_type": type(error).__name__,
-                "traceback": traceback.format_exc() if self.include_traceback else None
+                "traceback": traceback.format_exc() if self.include_traceback else None,
             },
-            exc_info=True
+            exc_info=True,
         )
-        
+
         # Determine appropriate status code
         status_code = self._get_status_code_for_error(error)
-        
+
         # Build error response
         error_response = {
             "error": {
@@ -95,35 +106,32 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
                 "message": "An unexpected error occurred",
                 "request_id": request_id,
                 "path": path,
-                "method": method
+                "method": method,
             }
         }
-        
+
         # Include additional details in development
         if self.include_traceback:
             error_response["error"]["details"] = {
                 "error_type": type(error).__name__,
                 "error_message": str(error),
-                "traceback": traceback.format_exc()
+                "traceback": traceback.format_exc(),
             }
-        
-        return JSONResponse(
-            status_code=status_code,
-            content=error_response
-        )
-    
+
+        return JSONResponse(status_code=status_code, content=error_response)
+
     def _get_status_code_for_error(self, error: Exception) -> int:
         """
         Determine appropriate HTTP status code for different error types
-        
+
         Args:
             error: Exception that occurred
-            
+
         Returns:
             HTTP status code
         """
         error_type = type(error).__name__
-        
+
         # Map common error types to status codes
         error_status_map = {
             "ValidationError": status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -139,7 +147,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             "FileNotFoundError": status.HTTP_404_NOT_FOUND,
             "OSError": status.HTTP_500_INTERNAL_SERVER_ERROR,
         }
-        
+
         return error_status_map.get(error_type, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -147,68 +155,61 @@ def create_error_response(
     error_type: str,
     message: str,
     status_code: int = 500,
-    details: Dict[str, Any] = None,
-    request_id: str = None
+    details: dict[str, Any] = None,
+    request_id: str = None,
 ) -> JSONResponse:
     """
     Create a standardized error response
-    
+
     Args:
         error_type: Type of error (e.g., 'validation_error', 'not_found')
         message: Human-readable error message
         status_code: HTTP status code
         details: Additional error details
         request_id: Request identifier for tracking
-        
+
     Returns:
         JSONResponse with standardized error format
     """
     error_response = {
-        "error": {
-            "type": error_type,
-            "message": message,
-            "status_code": status_code
-        }
+        "error": {"type": error_type, "message": message, "status_code": status_code}
     }
-    
+
     if details:
         error_response["error"]["details"] = details
-    
+
     if request_id:
         error_response["error"]["request_id"] = request_id
-    
-    return JSONResponse(
-        status_code=status_code,
-        content=error_response
-    )
+
+    return JSONResponse(status_code=status_code, content=error_response)
 
 
 def handle_validation_error(error: Exception, request: Request = None) -> JSONResponse:
     """
     Handle validation errors with consistent formatting
-    
+
     Args:
         error: Validation error exception
         request: FastAPI request object (optional)
-        
+
     Returns:
         JSONResponse with validation error details
     """
-    request_id = getattr(request.state, 'request_id', None) if request else None
-    
+    request_id = getattr(request.state, "request_id", None) if request else None
+
     # Extract validation details
-    if hasattr(error, 'errors'):
+    if hasattr(error, "errors"):
         details = {
             "validation_errors": error.errors(),
-            "model": getattr(error, 'model', None)
+            "model": getattr(error, "model", None),
         }
     else:
         details = {"error_message": str(error)}
-    
+
     return create_error_response(
         error_type="validation_error",
         message="Data validation failed",
         status_code=422,
         details=details,
-        request_id=request_id
+        request_id=request_id,
     )

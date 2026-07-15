@@ -9,19 +9,24 @@ This file handles:
 """
 
 from contextlib import contextmanager
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from .models import Base
-from .utils.logging_config import get_database_logger
-from .services.settings_service import initialize_default_settings
+
 from app.config import DATABASE_URL
+
+from .services.settings_service import initialize_default_settings
+from .utils.logging_config import get_database_logger
+
 # Initialize logger
 logger = get_database_logger()
 
 # Create database engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+    connect_args={"check_same_thread": False}
+    if DATABASE_URL.startswith("sqlite")
+    else {},
 )
 
 # Create session factory
@@ -77,7 +82,6 @@ def get_db():
         db.close()
         logger.debug("Database session closed (FastAPI)")
 
-from contextlib import contextmanager
 
 @contextmanager
 def get_db_session():
@@ -96,6 +100,7 @@ def get_db_session():
     finally:
         db.close()
         logger.debug("Database session closed (manual)")
+
 
 def test_connection():
     """Test database connectivity"""
@@ -118,4 +123,3 @@ Core Concept: HTTP Status Codes
 
 FastAPI automatically returns appropriate status codes
 """
-

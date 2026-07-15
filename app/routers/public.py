@@ -2,22 +2,25 @@
 Public endpoints for the volunteer management system
 """
 
+import os
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+
+from app.config import ENVIRONMENT
 from app.database import get_db
 from app.models import (
-    Volunteer as VolunteerModel,
     EmailCommunication as EmailCommunicationModel,
 )
+from app.models import (
+    Volunteer as VolunteerModel,
+)
 from app.services.google_sheets import sheets_service
-from app.services.bot_service import BotService
-from app.utils.logging_config import get_api_logger
-from app.config import ENVIRONMENT
-from datetime import datetime
-import os
 from app.utils.config_helper import ConfigHelper
+from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
@@ -32,15 +35,16 @@ templates = Jinja2Templates(directory="templates/web")
 async def home_page(request: Request):
     """Serve the home page."""
     from app.config import APPLICATION_VERSION
-    return templates.TemplateResponse("home.html", {
-        "request": request,
-        "version": APPLICATION_VERSION
-    })
+
+    return templates.TemplateResponse(
+        "home.html", {"request": request, "version": APPLICATION_VERSION}
+    )
 
 
 # ---------------------------------------------------------------------------
 # Unsubscribe / email-preferences endpoints
 # ---------------------------------------------------------------------------
+
 
 @public_router.get("/unsubscribe", response_class=HTMLResponse)
 def unsubscribe_volunteer_page(
@@ -129,10 +133,14 @@ def update_email_preferences(
                 subscribed_status = "Unsubscribed from all emails (Account deactivated)"
                 current_unsubscribe_type = "all_emails"
             elif not volunteer.weekly_reminders_subscribed:
-                subscribed_status = "Subscribed to announcements only (No weekly reminders)"
+                subscribed_status = (
+                    "Subscribed to announcements only (No weekly reminders)"
+                )
                 current_unsubscribe_type = "weekly_reminders"
             else:
-                subscribed_status = "Subscribed to all emails including weekly reminders"
+                subscribed_status = (
+                    "Subscribed to all emails including weekly reminders"
+                )
                 current_unsubscribe_type = "resubscribe"
 
             return templates.TemplateResponse(
@@ -178,7 +186,9 @@ def update_email_preferences(
         db.add(email_comm)
         db.commit()
 
-        logger.info(f"Volunteer {volunteer.email} updated preferences to {unsubscribe_type}")
+        logger.info(
+            f"Volunteer {volunteer.email} updated preferences to {unsubscribe_type}"
+        )
 
         # Determine display status after update
         if not volunteer.all_emails_subscribed:
@@ -217,13 +227,19 @@ def update_email_preferences(
             )
             if err_volunteer:
                 if not err_volunteer.all_emails_subscribed:
-                    err_subscribed_status = "Unsubscribed from all emails (Account deactivated)"
+                    err_subscribed_status = (
+                        "Unsubscribed from all emails (Account deactivated)"
+                    )
                     err_unsubscribe_type = "all_emails"
                 elif not err_volunteer.weekly_reminders_subscribed:
-                    err_subscribed_status = "Subscribed to announcements only (No weekly reminders)"
+                    err_subscribed_status = (
+                        "Subscribed to announcements only (No weekly reminders)"
+                    )
                     err_unsubscribe_type = "weekly_reminders"
                 else:
-                    err_subscribed_status = "Subscribed to all emails including weekly reminders"
+                    err_subscribed_status = (
+                        "Subscribed to all emails including weekly reminders"
+                    )
                     err_unsubscribe_type = "resubscribe"
                 return templates.TemplateResponse(
                     request,
@@ -251,6 +267,7 @@ def update_email_preferences(
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
+
 
 @public_router.get(
     "/health", summary="Health check", description="Returns system health information"
@@ -285,6 +302,7 @@ def get_health(db: Session = Depends(get_db)):
         bot_error = None
         try:
             from app.routers.bot import get_bot_service
+
             bot_service = get_bot_service()
             if hasattr(bot_service, "health_check"):
                 bot_health = bot_service.health_check()
@@ -303,9 +321,12 @@ def get_health(db: Session = Depends(get_db)):
             logger.error(f"Bot service health check failed: {str(e)}")
 
         from app.config import APPLICATION_VERSION
+
         overall = (
             "healthy"
-            if db_status == "healthy" and sheets_status == "healthy" and bot_status == "healthy"
+            if db_status == "healthy"
+            and sheets_status == "healthy"
+            and bot_status == "healthy"
             else "unhealthy"
         )
         return {
@@ -318,7 +339,9 @@ def get_health(db: Session = Depends(get_db)):
                 "database": {
                     "status": db_status,
                     "stats": {"volunteers": total_volunteers, "emails": total_emails},
-                    "type": "SQLite" if "sqlite" in os.getenv("DATABASE_URL", "") else "PostgreSQL",
+                    "type": "SQLite"
+                    if "sqlite" in os.getenv("DATABASE_URL", "")
+                    else "PostgreSQL",
                 },
                 "google_sheets": {"status": sheets_status, "error": sheets_error},
                 "bot_service": {"status": bot_status, "error": bot_error},
@@ -336,6 +359,7 @@ def get_health(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # Debug / integration test endpoints
 # ---------------------------------------------------------------------------
+
 
 @public_router.get("/test-sheets")
 def test_sheets_connection(db: Session = Depends(get_db)):

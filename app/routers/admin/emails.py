@@ -2,20 +2,23 @@
 Admin email management endpoints
 """
 
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime, timedelta
 
 from app.database import get_db, get_db_session
 from app.models import (
-    Volunteer as VolunteerModel,
     EmailCommunication as EmailCommunicationModel,
 )
+from app.models import (
+    Volunteer as VolunteerModel,
+)
+from app.routers.admin.helpers import get_email_summary
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
-from app.utils.logging_config import get_api_logger
 from app.utils.config_helper import ConfigHelper
-from app.routers.admin.helpers import get_email_summary
+from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
@@ -168,8 +171,8 @@ async def send_weekly_reminder_emails(request: Request):
             else:
                 db_volunteers = (
                     db.query(VolunteerModel)
-                    .filter(VolunteerModel.is_active == True)
-                    .filter(VolunteerModel.weekly_reminders_subscribed == True)
+                    .filter(VolunteerModel.is_active.is_(True))
+                    .filter(VolunteerModel.weekly_reminders_subscribed.is_(True))
                     .all()
                 )
                 volunteers = [{"email": v.email, "name": v.name} for v in db_volunteers]

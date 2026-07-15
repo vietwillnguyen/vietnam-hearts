@@ -9,13 +9,14 @@ Covers:
 """
 
 import json
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_auth_service():
@@ -65,27 +66,40 @@ SAMPLE_PENDING_ROW = {
     "safeguarding_contact": "Politely decline and explain it is against policy",
 }
 
-SAMPLE_ACCEPTED_ROW = {**SAMPLE_PENDING_ROW, "applicant_status": "ACCEPTED", "email_address": "bob@example.com"}
-SAMPLE_REJECTED_ROW = {**SAMPLE_PENDING_ROW, "applicant_status": "REJECTED", "email_address": "carol@example.com"}
+SAMPLE_ACCEPTED_ROW = {
+    **SAMPLE_PENDING_ROW,
+    "applicant_status": "ACCEPTED",
+    "email_address": "bob@example.com",
+}
+SAMPLE_REJECTED_ROW = {
+    **SAMPLE_PENDING_ROW,
+    "applicant_status": "REJECTED",
+    "email_address": "carol@example.com",
+}
 
-GEMINI_ACCEPT_RESPONSE = json.dumps({
-    "summary": "Alice has uploaded all required documents and shows genuine enthusiasm.",
-    "rating": 7,
-    "verdict": "ACCEPTED",
-    "reasoning": "All identity documents present, no safeguarding concerns.",
-})
+GEMINI_ACCEPT_RESPONSE = json.dumps(
+    {
+        "summary": "Alice has uploaded all required documents and shows genuine enthusiasm.",
+        "rating": 7,
+        "verdict": "ACCEPTED",
+        "reasoning": "All identity documents present, no safeguarding concerns.",
+    }
+)
 
-GEMINI_REJECT_RESPONSE = json.dumps({
-    "summary": "Applicant did not provide identity documents.",
-    "rating": 2,
-    "verdict": "REJECTED",
-    "reasoning": "Missing passport_upload and headshot_upload.",
-})
+GEMINI_REJECT_RESPONSE = json.dumps(
+    {
+        "summary": "Applicant did not provide identity documents.",
+        "rating": 2,
+        "verdict": "REJECTED",
+        "reasoning": "Missing passport_upload and headshot_upload.",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Unit tests: GoogleSheetsService.get_pending_submissions_with_rows
 # ---------------------------------------------------------------------------
+
 
 class TestGetPendingSubmissionsWithRows:
     """Tests for the new method that returns (row_number, submission) tuples."""
@@ -96,17 +110,40 @@ class TestGetPendingSubmissionsWithRows:
         """
         rows = []
         for status in statuses:
-            row = [status, timestamp, judgement,       # A, B, C
-                   "x@x.com", "",                       # D email, E quiz_score
-                   "A", "B",                            # F first, G last
-                   "P1", "01/01/30", "01/01/95",        # H,I,J
-                   "http://p", "http://h", "http://s",  # K,L,M
-                   "HCMC", "090", "Teacher", "Mon",     # N,O,P,Q
-                   "06/01", "6mo", "Some", "Details",   # R,S,T,U
-                   "No", "Basic", "", "FB",              # V,W,X,Y
-                   "Motivation", "Gain", "Yes",          # Z,AA,AB
-                   "", "Appropriate", "Appropriate",     # AC,AD,AE
-                   "No"]                                 # AF
+            row = [
+                status,
+                timestamp,
+                judgement,  # A, B, C
+                "x@x.com",
+                "",  # D email, E quiz_score
+                "A",
+                "B",  # F first, G last
+                "P1",
+                "01/01/30",
+                "01/01/95",  # H,I,J
+                "http://p",
+                "http://h",
+                "http://s",  # K,L,M
+                "HCMC",
+                "090",
+                "Teacher",
+                "Mon",  # N,O,P,Q
+                "06/01",
+                "6mo",
+                "Some",
+                "Details",  # R,S,T,U
+                "No",
+                "Basic",
+                "",
+                "FB",  # V,W,X,Y
+                "Motivation",
+                "Gain",
+                "Yes",  # Z,AA,AB
+                "",
+                "Appropriate",
+                "Appropriate",  # AC,AD,AE
+                "No",
+            ]  # AF
             rows.append(row)
         return rows
 
@@ -122,8 +159,16 @@ class TestGetPendingSubmissionsWithRows:
         raw = self._make_raw_rows(["PENDING", "ACCEPTED", "REJECTED", "", "PENDING"])
         mock_sheet.values().get().execute.return_value = {"values": raw}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             result = svc.get_pending_submissions_with_rows(db=MagicMock())
 
         statuses = [sub["applicant_status"] for _, sub in result]
@@ -144,8 +189,16 @@ class TestGetPendingSubmissionsWithRows:
         raw = self._make_raw_rows(["PENDING", "ACCEPTED", "PENDING"])
         mock_sheet.values().get().execute.return_value = {"values": raw}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             result = svc.get_pending_submissions_with_rows(db=MagicMock())
 
         row_numbers = [row_num for row_num, _ in result]
@@ -164,13 +217,23 @@ class TestGetPendingSubmissionsWithRows:
 
         mock_sheet.values().get().execute.return_value = {"values": []}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             svc.get_pending_submissions_with_rows(db=MagicMock())
 
         get_call_kwargs = mock_sheet.values().get.call_args
         used_range = get_call_kwargs[1].get("range") or get_call_kwargs[0][1]
-        assert used_range.startswith("A2"), f"Range should start with 'A2', got: {used_range}"
+        assert used_range.startswith(
+            "A2"
+        ), f"Range should start with 'A2', got: {used_range}"
         # Must not use the old narrow ranges that drop columns S-X and beyond
         assert used_range not in ("A2:R", "A2:X"), f"Range is too narrow: {used_range}"
 
@@ -186,8 +249,16 @@ class TestGetPendingSubmissionsWithRows:
         raw = self._make_raw_rows(["PENDING", ""], timestamp="")
         mock_sheet.values().get().execute.return_value = {"values": raw}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             result = svc.get_pending_submissions_with_rows(db=MagicMock())
 
         assert result == []
@@ -201,11 +272,21 @@ class TestGetPendingSubmissionsWithRows:
         mock_sheet = MagicMock()
         svc._sheet = mock_sheet
 
-        raw = self._make_raw_rows(["PENDING", ""], judgement="[ACCEPTED] 7/10 | looks good")
+        raw = self._make_raw_rows(
+            ["PENDING", ""], judgement="[ACCEPTED] 7/10 | looks good"
+        )
         mock_sheet.values().get().execute.return_value = {"values": raw}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             result = svc.get_pending_submissions_with_rows(db=MagicMock())
 
         assert result == []
@@ -222,8 +303,16 @@ class TestGetPendingSubmissionsWithRows:
         raw = self._make_raw_rows(["ACCEPTED", "REJECTED"])
         mock_sheet.values().get().execute.return_value = {"values": raw}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             result = svc.get_pending_submissions_with_rows(db=MagicMock())
 
         assert result == []
@@ -232,6 +321,7 @@ class TestGetPendingSubmissionsWithRows:
 # ---------------------------------------------------------------------------
 # Unit tests: GoogleSheetsService.update_submission_judgment
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateSubmissionJudgment:
     """Tests for writing LLM verdict back to the sheet."""
@@ -246,8 +336,16 @@ class TestUpdateSubmissionJudgment:
         svc._sheet = mock_sheet
         mock_sheet.values().batchUpdate().execute.return_value = {}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             svc.update_submission_judgment(
                 db=MagicMock(),
                 row_number=5,
@@ -281,14 +379,28 @@ class TestUpdateSubmissionJudgment:
         svc._sheet = mock_sheet
         mock_sheet.values().batchUpdate().execute.return_value = {}
 
-        with patch("app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id", return_value="MY_SHEET_ID"), \
-             patch("app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries", return_value=1):
+        with (
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_new_signups_sheet_id",
+                return_value="MY_SHEET_ID",
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_google_sheets_max_retries",
+                return_value=1,
+            ),
+        ):
             svc.update_submission_judgment(
-                db=MagicMock(), row_number=3, status="REJECTED", summary="No docs.", rating=1
+                db=MagicMock(),
+                row_number=3,
+                status="REJECTED",
+                summary="No docs.",
+                rating=1,
             )
 
         batchUpdate_call = mock_sheet.values().batchUpdate.call_args
-        used_sheet_id = batchUpdate_call[1].get("spreadsheetId") or batchUpdate_call[0][0]
+        used_sheet_id = (
+            batchUpdate_call[1].get("spreadsheetId") or batchUpdate_call[0][0]
+        )
         assert used_sheet_id == "MY_SHEET_ID"
 
 
@@ -296,18 +408,24 @@ class TestUpdateSubmissionJudgment:
 # Unit tests: _judge_submission
 # ---------------------------------------------------------------------------
 
+
 class TestJudgeSubmission:
     """Tests for the Gemini LLM judging helper."""
 
     def test_returns_accepted_verdict_on_valid_response(self):
         """Parses Gemini JSON and returns verdict ACCEPTED."""
-        with patch("google.generativeai.configure"), \
-             patch("google.generativeai.GenerativeModel") as mock_model_cls:
+        with (
+            patch("google.generativeai.configure"),
+            patch("google.generativeai.GenerativeModel") as mock_model_cls,
+        ):
             mock_model = MagicMock()
             mock_model_cls.return_value = mock_model
-            mock_model.generate_content.return_value = MagicMock(text=GEMINI_ACCEPT_RESPONSE)
+            mock_model.generate_content.return_value = MagicMock(
+                text=GEMINI_ACCEPT_RESPONSE
+            )
 
             from app.routers.admin.signups import _judge_submission
+
             result = _judge_submission(SAMPLE_PENDING_ROW)
 
         assert result["verdict"] == "ACCEPTED"
@@ -316,13 +434,18 @@ class TestJudgeSubmission:
 
     def test_returns_rejected_verdict_on_missing_docs(self):
         """Parses Gemini JSON and returns verdict REJECTED."""
-        with patch("google.generativeai.configure"), \
-             patch("google.generativeai.GenerativeModel") as mock_model_cls:
+        with (
+            patch("google.generativeai.configure"),
+            patch("google.generativeai.GenerativeModel") as mock_model_cls,
+        ):
             mock_model = MagicMock()
             mock_model_cls.return_value = mock_model
-            mock_model.generate_content.return_value = MagicMock(text=GEMINI_REJECT_RESPONSE)
+            mock_model.generate_content.return_value = MagicMock(
+                text=GEMINI_REJECT_RESPONSE
+            )
 
             from app.routers.admin.signups import _judge_submission
+
             result = _judge_submission(SAMPLE_PENDING_ROW)
 
         assert result["verdict"] == "REJECTED"
@@ -331,39 +454,46 @@ class TestJudgeSubmission:
     def test_strips_markdown_fences_from_response(self):
         """Handles responses wrapped in ```json ... ``` fences."""
         fenced = f"```json\n{GEMINI_ACCEPT_RESPONSE}\n```"
-        with patch("google.generativeai.configure"), \
-             patch("google.generativeai.GenerativeModel") as mock_model_cls:
+        with (
+            patch("google.generativeai.configure"),
+            patch("google.generativeai.GenerativeModel") as mock_model_cls,
+        ):
             mock_model = MagicMock()
             mock_model_cls.return_value = mock_model
             mock_model.generate_content.return_value = MagicMock(text=fenced)
 
             from app.routers.admin.signups import _judge_submission
+
             result = _judge_submission(SAMPLE_PENDING_ROW)
 
         assert result["verdict"] == "ACCEPTED"
 
     def test_raises_on_invalid_json(self):
         """Raises ValueError if Gemini returns unparseable response."""
-        with patch("google.generativeai.configure"), \
-             patch("google.generativeai.GenerativeModel") as mock_model_cls:
+        with (
+            patch("google.generativeai.configure"),
+            patch("google.generativeai.GenerativeModel") as mock_model_cls,
+        ):
             mock_model = MagicMock()
             mock_model_cls.return_value = mock_model
             mock_model.generate_content.return_value = MagicMock(text="not json at all")
 
             from app.routers.admin.signups import _judge_submission
+
             with pytest.raises(ValueError, match="parse"):
                 _judge_submission(SAMPLE_PENDING_ROW)
 
     def test_raises_when_gemini_key_missing(self):
         """Raises RuntimeError when GEMINI_API_KEY is not set."""
-        import importlib
         import app.routers.admin.signups as signups_mod
 
         with patch.dict("os.environ", {}, clear=True):
             # Force re-evaluation by calling the function without the env var
             with pytest.raises((RuntimeError, ValueError)):
                 # Patch GenerativeModel to simulate missing key scenario
-                with patch("google.generativeai.configure", side_effect=Exception("No API key")):
+                with patch(
+                    "google.generativeai.configure", side_effect=Exception("No API key")
+                ):
                     signups_mod._judge_submission(SAMPLE_PENDING_ROW)
 
 
@@ -371,22 +501,39 @@ class TestJudgeSubmission:
 # Integration tests: POST /admin/judge-pending-submissions
 # ---------------------------------------------------------------------------
 
+
 class TestJudgePendingSubmissionsEndpoint:
     """Tests for the admin endpoint."""
 
     def _pending_rows_fixture(self):
         return [(2, SAMPLE_PENDING_ROW)]
 
-    _GOOD_JUDGMENT = {"summary": "Test summary", "rating": 7, "verdict": "ACCEPTED", "reasoning": "OK"}
+    _GOOD_JUDGMENT = {
+        "summary": "Test summary",
+        "rating": 7,
+        "verdict": "ACCEPTED",
+        "reasoning": "OK",
+    }
 
     def test_dry_run_skips_sheet_write(self, client, test_db, mock_auth_service):
         """In dry_run mode the endpoint logs but does NOT call update_submission_judgment."""
-        with patch("app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
-                   return_value=self._pending_rows_fixture()), \
-             patch("app.utils.config_helper.ConfigHelper.get_dry_run", return_value=True), \
-             patch("app.services.google_sheets.sheets_service.update_submission_judgment") as mock_write, \
-             patch("app.routers.admin.signups._judge_submission", return_value=self._GOOD_JUDGMENT), \
-             patch("time.sleep"):
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=self._pending_rows_fixture(),
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=True
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.update_submission_judgment"
+            ) as mock_write,
+            patch(
+                "app.routers.admin.signups._judge_submission",
+                return_value=self._GOOD_JUDGMENT,
+            ),
+            patch("time.sleep"),
+        ):
             response = client.post("/admin/judge-pending-submissions")
 
         assert response.status_code == 200
@@ -395,12 +542,23 @@ class TestJudgePendingSubmissionsEndpoint:
 
     def test_live_run_writes_to_sheet(self, client, test_db, mock_auth_service):
         """When dry_run is False the endpoint calls update_submission_judgment for each row."""
-        with patch("app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
-                   return_value=self._pending_rows_fixture()), \
-             patch("app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False), \
-             patch("app.services.google_sheets.sheets_service.update_submission_judgment") as mock_write, \
-             patch("app.routers.admin.signups._judge_submission", return_value=self._GOOD_JUDGMENT), \
-             patch("time.sleep"):
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=self._pending_rows_fixture(),
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.update_submission_judgment"
+            ) as mock_write,
+            patch(
+                "app.routers.admin.signups._judge_submission",
+                return_value=self._GOOD_JUDGMENT,
+            ),
+            patch("time.sleep"),
+        ):
             response = client.post("/admin/judge-pending-submissions")
 
         assert response.status_code == 200
@@ -409,38 +567,77 @@ class TestJudgePendingSubmissionsEndpoint:
 
     def test_response_contains_counts(self, client, test_db, mock_auth_service):
         """Response includes processed, accepted, rejected, errors, total_pending, remaining."""
-        with patch("app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
-                   return_value=self._pending_rows_fixture()), \
-             patch("app.utils.config_helper.ConfigHelper.get_dry_run", return_value=True), \
-             patch("app.services.google_sheets.sheets_service.update_submission_judgment"), \
-             patch("app.routers.admin.signups._judge_submission", return_value=self._GOOD_JUDGMENT), \
-             patch("time.sleep"):
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=self._pending_rows_fixture(),
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=True
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.update_submission_judgment"
+            ),
+            patch(
+                "app.routers.admin.signups._judge_submission",
+                return_value=self._GOOD_JUDGMENT,
+            ),
+            patch("time.sleep"),
+        ):
             response = client.post("/admin/judge-pending-submissions")
 
         data = response.json()
-        for key in ("processed", "accepted", "rejected", "errors", "total_pending", "remaining"):
+        for key in (
+            "processed",
+            "accepted",
+            "rejected",
+            "errors",
+            "total_pending",
+            "remaining",
+        ):
             assert key in data, f"Missing key: {key}"
 
-    def test_llm_error_increments_errors_count(self, client, test_db, mock_auth_service):
+    def test_llm_error_increments_errors_count(
+        self, client, test_db, mock_auth_service
+    ):
         """When _judge_submission raises, the row is skipped and error count increments."""
-        with patch("app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
-                   return_value=self._pending_rows_fixture()), \
-             patch("app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False), \
-             patch("app.services.google_sheets.sheets_service.update_submission_judgment") as mock_write, \
-             patch("app.routers.admin.signups._judge_submission", side_effect=ValueError("Gemini failed")), \
-             patch("time.sleep"):
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=self._pending_rows_fixture(),
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.update_submission_judgment"
+            ) as mock_write,
+            patch(
+                "app.routers.admin.signups._judge_submission",
+                side_effect=ValueError("Gemini failed"),
+            ),
+            patch("time.sleep"),
+        ):
             response = client.post("/admin/judge-pending-submissions")
 
         assert response.status_code == 200
         assert response.json()["errors"] == 1
         mock_write.assert_not_called()
 
-    def test_no_pending_rows_returns_zero_counts(self, client, test_db, mock_auth_service):
+    def test_no_pending_rows_returns_zero_counts(
+        self, client, test_db, mock_auth_service
+    ):
         """Returns zeros when there are no pending submissions to process."""
-        with patch("app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
-                   return_value=[]), \
-             patch("app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False), \
-             patch("time.sleep"):
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=[],
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch("time.sleep"),
+        ):
             response = client.post("/admin/judge-pending-submissions")
 
         data = response.json()
@@ -449,15 +646,31 @@ class TestJudgePendingSubmissionsEndpoint:
         assert data["rejected"] == 0
         assert data["errors"] == 0
 
-    def test_review_and_sync_chains_judge_then_sync(self, client, test_db, mock_auth_service):
+    def test_review_and_sync_chains_judge_then_sync(
+        self, client, test_db, mock_auth_service
+    ):
         """review-and-sync runs LLM judge first then syncs accepted submissions."""
-        with patch("app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
-                   return_value=self._pending_rows_fixture()), \
-             patch("app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False), \
-             patch("app.services.google_sheets.sheets_service.update_submission_judgment") as mock_write, \
-             patch("app.routers.admin.signups._judge_submission", return_value=self._GOOD_JUDGMENT), \
-             patch("app.services.google_sheets.sheets_service.get_signup_form_submissions", return_value=[]), \
-             patch("time.sleep"):
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=self._pending_rows_fixture(),
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.update_submission_judgment"
+            ) as mock_write,
+            patch(
+                "app.routers.admin.signups._judge_submission",
+                return_value=self._GOOD_JUDGMENT,
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_signup_form_submissions",
+                return_value=[],
+            ),
+            patch("time.sleep"),
+        ):
             response = client.post("/admin/review-and-sync")
 
         assert response.status_code == 200

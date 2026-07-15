@@ -7,9 +7,17 @@ used in main.py.
 """
 
 from fastapi import APIRouter, Depends
-from app.dependencies.auth import get_current_admin_user
 
-from app.routers.admin import volunteers, emails, signups, schedules, users, health, logs
+from app.dependencies.auth import get_current_admin_user
+from app.routers.admin import (
+    emails,
+    health,
+    logs,
+    schedules,
+    signups,
+    users,
+    volunteers,
+)
 
 admin_router = APIRouter(
     prefix="/admin",

@@ -7,19 +7,19 @@ import os
 import re
 import ssl
 import time
+
+import google.generativeai as genai
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-import google.generativeai as genai
-
 from app.database import get_db
 from app.models import Volunteer as VolunteerModel
-from app.services.google_sheets import sheets_service
+from app.routers.admin.helpers import create_new_volunteer_object
 from app.services.email_service import email_service
+from app.services.google_sheets import sheets_service
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error
-from app.routers.admin.helpers import create_new_volunteer_object
 
 logger = get_api_logger()
 
@@ -112,7 +112,9 @@ def _judge_submission(submission: dict) -> dict:
     try:
         result = json.loads(raw_text)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse Gemini response as JSON: {e}\nRaw: {raw_text}") from e
+        raise ValueError(
+            f"Failed to parse Gemini response as JSON: {e}\nRaw: {raw_text}"
+        ) from e
 
     return result
 
@@ -122,7 +124,9 @@ def _judge_submission(submission: dict) -> dict:
     summary="Get form submissions",
     description="Fetches and optionally processes volunteer signup form submissions, syncing to the database and sending confirmation emails to new volunteers",
 )
-def get_signup_form_submissions(db: Session = Depends(get_db), process_new: bool = True):
+def get_signup_form_submissions(
+    db: Session = Depends(get_db), process_new: bool = True
+):
     """
     Fetch and optionally process volunteer signup form submissions from Google Sheets.
     """
@@ -137,15 +141,24 @@ def get_signup_form_submissions(db: Session = Depends(get_db), process_new: bool
         has_empty_emails = False
 
         total_submissions = len(submissions)
-        accepted_submissions = len([s for s in submissions if s.get("applicant_status", "").upper() == "ACCEPTED"])
+        accepted_submissions = len(
+            [
+                s
+                for s in submissions
+                if s.get("applicant_status", "").upper() == "ACCEPTED"
+            ]
+        )
         non_accepted_submissions = total_submissions - accepted_submissions
 
         if process_new:
-            existing_emails = set(email[0] for email in db.query(VolunteerModel.email).all())
+            existing_emails = set(
+                email[0] for email in db.query(VolunteerModel.email).all()
+            )
             logger.info(f"Found {len(existing_emails)} existing emails in database")
 
             new_submissions = [
-                s for s in submissions
+                s
+                for s in submissions
                 if (
                     s["email_address"] not in existing_emails
                     and s.get("applicant_status", "").upper() == "ACCEPTED"
@@ -153,15 +166,37 @@ def get_signup_form_submissions(db: Session = Depends(get_db), process_new: bool
                 )
             ]
 
-            valid_accepted = len([s for s in submissions if s.get("applicant_status", "").upper() == "ACCEPTED" and s.get("email_address", "").strip()])
-            valid_non_accepted = len([s for s in submissions if s.get("applicant_status", "").upper() != "ACCEPTED" and s.get("email_address", "").strip()])
-            has_empty_emails = any(not s.get("email_address", "").strip() for s in submissions)
+            valid_accepted = len(
+                [
+                    s
+                    for s in submissions
+                    if s.get("applicant_status", "").upper() == "ACCEPTED"
+                    and s.get("email_address", "").strip()
+                ]
+            )
+            valid_non_accepted = len(
+                [
+                    s
+                    for s in submissions
+                    if s.get("applicant_status", "").upper() != "ACCEPTED"
+                    and s.get("email_address", "").strip()
+                ]
+            )
+            has_empty_emails = any(
+                not s.get("email_address", "").strip() for s in submissions
+            )
 
-            logger.info(f"Status filtering: {total_submissions} total, {accepted_submissions} accepted, {non_accepted_submissions} non-accepted")
-            logger.info(f"After email validation: {valid_accepted} valid accepted, {valid_non_accepted} valid non-accepted")
+            logger.info(
+                f"Status filtering: {total_submissions} total, {accepted_submissions} accepted, {non_accepted_submissions} non-accepted"
+            )
+            logger.info(
+                f"After email validation: {valid_accepted} valid accepted, {valid_non_accepted} valid non-accepted"
+            )
 
             if non_accepted_submissions > 0:
-                logger.info(f"Skipped non-accepted: {[{'email': s.get('email_address'), 'status': s.get('applicant_status')} for s in submissions if s.get('applicant_status', '').upper() != 'ACCEPTED']}")
+                logger.info(
+                    f"Skipped non-accepted: {[{'email': s.get('email_address'), 'status': s.get('applicant_status')} for s in submissions if s.get('applicant_status', '').upper() != 'ACCEPTED']}"
+                )
 
             logger.info(f"Found {len(new_submissions)} new submissions to process")
 
@@ -169,14 +204,23 @@ def get_signup_form_submissions(db: Session = Depends(get_db), process_new: bool
                 try:
                     new_volunteers.append(create_new_volunteer_object(submission))
                 except Exception as e:
-                    logger.error(f"Failed to process submission for {submission.get('email_address', 'unknown')}: {str(e)}")
-                    failed_submissions.append({"email": submission.get("email_address", "unknown"), "error": str(e)})
+                    logger.error(
+                        f"Failed to process submission for {submission.get('email_address', 'unknown')}: {str(e)}"
+                    )
+                    failed_submissions.append(
+                        {
+                            "email": submission.get("email_address", "unknown"),
+                            "error": str(e),
+                        }
+                    )
 
             if new_volunteers:
                 try:
                     db.bulk_save_objects(new_volunteers)
                     db.commit()
-                    logger.info(f"Added {len(new_volunteers)} new volunteers to database")
+                    logger.info(
+                        f"Added {len(new_volunteers)} new volunteers to database"
+                    )
                     for v in new_volunteers:
                         logger.info(f"New Volunteer {v.email} created with id: {v.id}")
                 except Exception as e:
@@ -236,7 +280,12 @@ def get_signup_form_submissions(db: Session = Depends(get_db), process_new: bool
                 "volunteers_created": len(new_volunteers),
             }
 
-        return {"status": "success", "message": message, "data": submissions, "details": details}
+        return {
+            "status": "success",
+            "message": message,
+            "data": submissions,
+            "details": details,
+        }
 
     except ssl.SSLEOFError as e:
         log_ssl_error(e, "get_signup_form_submissions")
@@ -280,7 +329,9 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
     dry_run = ConfigHelper.get_dry_run(db)
     all_pending = sheets_service.get_pending_submissions_with_rows(db)
     pending_rows = all_pending[:limit]
-    logger.info(f"LLM judge: {len(all_pending)} pending, processing {len(pending_rows)} (dry_run={dry_run})")
+    logger.info(
+        f"LLM judge: {len(all_pending)} pending, processing {len(pending_rows)} (dry_run={dry_run})"
+    )
 
     processed = accepted = rejected = errors = 0
 
@@ -298,11 +349,16 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
             )
 
             if dry_run:
-                logger.info(f"[DRY RUN] Would write row {row_number}: {status} {rating}/10")
+                logger.info(
+                    f"[DRY RUN] Would write row {row_number}: {status} {rating}/10"
+                )
             else:
                 sheets_service.update_submission_judgment(
-                    db=db, row_number=row_number,
-                    status=status, summary=summary, rating=rating,
+                    db=db,
+                    row_number=row_number,
+                    status=status,
+                    summary=summary,
+                    rating=rating,
                     reasoning=judgment.get("reasoning", ""),
                 )
 
@@ -313,7 +369,9 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
                 rejected += 1
 
         except Exception as e:
-            logger.error(f"Failed to judge row {row_number} ({email}): {e}", exc_info=True)
+            logger.error(
+                f"Failed to judge row {row_number} ({email}): {e}", exc_info=True
+            )
             errors += 1
 
         # Gemini 2.5 Flash Tier 1: 1K RPM — 1s gap is safe.
@@ -338,7 +396,9 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
         "Manually trigger the LLM judge. For the automated cron flow use /review-and-sync."
     ),
 )
-def judge_pending_submissions(request: Request, db: Session = Depends(get_db), limit: int = 20):
+def judge_pending_submissions(
+    request: Request, db: Session = Depends(get_db), limit: int = 20
+):
     result = _run_llm_judge(db, limit)
     logger.info(f"Manual judge run complete: {result}")
     return {"status": "success", **result}
@@ -387,10 +447,22 @@ async def sync_volunteers(request: Request, db: Session = Depends(get_db)):
         if status == "success":
             return {"status": "success", "message": "Volunteers synced successfully"}
         elif status == "partial_failure":
-            return {"status": "partial_success", "message": "Volunteers synced with some issues", "details": result.get("details", {})}
-        return {"status": "error", "message": "Failed to sync volunteers", "details": result.get("details", {})}
+            return {
+                "status": "partial_success",
+                "message": "Volunteers synced with some issues",
+                "details": result.get("details", {}),
+            }
+        return {
+            "status": "error",
+            "message": "Failed to sync volunteers",
+            "details": result.get("details", {}),
+        }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Unexpected error in sync volunteers: {str(e)}", exc_info=True)
-        return {"status": "error", "message": "Failed to sync volunteers due to unexpected error", "details": {"error": str(e)}}
+        return {
+            "status": "error",
+            "message": "Failed to sync volunteers due to unexpected error",
+            "details": {"error": str(e)},
+        }

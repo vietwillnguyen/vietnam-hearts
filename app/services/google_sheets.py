@@ -3,23 +3,24 @@ Google Sheets Integration Service
 """
 
 import ssl
-from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
+from typing import Any
 
 import google.auth
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
-from app.utils.logging_config import get_api_logger
-from app.utils.retry_utils import safe_api_call, log_ssl_error
+from sqlalchemy.orm import Session
+
 from app.config import (
     GOOGLE_APPLICATION_CREDENTIALS,
 )
 from app.utils.config_helper import ConfigHelper
 from app.utils.google_credentials import get_scoped_credentials
+from app.utils.logging_config import get_api_logger
+from app.utils.retry_utils import log_ssl_error, safe_api_call
 from app.utils.schedule_dates import (
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
 )
-from sqlalchemy.orm import Session
 
 logger = get_api_logger()
 
@@ -95,7 +96,7 @@ class GoogleSheetsService:
         self._initialized = False
         logger.info("Google Sheets service created")
 
-    def _validate_config(self, db: Optional[Session] = None):
+    def _validate_config(self, db: Session | None = None):
         """Validate Google Sheets configuration"""
         errors = []
 
@@ -138,7 +139,7 @@ class GoogleSheetsService:
                 f"Google Sheets configuration validation failed:\n{error_msg}"
             )
 
-    def _initialize_service(self, db: Optional[Session] = None):
+    def _initialize_service(self, db: Session | None = None):
         """Initialize the Google Sheets service"""
         try:
             self._validate_config(db)
@@ -161,7 +162,7 @@ class GoogleSheetsService:
             )
             raise
 
-    def _ensure_initialized(self, db: Optional[Session] = None):
+    def _ensure_initialized(self, db: Session | None = None):
         """Ensure the service is initialized"""
         if not self._initialized:
             self._initialize_service(db)
@@ -180,7 +181,7 @@ class GoogleSheetsService:
 
     def get_range_from_sheet(
         self, db: Session, sheet_id: str, range_name: str
-    ) -> List[List[str]]:
+    ) -> list[list[str]]:
         """
         Fetch a specific range from a given sheet (raw values) with retry logic
         Args:
@@ -226,8 +227,8 @@ class GoogleSheetsService:
             return []
 
     def get_schedule_range(
-        self, db: Session, range_name: Optional[str] = None
-    ) -> List[List[str]]:
+        self, db: Session, range_name: str | None = None
+    ) -> list[list[str]]:
         """
         Fetch a specific range from the schedule sheet (raw values)
         Args:
@@ -256,8 +257,8 @@ class GoogleSheetsService:
         return discover_schedule_blocks(rows)
 
     def get_signup_form_submissions(
-        self, db: Session, range_name: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, db: Session, range_name: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         Fetch all form submissions from the signups sheet with retry logic
         Args:
@@ -296,7 +297,7 @@ class GoogleSheetsService:
             for row in values:
                 # Pad row with empty strings if it's shorter than headers
                 row_data = row + [""] * (len(headers) - len(row))
-                submission = dict(zip(headers, row_data))
+                submission = dict(zip(headers, row_data, strict=False))
 
                 # Skip submissions with empty email addresses or missing essential fields
                 email_address = submission.get("email_address", "").strip()
@@ -537,7 +538,7 @@ class GoogleSheetsService:
             logger.error(f"Failed to update sheet dates: {str(e)}", exc_info=True)
             raise
 
-    def get_sheet_metadata(self, db: Session) -> Dict:
+    def get_sheet_metadata(self, db: Session) -> dict:
         """Get metadata for all sheets in the spreadsheet"""
         try:
             return self.sheet.get(
@@ -547,7 +548,7 @@ class GoogleSheetsService:
             logger.error(f"Failed to get sheet metadata: {str(e)}", exc_info=True)
             raise
 
-    def get_schedule_sheets(self, db: Session) -> List[Dict]:
+    def get_schedule_sheets(self, db: Session) -> list[dict]:
         """Get all schedule sheets and their metadata"""
         metadata = self.get_sheet_metadata(db)
         return [
@@ -556,7 +557,7 @@ class GoogleSheetsService:
             if sheet["properties"]["title"].startswith("Schedule ")
         ]
 
-    def get_sheet_by_date(self, date: datetime, db: Session) -> Optional[Dict]:
+    def get_sheet_by_date(self, date: datetime, db: Session) -> dict | None:
         """Get sheet metadata for a specific date (matches both title formats)"""
         sheets = self.get_schedule_sheets(db)
         for sheet in sheets:
@@ -699,7 +700,7 @@ class GoogleSheetsService:
             logger.error(f"Failed to move sheet: {str(e)}", exc_info=True)
             raise
 
-    def get_pending_submissions_with_rows(self, db: Session) -> List[tuple]:
+    def get_pending_submissions_with_rows(self, db: Session) -> list[tuple]:
         """
         Fetch signup submissions that have not yet been reviewed.
 
@@ -736,7 +737,7 @@ class GoogleSheetsService:
         pending = []
         for index, row in enumerate(raw_rows):
             row_data = row + [""] * (len(headers) - len(row))
-            submission = dict(zip(headers, row_data))
+            submission = dict(zip(headers, row_data, strict=False))
             status = submission.get("applicant_status", "").strip().upper()
             email = submission.get("email_address", "").strip()
             timestamp = submission.get("timestamp", "").strip()
@@ -817,8 +818,8 @@ class GoogleSheetsService:
             raise
 
     def rotate_schedule_sheets(
-        self, db: Session, display_weeks_override: Optional[int] = None
-    ) -> Dict[str, Any]:
+        self, db: Session, display_weeks_override: int | None = None
+    ) -> dict[str, Any]:
         """
         Rotate schedule sheets.
 

@@ -1,34 +1,40 @@
 # routers.py
-from fastapi import APIRouter, Depends, HTTPException, Request
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
-from functools import lru_cache
 import asyncio
-from app.services.bot_service import BotService
-from app.dependencies.auth import get_current_admin_user
+from functools import lru_cache
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from app.config import *  # import all config variables
 from app.database import get_db
+from app.dependencies.auth import get_current_admin_user
+from app.services.bot_service import BotService
 from app.utils.logging_config import get_api_logger
 from app.utils.timeout import timeout_handler
-from app.config import *  # import all config variables
 
 logger = get_api_logger()
 
 # ---- Models ----
 
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
-    user_context: Optional[Dict[str, Any]] = None
+    user_context: dict[str, Any] | None = None
+
 
 class ChatResponse(BaseModel):
     response: str
     context_used: int
     confidence: float  # numeric is nicer for monitoring
-    sources: List[str]
-    note: Optional[str] = None
+    sources: list[str]
+    note: str | None = None
+
 
 class SyncDocumentRequest(BaseModel):
     doc_id: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
+
 
 class SyncDocumentResponse(BaseModel):
     status: str
@@ -36,7 +42,8 @@ class SyncDocumentResponse(BaseModel):
     doc_id: str
     chunks: int
     embeddings: int
-    document_name: Optional[str] = None
+    document_name: str | None = None
+
 
 class KnowledgeStatusResponse(BaseModel):
     knowledge_service_available: bool
@@ -45,7 +52,8 @@ class KnowledgeStatusResponse(BaseModel):
     supabase_available: bool
     document_service_available: bool
     documents_count: int
-    documents: List[Dict[str, Any]]
+    documents: list[dict[str, Any]]
+
 
 # ---- Dependencies / Guards ----
 
@@ -53,8 +61,10 @@ class KnowledgeStatusResponse(BaseModel):
 @lru_cache
 def get_bot_service() -> BotService:
     try:
-        from app.config import SUPABASE_URL, SUPABASE_SECRET_KEY
         from supabase import create_client
+
+        from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
+
         supabase_client = None
         if SUPABASE_URL and SUPABASE_SECRET_KEY:
             supabase_client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
@@ -66,41 +76,41 @@ def get_bot_service() -> BotService:
         logger.error(f"Supabase init failed: {e}")
         return BotService(None)
 
+
 # ---- Routers ----
 
 # Public chat router - no authentication required
-public_bot_router = APIRouter(
-    prefix="/bot", 
-    tags=["bot"]
-)
+public_bot_router = APIRouter(prefix="/bot", tags=["bot"])
 
 # Admin bot router - requires admin authentication
 admin_router = APIRouter(
-    prefix="/admin/bot", 
+    prefix="/admin/bot",
     tags=["bot", "admin"],
-    dependencies=[Depends(get_current_admin_user)]  # Apply admin auth to all admin bot endpoints
+    dependencies=[
+        Depends(get_current_admin_user)
+    ],  # Apply admin auth to all admin bot endpoints
 )
+
 
 # Public chat endpoint - no authentication required
 @public_bot_router.post(
-    "/chat",
-    response_model=ChatResponse,
-    response_model_exclude_none=True
+    "/chat", response_model=ChatResponse, response_model_exclude_none=True
 )
 @timeout_handler(timeout_seconds=30.0)
 async def chat(
-    request: ChatRequest, 
-    bot_service: BotService = Depends(get_bot_service)
+    request: ChatRequest, bot_service: BotService = Depends(get_bot_service)
 ):
     try:
         # Log interaction for monitoring (without user info)
         logger.info(f"Public chat request: {request.message[:50]}...")
-        
+
         result = await bot_service.chat(request.message, request.user_context)
-        
+
         # Log successful response
-        logger.info(f"Public chat response generated with confidence {result.get('confidence', 0)}")
-        
+        logger.info(
+            f"Public chat response generated with confidence {result.get('confidence', 0)}"
+        )
+
         return ChatResponse(
             response=result["response"],
             context_used=result["context_used"],
@@ -112,15 +122,15 @@ async def chat(
         logger.error(f"Public chat error: {e}")
         raise HTTPException(status_code=500, detail="Chat processing failed")
 
+
 # Public test endpoint - no authentication required
-@public_bot_router.post("/test", response_model=Dict[str, Any])
+@public_bot_router.post("/test", response_model=dict[str, Any])
 @timeout_handler(timeout_seconds=30.0)
 async def test_bot(
-    request: ChatRequest, 
-    bot_service: BotService = Depends(get_bot_service)
+    request: ChatRequest, bot_service: BotService = Depends(get_bot_service)
 ):
     logger.info("Public test chat request")
-    
+
     result = await bot_service.chat(request.message, request.user_context)
     return {
         "status": "success",
@@ -129,28 +139,39 @@ async def test_bot(
         "context_used": result["context_used"],
         "confidence": result["confidence"],
         "note": "Test response (public endpoint)",
-        "timestamp": asyncio.get_event_loop().time()
+        "timestamp": asyncio.get_event_loop().time(),
     }
 
+
 # Admin endpoints (protected by admin auth)
-@admin_router.post("/knowledge-sync", response_model=SyncDocumentResponse, response_model_exclude_none=True)
+@admin_router.post(
+    "/knowledge-sync",
+    response_model=SyncDocumentResponse,
+    response_model_exclude_none=True,
+)
 @timeout_handler(timeout_seconds=60.0)  # Longer timeout for document sync
 async def sync_documents(
     request: SyncDocumentRequest,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user),
+    current_admin: dict[str, Any] = Depends(get_current_admin_user),
     bot_service: BotService = Depends(get_bot_service),
-    db = Depends(get_db),
+    db=Depends(get_db),
 ):
     try:
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} syncing document {request.doc_id}")
-        
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} syncing document {request.doc_id}"
+        )
+
         result = await bot_service.sync_documents(request.doc_id, request.metadata)
         document_name = None
-        
+
         try:
             document_service = getattr(bot_service, "document_service", None)
             if document_service and getattr(document_service, "drive_service", None):
-                file = document_service.drive_service.files().get(fileId=request.doc_id, fields="name").execute()
+                file = (
+                    document_service.drive_service.files()
+                    .get(fileId=request.doc_id, fields="name")
+                    .execute()
+                )
                 document_name = file.get("name")
         except Exception as e:
             logger.warning(f"Doc name fetch failed: {e}")
@@ -158,8 +179,10 @@ async def sync_documents(
         if result["status"] != "success":
             raise HTTPException(status_code=400, detail=result["message"])
 
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} successfully synced document {request.doc_id}")
-        
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} successfully synced document {request.doc_id}"
+        )
+
         return SyncDocumentResponse(
             status="success",
             message=result["message"],
@@ -171,110 +194,143 @@ async def sync_documents(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Document sync error for admin {current_admin.get('email', 'unknown')}: {e}")
+        logger.error(
+            f"Document sync error for admin {current_admin.get('email', 'unknown')}: {e}"
+        )
         raise HTTPException(status_code=500, detail="Document sync failed")
+
 
 @admin_router.get("/knowledge-sync/status", response_model=KnowledgeStatusResponse)
 @timeout_handler(timeout_seconds=30.0)
 async def get_knowledge_status(
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user),
+    current_admin: dict[str, Any] = Depends(get_current_admin_user),
     bot_service: BotService = Depends(get_bot_service),
 ):
     try:
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} checking knowledge status")
-        
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} checking knowledge status"
+        )
+
         status = await bot_service.get_knowledge_status()
-        
-        logger.info(f"Knowledge status retrieved for admin {current_admin.get('email', 'unknown')}: {status.get('documents_count', 0)} documents")
-        
+
+        logger.info(
+            f"Knowledge status retrieved for admin {current_admin.get('email', 'unknown')}: {status.get('documents_count', 0)} documents"
+        )
+
         return KnowledgeStatusResponse(**status)
     except Exception as e:
-        logger.error(f"Failed to get knowledge status for admin {current_admin.get('email', 'unknown')}: {e}")
+        logger.error(
+            f"Failed to get knowledge status for admin {current_admin.get('email', 'unknown')}: {e}"
+        )
         raise HTTPException(status_code=500, detail="Failed to get knowledge status")
+
 
 @admin_router.get("/documents")
 @timeout_handler(timeout_seconds=30.0)
 async def list_available_documents(
-    folder_id: Optional[str] = None,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user),
+    folder_id: str | None = None,
+    current_admin: dict[str, Any] = Depends(get_current_admin_user),
     bot_service: BotService = Depends(get_bot_service),
 ):
     try:
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} listing documents (folder: {folder_id})")
-        
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} listing documents (folder: {folder_id})"
+        )
+
         docs = await bot_service.list_available_docs(folder_id)
-        
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} retrieved {len(docs)} documents")
-        
+
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} retrieved {len(docs)} documents"
+        )
+
         return {
-            "status": "success", 
-            "documents": docs, 
+            "status": "success",
+            "documents": docs,
             "count": len(docs),
-            "requested_by": current_admin.get('email', 'unknown')
+            "requested_by": current_admin.get("email", "unknown"),
         }
     except Exception as e:
-        logger.error(f"Failed to list documents for admin {current_admin.get('email', 'unknown')}: {e}")
+        logger.error(
+            f"Failed to list documents for admin {current_admin.get('email', 'unknown')}: {e}"
+        )
         raise HTTPException(status_code=500, detail="Failed to list documents")
+
 
 @admin_router.get("/knowledge-base/chunks")
 @timeout_handler(timeout_seconds=30.0)
 async def inspect_knowledge_base_chunks(
-    limit: Optional[int] = 10,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user),
+    limit: int | None = 10,
+    current_admin: dict[str, Any] = Depends(get_current_admin_user),
     bot_service: BotService = Depends(get_bot_service),
 ):
     """
     Inspect stored chunks in the knowledge base for debugging purposes
     """
     try:
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} inspecting knowledge base chunks (limit: {limit})")
-        
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} inspecting knowledge base chunks (limit: {limit})"
+        )
+
         # Get the knowledge service from bot service
         knowledge_service = bot_service.knowledge_service
-        
+
         if not knowledge_service.supabase:
             raise HTTPException(status_code=503, detail="Knowledge base not available")
-        
+
         # Query the document_chunks table directly
-        result = knowledge_service.supabase.table('document_chunks').select('*').limit(limit or 10).execute()
-        
+        result = (
+            knowledge_service.supabase.table("document_chunks")
+            .select("*")
+            .limit(limit or 10)
+            .execute()
+        )
+
         chunks = result.data if result.data else []
-        
+
         # Format chunks for display (remove embeddings to reduce response size)
         formatted_chunks = []
         for chunk in chunks:
             formatted_chunk = {
-                'id': chunk.get('id'),
-                'chunk_index': chunk.get('chunk_index'),
-                'source_document_id': chunk.get('source_document_id'),
-                'content_preview': chunk.get('content', '')[:200] + '...' if len(chunk.get('content', '')) > 200 else chunk.get('content', ''),
-                'content_length': len(chunk.get('content', '')),
-                'metadata': chunk.get('metadata', {}),
-                'created_at': chunk.get('created_at')
+                "id": chunk.get("id"),
+                "chunk_index": chunk.get("chunk_index"),
+                "source_document_id": chunk.get("source_document_id"),
+                "content_preview": chunk.get("content", "")[:200] + "..."
+                if len(chunk.get("content", "")) > 200
+                else chunk.get("content", ""),
+                "content_length": len(chunk.get("content", "")),
+                "metadata": chunk.get("metadata", {}),
+                "created_at": chunk.get("created_at"),
             }
             formatted_chunks.append(formatted_chunk)
-        
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} retrieved {len(formatted_chunks)} chunks from knowledge base")
-        
+
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} retrieved {len(formatted_chunks)} chunks from knowledge base"
+        )
+
         return {
             "status": "success",
             "chunks": formatted_chunks,
             "total_chunks": len(formatted_chunks),
-            "requested_by": current_admin.get('email', 'unknown'),
-            "note": "This endpoint shows stored chunks for debugging. Content is truncated to 200 characters."
+            "requested_by": current_admin.get("email", "unknown"),
+            "note": "This endpoint shows stored chunks for debugging. Content is truncated to 200 characters.",
         }
-        
+
     except Exception as e:
-        logger.error(f"Failed to inspect knowledge base chunks for admin {current_admin.get('email', 'unknown')}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to inspect knowledge base chunks")
+        logger.error(
+            f"Failed to inspect knowledge base chunks for admin {current_admin.get('email', 'unknown')}: {e}"
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to inspect knowledge base chunks"
+        )
+
 
 @admin_router.post("/knowledge-base/test-search")
 @timeout_handler(timeout_seconds=30.0)
 async def test_knowledge_base_search(
     request: ChatRequest,
-    limit: Optional[int] = 3,
-    threshold: Optional[float] = 0.3,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_user),
+    limit: int | None = 3,
+    threshold: float | None = 0.3,
+    current_admin: dict[str, Any] = Depends(get_current_admin_user),
     bot_service: BotService = Depends(get_bot_service),
 ):
     """
@@ -282,46 +338,55 @@ async def test_knowledge_base_search(
     """
     try:
         query = request.message
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} testing knowledge base search: '{query}'")
-        
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} testing knowledge base search: '{query}'"
+        )
+
         # Get the knowledge service from bot service
         knowledge_service = bot_service.knowledge_service
-        
+
         if not knowledge_service.supabase:
             raise HTTPException(status_code=503, detail="Knowledge base not available")
-        
+
         # Perform similarity search
-        relevant_chunks = await knowledge_service.similarity_search(query, limit=limit, threshold=threshold)
-        
+        relevant_chunks = await knowledge_service.similarity_search(
+            query, limit=limit, threshold=threshold
+        )
+
         # Format results for display
         formatted_results = []
         for chunk in relevant_chunks:
             formatted_chunk = {
-                'id': chunk.get('id'),
-                'chunk_index': chunk.get('chunk_index'),
-                'source_document_id': chunk.get('source_document_id'),
-                'similarity': chunk.get('similarity'),
-                'content_preview': chunk.get('content', '')[:300] + '...' if len(chunk.get('content', '')) > 300 else chunk.get('content', ''),
-                'content_length': len(chunk.get('content', '')),
-                'metadata': chunk.get('metadata', {})
+                "id": chunk.get("id"),
+                "chunk_index": chunk.get("chunk_index"),
+                "source_document_id": chunk.get("source_document_id"),
+                "similarity": chunk.get("similarity"),
+                "content_preview": chunk.get("content", "")[:300] + "..."
+                if len(chunk.get("content", "")) > 300
+                else chunk.get("content", ""),
+                "content_length": len(chunk.get("content", "")),
+                "metadata": chunk.get("metadata", {}),
             }
             formatted_results.append(formatted_chunk)
-        
-        logger.info(f"Admin {current_admin.get('email', 'unknown')} search test found {len(formatted_results)} relevant chunks")
-        
+
+        logger.info(
+            f"Admin {current_admin.get('email', 'unknown')} search test found {len(formatted_results)} relevant chunks"
+        )
+
         return {
             "status": "success",
             "query": query,
-            "search_parameters": {
-                "limit": limit,
-                "threshold": threshold
-            },
+            "search_parameters": {"limit": limit, "threshold": threshold},
             "results": formatted_results,
             "total_results": len(formatted_results),
-            "requested_by": current_admin.get('email', 'unknown'),
-            "note": "This endpoint tests the similarity search. Content is truncated to 300 characters."
+            "requested_by": current_admin.get("email", "unknown"),
+            "note": "This endpoint tests the similarity search. Content is truncated to 300 characters.",
         }
-        
+
     except Exception as e:
-        logger.error(f"Failed to test knowledge base search for admin {current_admin.get('email', 'unknown')}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to test knowledge base search")
+        logger.error(
+            f"Failed to test knowledge base search for admin {current_admin.get('email', 'unknown')}: {e}"
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to test knowledge base search"
+        )

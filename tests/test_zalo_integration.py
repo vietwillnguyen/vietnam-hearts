@@ -9,16 +9,18 @@ Covers:
 """
 
 import os
+
 import pytest
-from unittest.mock import MagicMock
 from jinja2 import Environment, FileSystemLoader
 
+from app.services.settings_service import set_setting
 from app.utils.config_helper import ConfigHelper
-from app.services.settings_service import get_setting, set_setting
 
 ZALO_URL = "https://zalo.me/g/gcmgkowx6gvotsghvsji"
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "email")
+TEMPLATES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "templates", "email"
+)
 
 
 @pytest.fixture

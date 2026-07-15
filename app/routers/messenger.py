@@ -3,15 +3,16 @@ Facebook Messenger webhook and test endpoints
 """
 
 from fastapi import APIRouter, Request
-from app.services.messenger.message_sender import MessageSender
-from app.services.messenger.mock_message_sender import MockMessageSender
-from app.services.bot_service import BotService
-from app.utils.logging_config import get_api_logger
+
 from app.config import (
     ENVIRONMENT,
-    FACEBOOK_VERIFY_TOKEN,
     FACEBOOK_ACCESS_TOKEN,
+    FACEBOOK_VERIFY_TOKEN,
 )
+from app.services.bot_service import BotService
+from app.services.messenger.message_sender import MessageSender
+from app.services.messenger.mock_message_sender import MockMessageSender
+from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
 
@@ -33,6 +34,7 @@ def get_message_sender():
 # ---------------------------------------------------------------------------
 # Webhook verification + event handling
 # ---------------------------------------------------------------------------
+
 
 @messenger_router.get("/webhook/messenger")
 async def verify_webhook(
@@ -148,6 +150,7 @@ async def _handle_postback(sender_id: str, postback: dict):
 # Test / debug endpoints
 # ---------------------------------------------------------------------------
 
+
 @messenger_router.get("/test-messenger")
 def test_messenger_configuration():
     """Test Facebook Messenger configuration and connectivity."""
@@ -177,7 +180,10 @@ def test_messenger_configuration():
         }
     except Exception as e:
         logger.error(f"Facebook Messenger test failed: {str(e)}", exc_info=True)
-        return {"status": "error", "message": f"Facebook Messenger test failed: {str(e)}"}
+        return {
+            "status": "error",
+            "message": f"Facebook Messenger test failed: {str(e)}",
+        }
 
 
 @messenger_router.get("/test-messenger-mock")
@@ -186,10 +192,14 @@ def test_messenger_mock():
     try:
         sender = get_message_sender()
         success = sender.send_text_message("test_user_123", "Hello from mock sender!")
-        sent_messages = sender.get_sent_messages() if hasattr(sender, "get_sent_messages") else []
+        sent_messages = (
+            sender.get_sent_messages() if hasattr(sender, "get_sent_messages") else []
+        )
 
         test_sender = MockMessageSender()
-        test_success = test_sender.send_text_message("direct_test_user", "Direct test message")
+        test_success = test_sender.send_text_message(
+            "direct_test_user", "Direct test message"
+        )
         direct_messages = test_sender.get_sent_messages()
 
         return {

@@ -10,22 +10,30 @@ from app.utils.schedule_dates import (
 
 class TestFormatScheduleSheetTitle:
     def test_formats_as_ddmmyyyy(self):
-        assert format_schedule_sheet_title(datetime(2026, 7, 13)) == "Schedule 13/07/2026"
+        assert (
+            format_schedule_sheet_title(datetime(2026, 7, 13)) == "Schedule 13/07/2026"
+        )
 
     def test_zero_pads_day_and_month(self):
-        assert format_schedule_sheet_title(datetime(2026, 1, 5)) == "Schedule 05/01/2026"
+        assert (
+            format_schedule_sheet_title(datetime(2026, 1, 5)) == "Schedule 05/01/2026"
+        )
 
 
 class TestParseScheduleSheetTitle:
     def test_parses_new_ddmmyyyy_format(self):
-        assert parse_schedule_sheet_title("Schedule 13/07/2026") == datetime(2026, 7, 13)
+        assert parse_schedule_sheet_title("Schedule 13/07/2026") == datetime(
+            2026, 7, 13
+        )
 
     def test_round_trip(self):
         date = datetime(2026, 7, 20)
         assert parse_schedule_sheet_title(format_schedule_sheet_title(date)) == date
 
     def test_parses_legacy_mmdd_with_default_year(self):
-        assert parse_schedule_sheet_title("Schedule 07/13", default_year=2026) == datetime(2026, 7, 13)
+        assert parse_schedule_sheet_title(
+            "Schedule 07/13", default_year=2026
+        ) == datetime(2026, 7, 13)
 
     def test_legacy_mmdd_defaults_to_current_year(self):
         parsed = parse_schedule_sheet_title("Schedule 07/13")

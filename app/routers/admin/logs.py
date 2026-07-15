@@ -23,8 +23,12 @@ MAX_PAGE_SIZE = 200
 
 @router.get("/logs")
 def get_system_logs(
-    level: str = Query(None, description="Filter by log level (DEBUG/INFO/WARNING/ERROR)"),
-    q: str = Query(None, description="Case-insensitive search in message and logger name"),
+    level: str = Query(
+        None, description="Filter by log level (DEBUG/INFO/WARNING/ERROR)"
+    ),
+    q: str = Query(
+        None, description="Case-insensitive search in message and logger name"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1),
     db: Session = Depends(get_db),
@@ -39,7 +43,10 @@ def get_system_logs(
         if q:
             pattern = f"%{q}%"
             query = query.filter(
-                or_(SystemLog.message.ilike(pattern), SystemLog.logger_name.ilike(pattern))
+                or_(
+                    SystemLog.message.ilike(pattern),
+                    SystemLog.logger_name.ilike(pattern),
+                )
             )
 
         total = query.count()
@@ -56,7 +63,9 @@ def get_system_logs(
                 "logs": [
                     {
                         "id": log.id,
-                        "created_at": log.created_at.isoformat() if log.created_at else None,
+                        "created_at": log.created_at.isoformat()
+                        if log.created_at
+                        else None,
                         "level": log.level,
                         "logger_name": log.logger_name,
                         "message": log.message,
@@ -70,4 +79,6 @@ def get_system_logs(
         }
     except Exception as e:
         logger.error(f"Failed to fetch system logs: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch system logs: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch system logs: {str(e)}"
+        )

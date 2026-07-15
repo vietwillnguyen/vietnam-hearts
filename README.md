@@ -99,6 +99,8 @@ The application uses the following environment variables (see `env.template` for
 - `PORT` - API server port (default: 8080)
 - `ENVIRONMENT` - Environment mode (development/production)
 - `DRY_RUN` - Enable dry run mode for testing
+- `SENTRY_DSN` - Sentry DSN for error tracking. If unset, Sentry is disabled entirely
+- `SENTRY_TRACES_SAMPLE_RATE` - Fraction of requests to sample for Sentry performance tracing (default: 0.1)
 
 ### Google Sheets Setup
 
@@ -299,8 +301,9 @@ The workflow (`.github/workflows/test.yml`) includes:
 
 1. **Setup**: Python environment with Poetry
 2. **Caching**: Dependencies are cached between runs
-3. **Testing**: Runs pytest with proper environment variables
-4. **Artifacts**: Saves test results for 7 days
+3. **Linting**: Runs `ruff check` and `ruff format --check`
+4. **Testing**: Runs pytest with proper environment variables
+5. **Artifacts**: Saves test results for 7 days
 
 #### Viewing Results
 
@@ -351,9 +354,23 @@ ENVIRONMENT=development ./run.sh
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test with `./run.sh -c`
-5. Submit a pull request
+3. Install pre-commit hooks (once, after `poetry install`): `poetry run pre-commit install`
+4. Make your changes
+5. Test with `./run.sh -c`
+6. Submit a pull request
+
+### Linting and formatting
+
+This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and formatting.
+Pre-commit hooks run it automatically on `git commit`; to run it manually:
+
+```bash
+poetry run ruff check .          # lint
+poetry run ruff check . --fix    # lint and auto-fix
+poetry run ruff format .         # format
+```
+
+CI (`test.yml`) enforces both `ruff check` and `ruff format --check` on every PR.
 
 ## License
 

@@ -4,18 +4,19 @@ Provides exponential backoff with jitter for Google Sheets API and other externa
 """
 
 import logging
+import random
 import ssl
 import time
-import random
-from typing import Any, Callable, Type, Union, List
-from functools import wraps
+from collections.abc import Callable
+from typing import Any
+
 from tenacity import (
-    retry,
-    stop_after_attempt,
-    retry_if_exception_type,
-    before_sleep_log,
+    RetryError,
     after_log,
-    RetryError
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
 )
 from tenacity.wait import wait_exponential_jitter
 
@@ -43,19 +44,19 @@ def create_retry_decorator(
     max_attempts: int = 3,
     base_wait: float = 1.0,
     max_wait: float = 10.0,
-    retry_exceptions: Union[Type[Exception], tuple] = RETRYABLE_EXCEPTIONS,
-    jitter: bool = True
+    retry_exceptions: type[Exception] | tuple = RETRYABLE_EXCEPTIONS,
+    jitter: bool = True,
 ) -> Callable:
     """
     Create a retry decorator with exponential backoff and jitter.
-    
+
     Args:
         max_attempts: Maximum number of retry attempts
         base_wait: Base wait time in seconds
         max_wait: Maximum wait time in seconds
         retry_exceptions: Exceptions that should trigger a retry
         jitter: Whether to add jitter to the wait time
-    
+
     Returns:
         Decorator function
     """
@@ -63,23 +64,21 @@ def create_retry_decorator(
         initial=base_wait,
         max=max_wait,
         exp_base=2,
-        jitter=random.uniform(0, 0.1) if jitter else 0
+        jitter=random.uniform(0, 0.1) if jitter else 0,
     )
-    
+
     return retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_strategy,
         retry=retry_if_exception_type(retry_exceptions),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         after=after_log(logger, logging.INFO),
-        reraise=True
+        reraise=True,
     )
 
 
 def retry_google_sheets_api(
-    max_attempts: int = 3,
-    base_wait: float = 2.0,
-    max_wait: float = 15.0
+    max_attempts: int = 3, base_wait: float = 2.0, max_wait: float = 15.0
 ) -> Callable:
     """
     Retry decorator specifically for Google Sheets API calls.
@@ -90,39 +89,35 @@ def retry_google_sheets_api(
         base_wait=base_wait,
         max_wait=max_wait,
         retry_exceptions=RETRYABLE_EXCEPTIONS,
-        jitter=True
+        jitter=True,
     )
 
 
 def safe_api_call(
-    func: Callable,
-    *args,
-    max_attempts: int = 3,
-    context: str = "API call",
-    **kwargs
+    func: Callable, *args, max_attempts: int = 3, context: str = "API call", **kwargs
 ) -> Any:
     """
     Safely execute an API call with retry logic and graceful error handling.
-    
+
     Args:
         func: Function to execute
         *args: Arguments for the function
         max_attempts: Maximum number of retry attempts
         context: Context string for logging
         **kwargs: Keyword arguments for the function
-    
+
     Returns:
         Function result or None if all attempts fail
-    
+
     Raises:
         Exception: If the function fails after all retry attempts
     """
     retry_decorator = retry_google_sheets_api(max_attempts=max_attempts)
-    
+
     @retry_decorator
     def _execute_with_retry():
         return func(*args, **kwargs)
-    
+
     try:
         logger.info(f"Executing {context} with retry logic")
         return _execute_with_retry()
@@ -135,43 +130,39 @@ def safe_api_call(
 
 
 def safe_api_call_with_config(
-    func: Callable,
-    config_func: Callable,
-    *args,
-    context: str = "API call",
-    **kwargs
+    func: Callable, config_func: Callable, *args, context: str = "API call", **kwargs
 ) -> Any:
     """
     Safely execute an API call with dynamic retry configuration.
-    
+
     Args:
         func: Function to execute
         config_func: Function that returns retry configuration (max_attempts, base_wait, max_wait)
         *args: Arguments for the function
         context: Context string for logging
         **kwargs: Keyword arguments for the function
-    
+
     Returns:
         Function result or None if all attempts fail
-    
+
     Raises:
         Exception: If the function fails after all retry attempts
     """
     # Get configuration from the config function
     max_attempts, base_wait, max_wait = config_func()
-    
+
     retry_decorator = retry_google_sheets_api(
-        max_attempts=max_attempts,
-        base_wait=base_wait,
-        max_wait=max_wait
+        max_attempts=max_attempts, base_wait=base_wait, max_wait=max_wait
     )
-    
+
     @retry_decorator
     def _execute_with_retry():
         return func(*args, **kwargs)
-    
+
     try:
-        logger.info(f"Executing {context} with retry logic (max_attempts={max_attempts})")
+        logger.info(
+            f"Executing {context} with retry logic (max_attempts={max_attempts})"
+        )
         return _execute_with_retry()
     except RetryError as e:
         logger.error(f"All retry attempts failed for {context}: {str(e)}")
@@ -184,7 +175,7 @@ def safe_api_call_with_config(
 def log_ssl_error(error: Exception, context: str, attempt: int = 1) -> None:
     """
     Log SSL errors with structured information for monitoring.
-    
+
     Args:
         error: The SSL error that occurred
         context: Context where the error occurred
@@ -198,35 +189,39 @@ def log_ssl_error(error: Exception, context: str, attempt: int = 1) -> None:
             "context": context,
             "attempt": attempt,
             "timestamp": time.time(),
-        }
+        },
     )
 
 
 def is_retryable_error(error: Exception) -> bool:
     """
     Check if an error is retryable.
-    
+
     Args:
         error: The exception to check
-    
+
     Returns:
         True if the error is retryable, False otherwise
     """
-    return isinstance(error, RETRYABLE_EXCEPTIONS) and not isinstance(error, NON_RETRYABLE_EXCEPTIONS)
+    return isinstance(error, RETRYABLE_EXCEPTIONS) and not isinstance(
+        error, NON_RETRYABLE_EXCEPTIONS
+    )
 
 
-def get_retry_delay(attempt: int, base_delay: float = 1.0, max_delay: float = 30.0) -> float:
+def get_retry_delay(
+    attempt: int, base_delay: float = 1.0, max_delay: float = 30.0
+) -> float:
     """
     Calculate retry delay with exponential backoff and jitter.
-    
+
     Args:
         attempt: Current attempt number (1-based)
         base_delay: Base delay in seconds
         max_delay: Maximum delay in seconds
-    
+
     Returns:
         Delay in seconds
     """
     delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
     jitter = random.uniform(0, delay * 0.1)
-    return delay + jitter 
+    return delay + jitter

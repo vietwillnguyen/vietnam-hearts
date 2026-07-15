@@ -7,13 +7,13 @@ formatting, and database persistence wiring.
 import json
 import logging
 
+from app.utils.db_log_handler import DatabaseLogHandler
 from app.utils.logging_config import (
     CloudRunJSONFormatter,
     get_logger,
     print_log_paths,
     setup_logger,
 )
-from app.utils.db_log_handler import DatabaseLogHandler
 
 
 def test_logs_appear_console_and_file():
@@ -30,8 +30,13 @@ def test_logs_appear_console_and_file():
 class TestCloudRunJSONFormatter:
     def _record(self, level=logging.WARNING, msg="something %s", args=("happened",)):
         return logging.LogRecord(
-            name="api", level=level, pathname=__file__, lineno=1,
-            msg=msg, args=args, exc_info=None,
+            name="api",
+            level=level,
+            pathname=__file__,
+            lineno=1,
+            msg=msg,
+            args=args,
+            exc_info=None,
         )
 
     def test_emits_parseable_json_with_severity(self):
@@ -47,9 +52,15 @@ class TestCloudRunJSONFormatter:
             raise ValueError("boom")
         except ValueError:
             import sys
+
             record = logging.LogRecord(
-                name="api", level=logging.ERROR, pathname=__file__, lineno=1,
-                msg="failed", args=(), exc_info=sys.exc_info(),
+                name="api",
+                level=logging.ERROR,
+                pathname=__file__,
+                lineno=1,
+                msg="failed",
+                args=(),
+                exc_info=sys.exc_info(),
             )
         payload = json.loads(CloudRunJSONFormatter().format(record))
         assert "ValueError: boom" in payload["message"]
