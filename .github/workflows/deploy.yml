@@ -39,8 +39,11 @@ jobs:
         path: .venv
         key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
 
+    # Always run install, even on a cache hit: it is near-instant when the
+    # venv is current, and it self-heals a stale cache (this exact skip served
+    # a venv without sentry-sdk and failed the deploy test job for PR #8,
+    # because the cache key hashed a poetry.lock that was not in git yet).
     - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-interaction
 
     - name: Run tests

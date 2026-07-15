@@ -19,6 +19,7 @@ jobs:
     - uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
+      id: setup-python
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
@@ -37,8 +38,11 @@ jobs:
         path: .venv
         key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
     
+    # Always run install, even on a cache hit: it is near-instant when the
+    # venv is current, and it self-heals a stale cache (a cached venv missing
+    # newly added dependencies broke the deploy pipeline before poetry.lock
+    # was committed and the cache key hash was meaningful).
     - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-interaction
 
     - name: Run ruff lint
