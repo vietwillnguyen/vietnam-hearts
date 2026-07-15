@@ -51,7 +51,7 @@ jobs:
       run: |
         poetry run pytest tests/ -v --tb=short
       env:
-        DATABASE_URL: "sqlite:///file::memory:?cache=shared"
+        DATABASE_URL: "sqlite:///file::memory:?cache=shared&uri=true"
         TESTING: "true"
         DRY_RUN: "true"
         ENVIRONMENT: "test"
@@ -59,7 +59,7 @@ jobs:
         SUPABASE_URL: "https://fake-url.supabase.co"
         SUPABASE_PUBLISHABLE_KEY: "fake-publishable-key"
         SUPABASE_SECRET_KEY: "fake-secret-key"
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GEMINI_API_KEY: "fake-gemini-key"
     
     - name: Upload test results
       if: always()

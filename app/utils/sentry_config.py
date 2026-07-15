@@ -5,6 +5,8 @@ Initialization is a no-op when SENTRY_DSN is unset, so this is safe to call
 in every environment (local dev, CI, production).
 """
 
+import os
+
 import sentry_sdk
 
 from app.config import (
@@ -22,6 +24,10 @@ def init_sentry() -> None:
     """Initialize Sentry error tracking if SENTRY_DSN is configured."""
     if not SENTRY_DSN:
         logger.info("SENTRY_DSN not set, Sentry error tracking disabled")
+        return
+
+    if os.getenv("TESTING", "").lower() == "true":
+        logger.info("TESTING=true, Sentry error tracking disabled")
         return
 
     sentry_sdk.init(

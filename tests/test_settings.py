@@ -1,6 +1,6 @@
 import os
 
-os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared"
+os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 
 import pytest
 
