@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Poetry
-poetry.lock
-
 # Database
 *.db
 file::memory:*
@@ -25,6 +22,9 @@ secrets/
 
 # Pytest cache
 .pytest_cache/
+
+# Lavish review artifacts
+.lavish/
 
 # VSCode settings
 .vscode/
