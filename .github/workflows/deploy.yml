@@ -39,14 +39,17 @@ jobs:
         path: .venv
         key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
 
+    # Always run install, even on a cache hit: it is near-instant when the
+    # venv is current, and it self-heals a stale cache (this exact skip served
+    # a venv without sentry-sdk and failed the deploy test job for PR #8,
+    # because the cache key hashed a poetry.lock that was not in git yet).
     - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-interaction
 
     - name: Run tests
       run: poetry run pytest tests/ -v --tb=short
       env:
-        DATABASE_URL: "sqlite:///file::memory:?cache=shared"
+        DATABASE_URL: "sqlite:///file::memory:?cache=shared&uri=true"
         TESTING: "true"
         DRY_RUN: "true"
         ENVIRONMENT: "test"
@@ -54,7 +57,7 @@ jobs:
         SUPABASE_URL: "https://fake-url.supabase.co"
         SUPABASE_PUBLISHABLE_KEY: "fake-publishable-key"
         SUPABASE_SECRET_KEY: "fake-secret-key"
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GEMINI_API_KEY: "fake-gemini-key"
 
   deploy:
     needs: test

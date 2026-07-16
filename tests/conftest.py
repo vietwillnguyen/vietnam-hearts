@@ -1,9 +1,12 @@
 import os
 
-os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared"
+os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 # Keep app loggers from writing into the shared test DB; tests that verify
 # the persistence wiring opt back in with monkeypatch on fresh logger names.
 os.environ["PERSIST_LOGS_TO_DB"] = "false"
+# Must be set before app.main is imported: init_sentry() runs at import time
+# and skips initialization when TESTING=true, keeping test errors out of Sentry.
+os.environ["TESTING"] = "true"
 import logging
 import secrets
 from unittest.mock import MagicMock, patch
@@ -40,8 +43,10 @@ def set_test_env():
 @pytest.fixture
 def test_engine():
     engine = create_engine(
-        "sqlite:///file::memory:?cache=shared",
-        connect_args={"check_same_thread": False, "uri": True},
+        # uri=true must be in the URL query itself; as a connect_args entry the
+        # dialect ignores it and sqlite creates a literal file named "file::memory:"
+        "sqlite:///file::memory:?cache=shared&uri=true",
+        connect_args={"check_same_thread": False},
     )
     return engine
 

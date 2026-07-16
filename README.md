@@ -93,7 +93,7 @@ The application uses the following environment variables (see `env.template` for
 - `SUPABASE_PUBLISHABLE_KEY` - Publishable key for client-facing Supabase auth (replaces legacy "anon" key)
 - `SUPABASE_SECRET_KEY` - Secret key for privileged database operations (replaces legacy "service_role" key)
 - `SUPABASE_JWKS_URL` - JWKS endpoint for verifying Supabase-issued user access tokens
-- **Note**: Uses hybrid approach - Sentence Transformers for embeddings (free, local) + Gemini for chat responses
+- **Note**: Uses Gemini for both embeddings (text-embedding-001) and chat responses (free tier)
 
 #### Optional
 - `PORT` - API server port (default: 8080)
@@ -165,12 +165,12 @@ The application uses the following environment variables (see `env.template` for
 Once running, the API will be available at:
 
 - **API Documentation**: `http://localhost:8080/docs`
-- **Health Check**: `http://localhost:8080/public/health`
+- **Health Check**: `http://localhost:8080/health`
 - **Admin Endpoints**: `http://localhost:8080/admin/*` (development only)
 
 ## Deploy Configuration
 
-All non-secret deployment settings live in `deploy.config` at the project root.
+All non-secret deployment settings live in `scripts/deploy.config`.
 This file is committed to version control — it contains no secrets.
 
 ```bash
@@ -187,8 +187,8 @@ SCHEDULER_REGION      # Cloud Scheduler region
 SCHEDULER_TIMEZONE    # Cron job timezone
 ```
 
-To change the deployment target (e.g. bump version or change region), edit `deploy.config`.
-Both `docker.sh` and `scripts/create-or-update-scheduler-jobs.sh` source this file automatically.
+To change the deployment target (e.g. bump version or change region), edit `scripts/deploy.config`.
+Both `scripts/docker.sh` and `scripts/create-or-update-scheduler-jobs.sh` source this file automatically.
 
 ## Scripts
 
@@ -200,7 +200,7 @@ Initial setup script that:
 - Sets up `.env` file
 - Validates configuration
 
-### `docker.sh`
+### `scripts/docker.sh`
 Docker management CLI for build/push/pull/run:
 ```bash
 ./scripts/docker.sh build [TAG]    # Build image (default: IMAGE_VERSION from deploy.config)
@@ -245,12 +245,12 @@ vietnam-hearts/
 ├── docs/                  # Extended documentation
 ├── scripts/               # Deployment and setup scripts
 │   ├── create-or-update-scheduler-jobs.sh          # Cloud Scheduler job setup
+│   ├── deploy.config      # Non-secret deployment settings (GCP, Docker)
+│   ├── docker.sh          # Docker build/push/run management
 │   └── setup-dev-env.sh   # Developer environment setup
 ├── templates/             # Email and HTML templates
 ├── secrets/               # Credentials (not in git)
-├── deploy.config          # Non-secret deployment settings (GCP, Docker)
 ├── env.template           # Secret environment variable template
-├── docker.sh              # Docker build/push/run management
 ├── run.sh                 # Local application runner
 └── pyproject.toml         # Poetry configuration
 ```
@@ -276,7 +276,7 @@ This project includes GitHub Actions for automated testing. The workflow will:
 
 - **Run on every push** to main/master/develop branches
 - **Run on pull requests** to main/master/develop branches
-- **Test against Python 3.10 and 3.11** for compatibility
+- **Test against Python 3.11**
 - **Use Poetry** for dependency management
 - **Cache dependencies** for faster builds
 - **Upload test results** as artifacts
