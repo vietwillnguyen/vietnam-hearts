@@ -1,8 +1,8 @@
 """
 Sentry error tracking setup.
 
-Initialization is a no-op when SENTRY_DSN is unset, so this is safe to call
-in every environment (local dev, CI, production).
+Initialization is a no-op when SENTRY_DSN is unset or TESTING=true, so this
+is safe to call in every environment (local dev, CI, production, tests).
 """
 
 import os
@@ -21,7 +21,7 @@ logger = get_logger("sentry")
 
 
 def init_sentry() -> None:
-    """Initialize Sentry error tracking if SENTRY_DSN is configured."""
+    """Initialize Sentry error tracking if SENTRY_DSN is configured and not under test."""
     if not SENTRY_DSN:
         logger.info("SENTRY_DSN not set, Sentry error tracking disabled")
         return

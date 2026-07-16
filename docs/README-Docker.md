@@ -28,73 +28,73 @@ mkdir -p secrets
 
 ```bash
 # Build the image
-./docker.sh build
+./scripts/docker.sh build
 
 # Run the container
-./docker.sh run
+./scripts/docker.sh run
 
 # Or run in background
-./docker.sh run -d
+./scripts/docker.sh run -d
 ```
 
 ### 3. Deploy to Google Container Registry
 
 ```bash
-# Set your GCP project and image version in deploy.config (committed to repo)
+# Set your GCP project and image version in scripts/deploy.config (committed to repo)
 # Then deploy to GCR
-./docker.sh deploy v1.1.1
+./scripts/docker.sh deploy v1.1.1
 ```
 
 ## Docker Script Commands
 
-The `docker.sh` script provides comprehensive Docker management:
+The `scripts/docker.sh` script provides comprehensive Docker management:
 
 ### Basic Operations
 
 ```bash
 # Build image
-./docker.sh build [TAG]           # Default: latest
+./scripts/docker.sh build [TAG]           # Default: latest
 
 # Run container
-./docker.sh run [OPTIONS]         # See options below
-./docker.sh run -p 9000          # Run on port 9000
-./docker.sh run -d               # Run in background
-./docker.sh run --rm             # Remove container when stopped
+./scripts/docker.sh run [OPTIONS]         # See options below
+./scripts/docker.sh run -p 9000          # Run on port 9000
+./scripts/docker.sh run -d               # Run in background
+./scripts/docker.sh run --rm             # Remove container when stopped
 
 # Stop container
-./docker.sh stop
+./scripts/docker.sh stop
 
 # View logs
-./docker.sh logs
+./scripts/docker.sh logs
 
 # Open shell in container
-./docker.sh shell
+./scripts/docker.sh shell
 ```
 
 ### GCR Operations
 
 ```bash
 # Push to Google Container Registry
-./docker.sh push [TAG]           # Default: latest
+./scripts/docker.sh push [TAG]           # Default: latest
 
 # Pull from Google Container Registry
-./docker.sh pull [TAG]           # Default: latest
+./scripts/docker.sh pull [TAG]           # Default: latest
 
 # Full deployment workflow
-./docker.sh deploy [TAG]         # Build + Push
+./scripts/docker.sh deploy [TAG]         # Build + Push
 ```
 
 ### Utility Commands
 
 ```bash
 # Setup Docker network
-./docker.sh setup
+./scripts/docker.sh setup
 
 # Clean up containers and images
-./docker.sh clean
+./scripts/docker.sh clean
 
 # Show help
-./docker.sh help
+./scripts/docker.sh help
 ```
 
 ## Docker Compose
@@ -149,7 +149,7 @@ The application uses environment variables for configuration. Key variables:
 
 4. **Update deploy.config**:
    ```bash
-   # Edit deploy.config at the project root
+   # Edit scripts/deploy.config
    GCP_PROJECT_ID="your-actual-project-id"
    ```
 
@@ -159,14 +159,14 @@ The application uses environment variables for configuration. Key variables:
 
 ```bash
 # Build with version tag
-./docker.sh build v1.1.1
+./scripts/docker.sh build v1.1.1
 ```
 
 ### 2. Push to GCR
 
 ```bash
 # Push to registry
-./docker.sh push v1.1.1
+./scripts/docker.sh push v1.1.1
 ```
 
 ### 3. Deploy to Cloud Run (Optional)
@@ -187,7 +187,7 @@ gcloud run deploy vietnam-hearts \
 
 1. **Permission Denied**:
    ```bash
-   chmod +x docker.sh
+   chmod +x scripts/docker.sh
    ```
 
 2. **Google Cloud Not Configured**:
@@ -199,7 +199,7 @@ gcloud run deploy vietnam-hearts \
 3. **Container Won't Start**:
    ```bash
    # Check logs
-   ./docker.sh logs
+   ./scripts/docker.sh logs
    
    # Check environment file
    ls -la .env
@@ -208,7 +208,7 @@ gcloud run deploy vietnam-hearts \
 4. **Port Already in Use**:
    ```bash
    # Use different port
-   ./docker.sh run -p 9000
+   ./scripts/docker.sh run -p 9000
    ```
 
 ### Health Checks
@@ -220,7 +220,7 @@ The application includes health checks:
 docker ps
 
 # Manual health check
-curl http://localhost:8080/public/health
+curl http://localhost:8080/health
 ```
 
 ## Security Considerations
@@ -236,7 +236,7 @@ curl http://localhost:8080/public/health
 
 ```bash
 # View application logs
-./docker.sh logs
+./scripts/docker.sh logs
 
 # Follow logs in real-time
 docker logs -f vietnam-hearts-container
@@ -245,7 +245,7 @@ docker logs -f vietnam-hearts-container
 ### Metrics
 
 The application exposes health endpoints:
-- `/public/health` - Basic health check
+- `/health` - Basic health check
 - `/docs` - API documentation (development only)
 
 ## Backup and Recovery
@@ -275,8 +275,8 @@ For issues related to:
 ## Configuration
 
 All non-secret deployment settings (project IDs, regions, image name, version) are stored in
-`deploy.config` at the project root. Edit that file to change deployment targets — do not
-edit `docker.sh` directly.
+`scripts/deploy.config`. Edit that file to change deployment targets — do not
+edit `scripts/docker.sh` directly.
 
 ```bash
 # Key settings in deploy.config:
