@@ -5,7 +5,7 @@ This service provides functions to get and set configuration settings
 that are stored in the database rather than environment variables.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -49,7 +49,7 @@ def set_setting(
 
     if setting:
         setting.value = value
-        setting.updated_at = datetime.now(timezone.utc)
+        setting.updated_at = datetime.now(UTC)
         if description:
             setting.description = description
     else:

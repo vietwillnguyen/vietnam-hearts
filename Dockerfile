@@ -1,5 +1,5 @@
 # Multi-stage build for Vietnam Hearts Scheduler API
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
 
@@ -10,12 +10,12 @@ WORKDIR /build
 # cache until they actually change.
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \
-    UV_PYTHON=python3.11
+    UV_PYTHON=python3.12
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Production stage
-FROM python:3.11-slim AS production
+FROM python:3.12-slim AS production
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

@@ -7,7 +7,7 @@ Separated from authentication logic for better maintainability.
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from supabase import create_client
 
@@ -84,7 +84,7 @@ class AdminService:
             logger.info(f"Retrieved {len(admin_users)} active admin users")
             return admin_users
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout getting admin users")
             return []
         except Exception as e:
@@ -130,7 +130,7 @@ class AdminService:
             logger.info(f"Retrieved {len(admin_users)} total admin users")
             return admin_users
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout getting all admin users")
             return []
         except Exception as e:
@@ -190,7 +190,7 @@ class AdminService:
             logger.info(f"Added new admin user: {email} with role: {role}")
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout adding admin user {email}")
             return False
         except Exception as e:
@@ -226,7 +226,7 @@ class AdminService:
                     .update(
                         {
                             "is_active": False,
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "updated_at": datetime.now(UTC).isoformat(),
                         }
                     )
                     .eq("email", email.lower())
@@ -238,7 +238,7 @@ class AdminService:
             logger.info(f"Deactivated admin user: {email}")
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout removing admin user {email}")
             return False
         except Exception as e:
@@ -281,7 +281,7 @@ class AdminService:
             logger.info(f"Permanently deleted admin user: {email}")
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout deleting admin user {email}")
             return False
         except Exception as e:
@@ -319,7 +319,7 @@ class AdminService:
                     .update(
                         {
                             "role": new_role,
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "updated_at": datetime.now(UTC).isoformat(),
                         }
                     )
                     .eq("email", email.lower())
@@ -331,7 +331,7 @@ class AdminService:
             logger.info(f"Updated admin user {email} role to: {new_role}")
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout updating admin role for {email}")
             return False
         except Exception as e:

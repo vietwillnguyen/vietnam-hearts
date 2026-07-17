@@ -18,7 +18,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 _SKIPPED_LOGGER_PREFIXES = ("sqlalchemy",)
 
@@ -63,9 +63,9 @@ class DatabaseLogHandler(logging.Handler):
             if record.name.startswith(_SKIPPED_LOGGER_PREFIXES):
                 return
             entry = {
-                "created_at": datetime.fromtimestamp(
-                    record.created, tz=timezone.utc
-                ).replace(tzinfo=None),
+                "created_at": datetime.fromtimestamp(record.created, tz=UTC).replace(
+                    tzinfo=None
+                ),
                 "level": record.levelname,
                 "logger_name": record.name,
                 "message": self.format(record)
@@ -106,9 +106,9 @@ class DatabaseLogHandler(logging.Handler):
                     session.bulk_insert_mappings(SystemLog, pending)
                     if not self._retention_done:
                         # Naive UTC to match how emit() stores created_at
-                        cutoff = datetime.now(timezone.utc).replace(
-                            tzinfo=None
-                        ) - timedelta(days=self.retention_days)
+                        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+                            days=self.retention_days
+                        )
                         session.query(SystemLog).filter(
                             SystemLog.created_at < cutoff
                         ).delete(synchronize_session=False)

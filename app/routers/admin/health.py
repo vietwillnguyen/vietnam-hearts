@@ -166,7 +166,7 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
                         admin_service._check_admin_db("test@example.com"), timeout=5.0
                     )
                     admin_service_available = True
-                except (asyncio.TimeoutError, Exception):
+                except (TimeoutError, Exception):
                     pass
             health_status["services"]["admin_service"] = {
                 "available": admin_service_available,

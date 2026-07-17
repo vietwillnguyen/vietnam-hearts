@@ -275,7 +275,7 @@ This project includes GitHub Actions for automated testing. The workflow will:
 
 - **Run on every push** to main/master/develop branches
 - **Run on pull requests** to main/master/develop branches
-- **Test against Python 3.11**
+- **Test against Python 3.12**
 - **Use uv** for dependency management
 - **Cache dependencies** for faster builds
 - **Upload test results** as artifacts
