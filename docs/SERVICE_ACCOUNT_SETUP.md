@@ -99,6 +99,8 @@ GOOGLE_OAUTH_CLIENT_SECRET=your-google-client-secret
 # Optional: if this path doesn't exist, the app falls back to Application
 # Default Credentials, self-impersonating the runtime service account
 # (e.g. on Cloud Run) to obtain Sheets/Drive/Docs-scoped tokens.
+# A stale path (file no longer present) is ignored with a warning, so it is
+# safe to leave this set even when no key file ships with the deployment.
 GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 ```
 

@@ -125,7 +125,7 @@ docker-compose down
 The application uses environment variables for configuration. Key variables:
 
 - `DATABASE_URL` - Database connection string
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to Google service account JSON
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to Google service account JSON (optional; a missing or stale path is ignored with a warning and the app falls back to Application Default Credentials)
 - `ENVIRONMENT` - development/production
 - `PORT` - Application port (default: 8080)
 
