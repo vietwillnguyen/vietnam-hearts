@@ -163,9 +163,7 @@ class TestStaleCredentialsEnvVar:
             patch(
                 "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
             ) as mock_path,
-            patch(
-                "app.utils.google_credentials.google.auth.default"
-            ) as mock_default,
+            patch("app.utils.google_credentials.google.auth.default") as mock_default,
             patch(
                 "app.utils.google_credentials.impersonated_credentials.Credentials"
             ) as mock_impersonated,
