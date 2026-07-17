@@ -46,7 +46,7 @@ async def get_settings(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve settings",
-        )
+        ) from e
 
 
 @router.get("/{key}", response_model=Setting)
@@ -75,7 +75,7 @@ async def get_setting_by_key(key: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve setting",
-        )
+        ) from e
 
 
 @router.post("/", response_model=Setting)
@@ -117,7 +117,7 @@ async def create_setting(setting_data: SettingCreate, db: Session = Depends(get_
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create setting",
-        )
+        ) from e
 
 
 @router.put("/{key}", response_model=Setting)
@@ -159,7 +159,7 @@ async def update_setting(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update setting: {str(e)}",
-        )
+        ) from e
 
 
 @router.delete("/{key}")
@@ -190,7 +190,7 @@ async def delete_setting_by_key(key: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete setting",
-        )
+        ) from e
 
 
 @router.get("/dict/all")
@@ -208,4 +208,4 @@ async def get_settings_as_dict(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve settings",
-        )
+        ) from e

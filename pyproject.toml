@@ -52,10 +52,6 @@ select = [
 ]
 ignore = [
     "E501",  # line length is handled by the formatter
-    "B904",  # pre-existing debt: ~52 call sites raise without `from err`/`from None`
-             # inside except blocks (routers/services). Fixing needs a per-site read
-             # to pick the right cause, so it's tracked as follow-up, not folded into
-             # this lint-tooling change.
 ]
 
 [tool.ruff.lint.isort]

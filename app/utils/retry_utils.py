@@ -123,7 +123,7 @@ def safe_api_call(
         return _execute_with_retry()
     except RetryError as e:
         logger.error(f"All retry attempts failed for {context}: {str(e)}")
-        raise e.last_attempt._exception
+        raise e.last_attempt._exception from e
     except Exception as e:
         logger.error(f"Unexpected error in {context}: {str(e)}")
         raise
@@ -166,7 +166,7 @@ def safe_api_call_with_config(
         return _execute_with_retry()
     except RetryError as e:
         logger.error(f"All retry attempts failed for {context}: {str(e)}")
-        raise e.last_attempt._exception
+        raise e.last_attempt._exception from e
     except Exception as e:
         logger.error(f"Unexpected error in {context}: {str(e)}")
         raise

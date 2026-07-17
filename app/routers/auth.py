@@ -61,7 +61,7 @@ async def sign_in_with_google(request: SignInRequest) -> dict[str, Any]:
         return result
     except Exception as e:
         logger.error(f"Failed to initiate Google sign-in: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/callback")
@@ -186,7 +186,7 @@ async def sign_out(
         return result
     except Exception as e:
         logger.error(f"Failed to sign out user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/refresh")
@@ -202,7 +202,7 @@ async def refresh_session(request: RefreshSessionRequest) -> dict[str, Any]:
         return result
     except Exception as e:
         logger.error(f"Failed to refresh session: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/admin/users")
@@ -247,7 +247,7 @@ async def list_users(
 
     except Exception as e:
         logger.error(f"Failed to list users: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/health")

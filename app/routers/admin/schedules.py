@@ -54,7 +54,7 @@ def get_schedule_status(db: Session = Depends(get_db)):
         logger.error(f"Failed to get schedule status: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to get schedule status: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/rotate-schedule")
@@ -94,4 +94,4 @@ async def rotate_schedule_sheets(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to rotate schedule sheets: {str(e)}"
-        )
+        ) from e

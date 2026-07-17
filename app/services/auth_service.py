@@ -90,7 +90,7 @@ class AuthService:
             logger.error(f"Failed to generate Google OAuth URL: {str(e)}")
             raise HTTPException(
                 status_code=500, detail=f"Failed to initiate Google sign-in: {str(e)}"
-            )
+            ) from e
 
     async def handle_auth_callback(
         self, code: str, state: str | None = None
@@ -136,7 +136,7 @@ class AuthService:
             logger.error(f"Failed to handle auth callback: {str(e)}")
             raise HTTPException(
                 status_code=400, detail=f"Failed to complete sign-in: {str(e)}"
-            )
+            ) from e
 
     async def get_current_user(self, request: Request) -> dict[str, Any]:
         """
@@ -223,7 +223,9 @@ class AuthService:
             }
         except Exception as e:
             logger.error(f"Failed to get user from token: {str(e)}")
-            raise HTTPException(status_code=401, detail="Invalid authentication token")
+            raise HTTPException(
+                status_code=401, detail="Invalid authentication token"
+            ) from e
 
     async def _get_user_from_apikey(self, apikey: str) -> dict[str, Any]:
         """Get user information from service role key"""
@@ -248,7 +250,9 @@ class AuthService:
             }
         except Exception as e:
             logger.error(f"Failed to get user from apikey: {str(e)}")
-            raise HTTPException(status_code=401, detail="Invalid service role key")
+            raise HTTPException(
+                status_code=401, detail="Invalid service role key"
+            ) from e
 
     def _is_secret_key(self, token: str) -> bool:
         """Check if the token is a valid secret key"""
@@ -361,7 +365,9 @@ class AuthService:
             return {"message": "Successfully signed out"}
         except Exception as e:
             logger.error(f"Failed to sign out user: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Failed to sign out: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to sign out: {str(e)}"
+            ) from e
 
     async def refresh_session(self, refresh_token: str) -> dict[str, Any]:
         """Refresh the user's session using refresh token"""
@@ -385,7 +391,7 @@ class AuthService:
             logger.error(f"Failed to refresh session: {str(e)}")
             raise HTTPException(
                 status_code=400, detail=f"Failed to refresh session: {str(e)}"
-            )
+            ) from e
 
     async def get_user_by_email(self, email: str) -> dict[str, Any] | None:
         """Get user information by email (admin function)"""

@@ -81,4 +81,4 @@ def get_system_logs(
         logger.error(f"Failed to fetch system logs: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch system logs: {str(e)}"
-        )
+        ) from e

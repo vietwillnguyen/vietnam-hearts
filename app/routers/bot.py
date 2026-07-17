@@ -120,7 +120,7 @@ async def chat(
         )
     except Exception as e:
         logger.error(f"Public chat error: {e}")
-        raise HTTPException(status_code=500, detail="Chat processing failed")
+        raise HTTPException(status_code=500, detail="Chat processing failed") from e
 
 
 # Public test endpoint - no authentication required
@@ -197,7 +197,7 @@ async def sync_documents(
         logger.error(
             f"Document sync error for admin {current_admin.get('email', 'unknown')}: {e}"
         )
-        raise HTTPException(status_code=500, detail="Document sync failed")
+        raise HTTPException(status_code=500, detail="Document sync failed") from e
 
 
 @admin_router.get("/knowledge-sync/status", response_model=KnowledgeStatusResponse)
@@ -222,7 +222,9 @@ async def get_knowledge_status(
         logger.error(
             f"Failed to get knowledge status for admin {current_admin.get('email', 'unknown')}: {e}"
         )
-        raise HTTPException(status_code=500, detail="Failed to get knowledge status")
+        raise HTTPException(
+            status_code=500, detail="Failed to get knowledge status"
+        ) from e
 
 
 @admin_router.get("/documents")
@@ -253,7 +255,7 @@ async def list_available_documents(
         logger.error(
             f"Failed to list documents for admin {current_admin.get('email', 'unknown')}: {e}"
         )
-        raise HTTPException(status_code=500, detail="Failed to list documents")
+        raise HTTPException(status_code=500, detail="Failed to list documents") from e
 
 
 @admin_router.get("/knowledge-base/chunks")
@@ -321,7 +323,7 @@ async def inspect_knowledge_base_chunks(
         )
         raise HTTPException(
             status_code=500, detail="Failed to inspect knowledge base chunks"
-        )
+        ) from e
 
 
 @admin_router.post("/knowledge-base/test-search")
@@ -389,4 +391,4 @@ async def test_knowledge_base_search(
         )
         raise HTTPException(
             status_code=500, detail="Failed to test knowledge base search"
-        )
+        ) from e

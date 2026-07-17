@@ -44,7 +44,7 @@ def view_email_logs(db: Session = Depends(get_db)):
         logger.error(f"Failed to fetch email logs: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch email logs: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/reminder-stats")
@@ -93,7 +93,7 @@ def get_reminder_stats(db: Session = Depends(get_db)):
         logger.error(f"Failed to get reminder statistics: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to get reminder statistics: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/send-confirmation-emails")
