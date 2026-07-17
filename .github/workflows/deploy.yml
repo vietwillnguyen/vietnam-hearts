@@ -58,6 +58,10 @@ jobs:
       cancel-in-progress: false
     steps:
     - uses: actions/checkout@v4
+      with:
+        # Full history so the ordering guard can run ancestry checks
+        # against the currently deployed commit.
+        fetch-depth: 0
 
     - name: Load deploy config
       id: config
@@ -84,7 +88,40 @@ jobs:
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker gcr.io --quiet
 
+    # The concurrency group serializes deploys but queues on test completion,
+    # not commit order: an older merge whose tests finish late can still
+    # deploy after a newer one and roll production back (issue #21). Skip
+    # the deploy unless the currently serving commit is an ancestor of ours.
+    - name: Check deploy ordering
+      id: guard
+      run: |
+        image=$(gcloud run services describe "${{ steps.config.outputs.service }}" \
+          --region "${{ steps.config.outputs.region }}" \
+          --project "${{ steps.config.outputs.project_id }}" \
+          --platform managed \
+          --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null) || image=""
+        tag="${image##*:}"
+        deployed_sha="${tag#sha-}"
+        if [ -z "$image" ] || [ "$deployed_sha" = "$tag" ]; then
+          echo "No sha-tagged image currently serving; proceeding with deploy."
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if ! git cat-file -e "${deployed_sha}^{commit}" 2>/dev/null; then
+          echo "Deployed commit ${deployed_sha} not found in history; proceeding with deploy."
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if git merge-base --is-ancestor "$deployed_sha" "$GITHUB_SHA"; then
+          echo "Deployed commit ${deployed_sha} is an ancestor of ${GITHUB_SHA}; proceeding with deploy."
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "Deployed commit ${deployed_sha} is NOT an ancestor of ${GITHUB_SHA}; a newer commit is already live. Skipping stale deploy."
+          echo "proceed=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Build image
+      if: steps.guard.outputs.proceed == 'true'
       run: |
         docker build \
           -t "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}" \
@@ -92,11 +129,13 @@ jobs:
           .
 
     - name: Push image
+      if: steps.guard.outputs.proceed == 'true'
       run: |
         docker push "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}"
         docker push "${{ steps.config.outputs.image }}:sha-${GITHUB_SHA::7}"
 
     - name: Deploy to Cloud Run
+      if: steps.guard.outputs.proceed == 'true'
       run: |
         # Deploy the immutable per-commit tag (not the shared version tag)
         # so this run ships exactly the image it built, whatever else was
@@ -109,6 +148,7 @@ jobs:
           --quiet
 
     - name: Smoke check
+      if: steps.guard.outputs.proceed == 'true'
       run: |
         for _ in $(seq 1 12); do
           code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.config.outputs.base_url }}/health") && \
