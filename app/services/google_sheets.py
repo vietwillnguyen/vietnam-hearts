@@ -6,7 +6,6 @@ import ssl
 from datetime import datetime, timedelta
 from typing import Any
 
-import google.auth
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session
 
@@ -14,7 +13,7 @@ from app.config import (
     GOOGLE_APPLICATION_CREDENTIALS,
 )
 from app.utils.config_helper import ConfigHelper
-from app.utils.google_credentials import get_scoped_credentials
+from app.utils.google_credentials import default_credentials, get_scoped_credentials
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error, safe_api_call
 from app.utils.schedule_dates import (
@@ -121,7 +120,7 @@ class GoogleSheetsService:
             )
         else:
             try:
-                creds, project = google.auth.default()
+                creds, project = default_credentials()
                 logger.info(
                     f"Application Default Credentials available with project: {project}"
                 )

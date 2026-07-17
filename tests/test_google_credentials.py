@@ -9,6 +9,7 @@ via the IAM Credentials API is required to get a token with the literal
 scopes Sheets/Drive/Docs expect.
 """
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from google.auth.exceptions import DefaultCredentialsError
 
 from app.utils.google_credentials import (
     _get_scoped_credentials_cached,
+    default_credentials,
     get_scoped_credentials,
 )
 
@@ -92,6 +94,87 @@ def test_raises_clear_error_for_user_adc_without_service_account_email():
 
         with pytest.raises(DefaultCredentialsError):
             get_scoped_credentials(SCOPES)
+
+
+class TestStaleCredentialsEnvVar:
+    """Pins down the production bug (2026-07-18): the Cloud Run service still
+    carried GOOGLE_APPLICATION_CREDENTIALS=secrets/google_credentials.json from
+    the old key-file deploys, but the image no longer ships that file. With the
+    env var set to a missing path, google.auth.default() raises immediately
+    instead of falling through to the metadata server, so the attached service
+    account was never consulted and every Sheets call 500'd."""
+
+    def test_default_credentials_strips_stale_env_var(self, tmp_path):
+        missing = str(tmp_path / "nope" / "google_credentials.json")
+        seen_env = {}
+
+        def record_env():
+            seen_env["value"] = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            return ("adc-creds", "some-project")
+
+        with (
+            patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": missing}),
+            patch(
+                "app.utils.google_credentials.google.auth.default",
+                side_effect=record_env,
+            ),
+        ):
+            creds, project = default_credentials()
+
+            assert creds == "adc-creds"
+            assert project == "some-project"
+            # The stale var must be hidden from google.auth.default so it can
+            # fall through to the metadata server / other ADC sources.
+            assert seen_env["value"] is None
+            # ...but restored afterwards so we don't mutate global state.
+            assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == missing
+
+    def test_default_credentials_keeps_valid_env_var(self, tmp_path):
+        key_file = tmp_path / "google_credentials.json"
+        key_file.write_text("{}")
+        seen_env = {}
+
+        def record_env():
+            seen_env["value"] = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            return ("adc-creds", "some-project")
+
+        with (
+            patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": str(key_file)}),
+            patch(
+                "app.utils.google_credentials.google.auth.default",
+                side_effect=record_env,
+            ),
+        ):
+            default_credentials()
+
+            assert seen_env["value"] == str(key_file)
+
+    def test_scoped_credentials_survive_stale_env_var(self, tmp_path):
+        """End-to-end through get_scoped_credentials: stale env var must still
+        yield self-impersonated ADC credentials, not DefaultCredentialsError."""
+        missing = str(tmp_path / "nope" / "google_credentials.json")
+        source_creds = MagicMock()
+        source_creds.service_account_email = (
+            "runtime-sa@project.iam.gserviceaccount.com"
+        )
+
+        with (
+            patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": missing}),
+            patch(
+                "app.utils.google_credentials.GOOGLE_APPLICATION_CREDENTIALS"
+            ) as mock_path,
+            patch(
+                "app.utils.google_credentials.google.auth.default"
+            ) as mock_default,
+            patch(
+                "app.utils.google_credentials.impersonated_credentials.Credentials"
+            ) as mock_impersonated,
+        ):
+            mock_path.exists.return_value = False
+            mock_default.return_value = (source_creds, "some-project")
+            mock_impersonated.return_value = "impersonated-creds"
+
+            assert get_scoped_credentials(SCOPES) == "impersonated-creds"
 
 
 def test_reuses_cached_credentials_for_same_scopes():
