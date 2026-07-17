@@ -43,7 +43,7 @@ def default_credentials():
         f"{_ENV_VAR} is set to '{env_value}' but no such file exists; "
         "ignoring it and falling back to Application Default Credentials"
     )
-    del os.environ[_ENV_VAR]
+    os.environ.pop(_ENV_VAR, None)
     try:
         return google.auth.default()
     finally:
