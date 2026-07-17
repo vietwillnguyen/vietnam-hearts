@@ -178,7 +178,7 @@ GCP_PROJECT_ID        # GCP project for container registry
 GCR_HOSTNAME          # Container registry hostname (gcr.io)
 GCR_REGION            # GCR region (asia-southeast1)
 IMAGE_NAME            # Docker image name
-IMAGE_VERSION         # Current image version (bump on release)
+IMAGE_VERSION         # Human-friendly version tag (bump on release; CI deploys the per-commit sha tag)
 CLOUD_RUN_SERVICE     # Cloud Run service identifier
 CLOUD_RUN_REGION      # Cloud Run region (northamerica-northeast1)
 BASE_URL              # Public service URL
@@ -271,7 +271,7 @@ uv run pytest tests/ --cov=app --cov-report=html
 
 ### GitHub Actions
 
-This project includes GitHub Actions for automated testing. The workflow will:
+This project includes GitHub Actions for automated testing and deployment. The test workflow will:
 
 - **Run on every push** to main/master/develop branches
 - **Run on pull requests** to main/master/develop branches
@@ -303,6 +303,15 @@ The workflow (`.github/workflows/test.yml`) includes:
 3. **Linting**: Runs `ruff check` and `ruff format --check`
 4. **Testing**: Runs pytest with proper environment variables
 5. **Artifacts**: Saves test results for 7 days
+
+#### Deploy Workflow
+
+The deploy workflow (`.github/workflows/deploy.yml`) runs on every push to main: it runs the test suite and, when green, builds the Docker image and deploys it to Cloud Run.
+Safeguards against racing deploys (issue #21):
+
+- **Serialized deploys**: The deploy job uses the `deploy-production` concurrency group with `cancel-in-progress: false`, so an in-flight deploy always finishes and only the newest queued run proceeds.
+- **Ordering guard**: Before deploying, the job checks that the currently serving commit is an ancestor of the one being deployed and skips the deploy otherwise, so a stale run can never roll production back.
+- **Immutable image tags**: Each run deploys the `sha-<short-sha>` tag it built, so a deploy can only ever ship its own commit. The `IMAGE_VERSION` tag is still pushed as a human-friendly pointer.
 
 #### Viewing Results
 

@@ -155,6 +155,10 @@ The application uses environment variables for configuration. Key variables:
 
 ## Production Deployment
 
+Production deploys normally happen automatically: every push to main runs `.github/workflows/deploy.yml`, which tests, builds, and deploys the immutable `sha-<short-sha>` image tag to Cloud Run.
+Deploys are serialized via a concurrency group and guarded by a git-ancestry check so a stale run cannot roll production back.
+The steps below are the manual fallback.
+
 ### 1. Build Production Image
 
 ```bash
@@ -282,7 +286,7 @@ edit `scripts/docker.sh` directly.
 # Key settings in deploy.config:
 GCP_PROJECT_ID    # GCP project for container registry
 IMAGE_NAME        # Docker image name
-IMAGE_VERSION     # Current image version (bump on each release)
+IMAGE_VERSION     # Human-friendly version tag (bump on each release; CI deploys the per-commit sha tag)
 GCR_REGION        # Registry region
 CLOUD_RUN_REGION  # Cloud Run deployment region
 ```
