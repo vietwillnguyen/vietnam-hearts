@@ -5,7 +5,9 @@ description = "Vietnam Hearts Scheduling Assistant"
 authors = [{ name = "Viet Nguyen" }]
 requires-python = ">=3.10"
 # Poetry caret constraints converted to explicit PEP 440 ranges with the
-# same bounds, so the resolution window matches the old poetry.lock.
+# same bounds, so the resolution window matches the old poetry.lock -
+# except python-multipart, deliberately widened from Poetry's ^0.0.20
+# (<0.0.21) to <0.1, moving the locked version from 0.0.20 to 0.0.32.
 dependencies = [
     "fastapi==0.116.0",
     "uvicorn>=0.27.0,<0.28",
