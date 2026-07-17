@@ -37,7 +37,7 @@ ADMIN_EMAILS=auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com,you
 Install the required dependencies:
 
 ```bash
-poetry install
+uv sync
 ```
 
 ### Step 3: Test Admin Access
@@ -108,7 +108,7 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 
 1. Check that `SUPABASE_SECRET_KEY` is set in your `.env` file
 2. Verify the secret key is correct
-3. Make sure PyJWT is installed: `poetry install`
+3. Make sure PyJWT is installed: `uv sync`
 
 ### "Access denied" for admin endpoints
 

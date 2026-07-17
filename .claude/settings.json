@@ -3,15 +3,15 @@
     "allow": [
       "Bash(python -m pytest tests/ -x -q)",
       "Bash(python3 -m pytest tests/ -x -q)",
-      "Bash(poetry run:*)",
-      "Bash(poetry install:*)",
-      "Bash(poetry lock:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv lock:*)",
       "Bash(git add:*)",
       "Bash(bash -n /home/viet/git/vietnam-hearts/docker.sh)",
       "Bash(bash -n /home/viet/git/vietnam-hearts/scripts/create-or-update-scheduler-jobs.sh)",
       "Bash(git mv:*)",
       "Bash(bash -n /home/viet/git/vietnam-hearts/scripts/docker.sh)",
-      "Bash(poetry show:*)",
+      "Bash(uv tree:*)",
       "Read(//usr/local/bin/**)"
     ]
   }

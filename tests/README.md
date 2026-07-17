@@ -6,7 +6,6 @@ This directory contains test scripts for the Vietnam Hearts Scheduler API endpoi
 
 - `test_api.py` - Main test script for scheduler API endpoints
 - `test_db.py` - Database connection test script
-- `requirements.txt` - poetry run Python dependencies for tests
 
 ## Prerequisites
 
@@ -53,33 +52,33 @@ DATABASE_URL=your_database_url_here
 
 ```bash
 # Test health check endpoint
-poetry run python tests/test_api.py health
+uv run python tests/test_api.py health
 
 # Test send confirmation emails
-poetry run python tests/test_api.py send-confirmation-emails
+uv run python tests/test_api.py send-confirmation-emails
 
 # Test sync volunteers
-poetry run python tests/test_api.py sync-volunteers
+uv run python tests/test_api.py sync-volunteers
 
 # Test send weekly reminders
-poetry run python tests/test_api.py send-weekly-reminders
+uv run python tests/test_api.py send-weekly-reminders
 
 # Test rotate schedule
-poetry run python tests/test_api.py rotate-schedule
+uv run python tests/test_api.py rotate-schedule
 ```
 
 ### Test All Endpoints
 
 ```bash
 # Test all scheduler endpoints
-poetry run python tests/test_api.py all
+uv run python tests/test_api.py all
 ```
 
 ### Database Connection Test
 
 ```bash
 # Test database connectivity
-poetry run python tests/test_db.py
+uv run python tests/test_db.py
 ```
 
 ## Available Endpoints

@@ -32,56 +32,28 @@ echo "🚀 Vietnam Hearts Scheduler - Setup"
 echo "==================================="
 echo ""
 
-# Check if Python 3 is installed
-print_status "Checking Python 3..."
-if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version)
-    print_success "Found $PYTHON_VERSION"
+# Check if uv is installed (uv manages Python itself, so no separate
+# python3 check is needed - it downloads the version in .python-version)
+print_status "Checking uv..."
+if command -v uv &> /dev/null; then
+    UV_VERSION=$(uv --version)
+    print_success "Found $UV_VERSION"
 else
-    print_error "Python 3 is not installed. Please install Python 3.12 or later."
-    exit 1
-fi
+    print_warning "uv is not installed. Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    print_success "uv installed successfully"
 
-# Check if Poetry is installed
-print_status "Checking Poetry..."
-if command -v poetry &> /dev/null; then
-    POETRY_VERSION=$(poetry --version)
-    print_success "Found $POETRY_VERSION"
-    
-    # Check Poetry version
-    POETRY_VERSION_NUM=$(poetry --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    POETRY_MAJOR=$(echo $POETRY_VERSION_NUM | cut -d. -f1)
-    POETRY_MINOR=$(echo $POETRY_VERSION_NUM | cut -d. -f2)
-    
-    if [ "$POETRY_MAJOR" -eq 1 ] && [ "$POETRY_MINOR" -lt 2 ]; then
-        print_warning "You have Poetry $POETRY_VERSION_NUM installed. This version is compatible but older."
-        print_status "For the best experience, consider upgrading to Poetry 1.2.0 or later:"
-        echo "  poetry self update"
-        echo ""
-    fi
-else
-    print_warning "Poetry is not installed. Installing Poetry..."
-    curl -sSL https://install.python-poetry.org | python3 -
-    print_success "Poetry installed successfully"
-    
-    # Add Poetry to PATH for current session
+    # Add uv to PATH for current session
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # Install dependencies
 print_status "Installing Python dependencies..."
-if poetry install; then
+if uv sync; then
     print_success "Dependencies installed successfully"
 else
-    print_error "Failed to install dependencies. This might be due to Poetry version compatibility."
-    print_status "Trying to install without dev dependencies..."
-    if poetry install --no-dev; then
-        print_success "Core dependencies installed successfully (dev dependencies skipped)"
-        print_warning "To install dev dependencies, upgrade Poetry: poetry self update"
-    else
-        print_error "Failed to install dependencies. Please check your Poetry installation."
-        exit 1
-    fi
+    print_error "Failed to install dependencies. Please check your uv installation."
+    exit 1
 fi
 
 # Create secrets directory

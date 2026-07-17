@@ -67,28 +67,23 @@ show_usage() {
     echo ""
 }
 
-# Function to check if Python and Poetry are installed
+# Function to check if uv is installed
 check_dependencies() {
     print_status "Checking dependencies..."
-    
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 is not installed"
+
+    if ! command -v uv &> /dev/null; then
+        print_error "uv is not installed. Please install it first:"
+        echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
         exit 1
     fi
-    
-    if ! command -v poetry &> /dev/null; then
-        print_error "Poetry is not installed. Please install it first:"
-        echo "  curl -sSL https://install.python-poetry.org | python3 -"
-        exit 1
-    fi
-    
+
     print_success "Dependencies check passed"
 }
 
 # Function to install dependencies
 install_dependencies() {
-    print_status "Installing dependencies with Poetry..."
-    poetry install
+    print_status "Installing dependencies with uv..."
+    uv sync
     print_success "Dependencies installed successfully"
 }
 
@@ -201,7 +196,7 @@ run_application() {
     export DRY_RUN="$DRY_RUN"
     
     # Build uvicorn command
-    UVICORN_CMD="poetry run uvicorn app.main:app --host $HOST --port $PORT"
+    UVICORN_CMD="uv run uvicorn app.main:app --host $HOST --port $PORT"
     
     # Add workers for production
     if [ "$ENVIRONMENT" = "production" ]; then

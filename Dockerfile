@@ -1,28 +1,21 @@
 # Multi-stage build for Vietnam Hearts Scheduler API
-FROM python:3.10-slim AS builder
+FROM python:3.11-slim AS builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
 
-# Install Poetry
-RUN pip install poetry
-
-# Set working directory for dependency installation
 WORKDIR /build
 
-# Copy the entire project for Poetry to understand the structure
-COPY . .
-
-# Configure Poetry to not create virtual environment
-RUN poetry config virtualenvs.create false
-
-# Install production dependencies only
-RUN poetry install --only main
+# Install locked production dependencies into a relocatable venv.
+# Only the manifest and lockfile are needed here, so dependency layers
+# cache until they actually change.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON=python3.11
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Production stage
-FROM python:3.10-slim AS production
+FROM python:3.11-slim AS production
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -36,20 +29,18 @@ RUN useradd --create-home --shell /bin/bash app
 # Set working directory for the application
 WORKDIR /app
 
-# Copy only the Python packages we need
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+# Copy the dependency venv (its python symlinks resolve against the same base image)
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy only installed entry-point scripts (not build tools like poetry/pip)
-COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
-
-# Copy application files from builder (already copied there)
+# Copy application files from the build context.
 # Note: secrets/ is intentionally not copied here - it's gitignored and never
 # present in the build context. The app falls back to Application Default
 # Credentials when secrets/google_credentials.json is missing (see
 # app/utils/google_credentials.py).
-COPY --from=builder /build/app/ ./app/
-COPY --from=builder /build/static/ ./static/
-COPY --from=builder /build/templates/ ./templates/
+COPY app/ ./app/
+COPY static/ ./static/
+COPY templates/ ./templates/
 
 # Create logs directory and set permissions BEFORE switching user
 RUN mkdir -p /app/logs && chown -R app:app /app/logs

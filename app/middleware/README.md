@@ -171,7 +171,7 @@ self.rate_limits = {
 Run the middleware tests:
 
 ```bash
-poetry run pytest tests/test_middleware.py -v
+uv run pytest tests/test_middleware.py -v
 ```
 
 ## Monitoring
