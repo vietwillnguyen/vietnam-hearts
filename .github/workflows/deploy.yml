@@ -49,6 +49,13 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    # Serialize deploys: back-to-back merges once raced here and the older
+    # image deployed last, rolling production back (issue #21). With
+    # cancel-in-progress false the running deploy finishes and only the
+    # newest queued run proceeds.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     steps:
     - uses: actions/checkout@v4
 
@@ -56,12 +63,14 @@ jobs:
       id: config
       run: |
         source scripts/deploy.config
-        echo "project_id=${GCP_PROJECT_ID}" >> "$GITHUB_OUTPUT"
-        echo "image=${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
-        echo "version=${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
-        echo "service=${CLOUD_RUN_SERVICE}" >> "$GITHUB_OUTPUT"
-        echo "region=${CLOUD_RUN_REGION}" >> "$GITHUB_OUTPUT"
-        echo "base_url=${BASE_URL}" >> "$GITHUB_OUTPUT"
+        {
+          echo "project_id=${GCP_PROJECT_ID}"
+          echo "image=${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_NAME}"
+          echo "version=${IMAGE_VERSION}"
+          echo "service=${CLOUD_RUN_SERVICE}"
+          echo "region=${CLOUD_RUN_REGION}"
+          echo "base_url=${BASE_URL}"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
@@ -89,8 +98,11 @@ jobs:
 
     - name: Deploy to Cloud Run
       run: |
+        # Deploy the immutable per-commit tag (not the shared version tag)
+        # so this run ships exactly the image it built, whatever else was
+        # pushed to the registry in the meantime.
         gcloud run deploy "${{ steps.config.outputs.service }}" \
-          --image "${{ steps.config.outputs.image }}:${{ steps.config.outputs.version }}" \
+          --image "${{ steps.config.outputs.image }}:sha-${GITHUB_SHA::7}" \
           --region "${{ steps.config.outputs.region }}" \
           --platform managed \
           --project "${{ steps.config.outputs.project_id }}" \
@@ -98,7 +110,7 @@ jobs:
 
     - name: Smoke check
       run: |
-        for i in $(seq 1 12); do
+        for _ in $(seq 1 12); do
           code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.config.outputs.base_url }}/health") && \
             [ "$code" = "200" ] && echo "Service healthy" && exit 0
           sleep 5
