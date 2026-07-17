@@ -116,7 +116,7 @@ def validate_configuration(db: Session = Depends(get_db)):
         logger.error(f"Configuration validation failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Configuration validation failed: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/health")

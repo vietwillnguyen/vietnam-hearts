@@ -105,7 +105,10 @@ class DatabaseLogHandler(logging.Handler):
                 try:
                     session.bulk_insert_mappings(SystemLog, pending)
                     if not self._retention_done:
-                        cutoff = datetime.utcnow() - timedelta(days=self.retention_days)
+                        # Naive UTC to match how emit() stores created_at
+                        cutoff = datetime.now(timezone.utc).replace(
+                            tzinfo=None
+                        ) - timedelta(days=self.retention_days)
                         session.query(SystemLog).filter(
                             SystemLog.created_at < cutoff
                         ).delete(synchronize_session=False)

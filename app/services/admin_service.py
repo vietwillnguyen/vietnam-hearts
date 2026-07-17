@@ -7,7 +7,7 @@ Separated from authentication logic for better maintainability.
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from supabase import create_client
 
@@ -226,7 +226,7 @@ class AdminService:
                     .update(
                         {
                             "is_active": False,
-                            "updated_at": datetime.utcnow().isoformat(),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
                         }
                     )
                     .eq("email", email.lower())
@@ -317,7 +317,10 @@ class AdminService:
                 asyncio.to_thread(
                     lambda: self.admin_supabase.table("admin_users")
                     .update(
-                        {"role": new_role, "updated_at": datetime.utcnow().isoformat()}
+                        {
+                            "role": new_role,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }
                     )
                     .eq("email", email.lower())
                     .execute()

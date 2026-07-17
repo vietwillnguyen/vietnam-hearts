@@ -54,7 +54,7 @@ class Volunteer(Base):
     )  # None, Some experience as TA, Teaching experience (less than 1 year), Teaching experience (1+ years)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     is_active = Column(Boolean, default=True)
 
     # Email-related fields
@@ -122,18 +122,18 @@ class EmailCommunication(Base):
         String, default="PENDING"
     )  # pending, sent, delivered, failed, bounced
     error_message = Column(String)  # If delivery failed
-    sent_at = Column(DateTime, default=datetime.now(timezone.utc))
+    sent_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     delivered_at = Column(DateTime, nullable=True)  # When the email was delivered
 
     # Relationships
     volunteer = relationship("Volunteer", back_populates="email_communications")
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
-        default=datetime.now(timezone.utc),
-        onupdate=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     class Config:
@@ -174,11 +174,11 @@ class Setting(Base):
     description = Column(
         String, nullable=True
     )  # Human-readable description of the setting
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
-        default=datetime.now(timezone.utc),
-        onupdate=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     class Config:

@@ -44,7 +44,7 @@ def view_volunteers(db: Session = Depends(get_db)):
         logger.error(f"Failed to fetch volunteer data: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch volunteer data: {str(e)}"
-        )
+        ) from e
 
 
 @router.get(
@@ -89,7 +89,7 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
         logger.error(f"Failed to get announcement recipients: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to get announcement recipients: {str(e)}"
-        )
+        ) from e
 
 
 @router.get(
@@ -156,7 +156,7 @@ def send_confirmation_email_to_volunteer(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to send confirmation email: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/{volunteer_id}/reset-confirmation")
@@ -194,7 +194,7 @@ def reset_confirmation_email_status(volunteer_id: int, db: Session = Depends(get
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to reset confirmation status: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/{volunteer_id}/resubscribe")
@@ -235,7 +235,7 @@ def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to resubscribe volunteer: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/{volunteer_id}/resubscribe-weekly")
@@ -278,7 +278,7 @@ def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to resubscribe volunteer: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/{volunteer_id}/deactivate")
@@ -325,7 +325,7 @@ def deactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to deactivate volunteer: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/{volunteer_id}/reactivate")
@@ -372,7 +372,7 @@ def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to reactivate volunteer: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/{volunteer_id}/send-weekly-reminder")
@@ -431,7 +431,7 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to send weekly reminder email: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/volunteers/cleanup-malformed-emails")

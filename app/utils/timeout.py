@@ -24,14 +24,14 @@ def timeout_handler(timeout_seconds: float = 30.0):
                 return await asyncio.wait_for(
                     func(*args, **kwargs), timeout=timeout_seconds
                 )
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 logger.error(
                     f"Function {func.__name__} timed out after {timeout_seconds} seconds"
                 )
                 raise HTTPException(
                     status_code=504,
                     detail=f"Operation timed out after {timeout_seconds} seconds",
-                )
+                ) from e
 
         return wrapper
 
