@@ -6,6 +6,11 @@ Cloud Run's Application Default Credentials are always cloud-platform-scoped
 and Workspace APIs reject that scope with ACCESS_TOKEN_SCOPE_INSUFFICIENT.
 Self-impersonation via the IAM Credentials API mints a token with the literal
 scopes requested, sidestepping that limitation without needing a stored key.
+
+default_credentials() wraps google.auth.default() so that a stale
+GOOGLE_APPLICATION_CREDENTIALS env var pointing at a missing key file is
+ignored (with a warning) instead of aborting Application Default Credentials
+resolution.
 """
 
 import os

@@ -83,7 +83,7 @@ The application uses the following environment variables (see `env.template` for
 
 #### Google Sheets Integration
 - `SCHEDULE_SIGNUP_LINK` - Main schedule Google Sheets ID
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON. Optional: if the file doesn't exist (e.g. on Cloud Run), the app falls back to Application Default Credentials, self-impersonating the runtime service account to get Sheets/Drive/Docs-scoped tokens
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON. Optional: if the file doesn't exist (e.g. on Cloud Run), the app falls back to Application Default Credentials, self-impersonating the runtime service account to get Sheets/Drive/Docs-scoped tokens. A stale value pointing at a missing file (e.g. left over from old key-file deploys) is ignored with a warning instead of breaking ADC resolution
 - `SERVICE_ACCOUNT_EMAIL` - Google service account email
 
 #### AI & Knowledge Base
@@ -347,6 +347,9 @@ Safeguards against racing deploys (issue #21):
    - Verify API is enabled in Google Cloud Console
    - Check credentials file path in `.env`, or Application Default Credentials
      setup if no credentials file is used
+   - A `GOOGLE_APPLICATION_CREDENTIALS` value pointing at a missing file is
+     ignored with a warning in the logs, and the app falls back to Application
+     Default Credentials
 
 ### Debug Mode
 
