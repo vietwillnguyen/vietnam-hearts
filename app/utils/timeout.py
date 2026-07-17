@@ -24,7 +24,7 @@ def timeout_handler(timeout_seconds: float = 30.0):
                 return await asyncio.wait_for(
                     func(*args, **kwargs), timeout=timeout_seconds
                 )
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 logger.error(
                     f"Function {func.__name__} timed out after {timeout_seconds} seconds"
                 )

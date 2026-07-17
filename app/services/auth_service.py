@@ -332,7 +332,7 @@ class AuthService:
 
             return len(result.data) > 0
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout checking admin status for {email}")
             return False
         except Exception as e:

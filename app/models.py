@@ -5,7 +5,7 @@ This file defines the structure of our database tables.
 SQLAlchemy ORM converts these Python classes into database tables.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import ConfigDict
 from sqlalchemy import (
@@ -54,7 +54,7 @@ class Volunteer(Base):
     )  # None, Some experience as TA, Teaching experience (less than 1 year), Teaching experience (1+ years)
 
     # Metadata
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     is_active = Column(Boolean, default=True)
 
     # Email-related fields
@@ -122,18 +122,18 @@ class EmailCommunication(Base):
         String, default="PENDING"
     )  # pending, sent, delivered, failed, bounced
     error_message = Column(String)  # If delivery failed
-    sent_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    sent_at = Column(DateTime, default=lambda: datetime.now(UTC))
     delivered_at = Column(DateTime, nullable=True)  # When the email was delivered
 
     # Relationships
     volunteer = relationship("Volunteer", back_populates="email_communications")
 
     # Metadata
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     class Config:
@@ -174,11 +174,11 @@ class Setting(Base):
     description = Column(
         String, nullable=True
     )  # Human-readable description of the setting
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     class Config:

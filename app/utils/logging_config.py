@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -85,9 +85,7 @@ class CloudRunJSONFormatter(logging.Formatter):
                 "severity": record.levelname,
                 "message": message,
                 "logger": record.name,
-                "time": datetime.fromtimestamp(
-                    record.created, tz=timezone.utc
-                ).isoformat(),
+                "time": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             },
             ensure_ascii=False,
         )

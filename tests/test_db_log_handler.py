@@ -1,7 +1,7 @@
 """Tests for the buffered database log handler."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -66,8 +66,7 @@ class TestDatabaseLogHandler:
 
     def test_retention_deletes_old_rows(self, session_factory, test_db):
         old = SystemLog(
-            created_at=datetime.now(timezone.utc).replace(tzinfo=None)
-            - timedelta(days=60),
+            created_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=60),
             level="INFO",
             logger_name="app",
             message="ancient",

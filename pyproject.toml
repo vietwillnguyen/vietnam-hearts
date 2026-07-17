@@ -3,7 +3,7 @@ name = "auto-scheduler"
 version = "0.1.0"
 description = "Vietnam Hearts Scheduling Assistant"
 authors = [{ name = "Viet Nguyen" }]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 # Poetry caret constraints converted to explicit PEP 440 ranges with the
 # same bounds, so the resolution window matches the old poetry.lock -
 # except python-multipart, deliberately widened from Poetry's ^0.0.20
@@ -46,7 +46,7 @@ build-backend = "hatchling.build"
 packages = ["app"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
