@@ -24,8 +24,8 @@ coverage.xml
 .pytest_cache
 .hypothesis
 
-# Poetry
-# poetry.lock
+# Virtual environments
+.venv
 
 # Environment files
 .env

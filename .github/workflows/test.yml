@@ -18,42 +18,28 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python ${{ matrix.python-version }}
-      id: setup-python
-      uses: actions/setup-python@v4
+    # setup-uv caches uv's wheel store keyed on uv.lock, and `uv sync --frozen`
+    # always reconciles the venv against the lockfile, so a stale cache
+    # self-heals (a cached venv missing newly added dependencies broke the
+    # deploy pipeline back in the Poetry days).
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
       with:
+        enable-cache: true
         python-version: ${{ matrix.python-version }}
-    
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: latest
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-    
-    - name: Load cached venv
-      id: cached-poetry-dependencies
-      uses: actions/cache@v4
-      with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-    
-    # Always run install, even on a cache hit: it is near-instant when the
-    # venv is current, and it self-heals a stale cache (a cached venv missing
-    # newly added dependencies broke the deploy pipeline before poetry.lock
-    # was committed and the cache key hash was meaningful).
+
     - name: Install dependencies
-      run: poetry install --no-interaction
+      run: uv sync --frozen
 
     - name: Run ruff lint
-      run: poetry run ruff check .
+      run: uv run ruff check .
 
     - name: Run ruff format check
-      run: poetry run ruff format --check .
+      run: uv run ruff format --check .
 
     - name: Run tests
       run: |
-        poetry run pytest tests/ -v --tb=short
+        uv run pytest tests/ -v --tb=short
       env:
         DATABASE_URL: "sqlite:///file::memory:?cache=shared&uri=true"
         TESTING: "true"

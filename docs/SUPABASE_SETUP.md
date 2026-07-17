@@ -133,7 +133,7 @@ You should see something like:
 
 3. Restart your application:
    ```bash
-   poetry run uvicorn app.main:app --reload --port 8080
+   uv run uvicorn app.main:app --reload --port 8080
    ```
 
 ## Step 6: Test Real Authentication

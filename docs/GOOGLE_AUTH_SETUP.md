@@ -91,7 +91,7 @@ This guide will walk you through setting up Google OAuth authentication for the 
 
 1. Install the required Python packages:
    ```bash
-   poetry install
+   uv sync
    ```
 
 2. Make sure the following packages are installed:
@@ -104,7 +104,7 @@ This guide will walk you through setting up Google OAuth authentication for the 
 
 1. Start the development server:
    ```bash
-   poetry run uvicorn app.main:app --reload --port 8080
+   uv run uvicorn app.main:app --reload --port 8080
    ```
 
 2. Navigate to `http://localhost:8080/auth/login`

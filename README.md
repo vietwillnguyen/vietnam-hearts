@@ -20,8 +20,7 @@ A comprehensive scheduling and communication system for Vietnam Hearts volunteer
 
 ### 1. Prerequisites
 
-- Python 3.12 or later
-- Poetry (Python package manager)
+- [uv](https://docs.astral.sh/uv/) (Python package manager; installs the pinned Python automatically)
 - Google Cloud Console access (for Google Sheets integration)
 
 ### 2. Setup
@@ -252,7 +251,7 @@ vietnam-hearts/
 ├── secrets/               # Credentials (not in git)
 ├── env.template           # Secret environment variable template
 ├── run.sh                 # Local application runner
-└── pyproject.toml         # Poetry configuration
+└── pyproject.toml         # Project metadata, dependencies, and tool config
 ```
 
 ## Testing & CI/CD
@@ -261,13 +260,13 @@ vietnam-hearts/
 
 ```bash
 # Run all tests
-poetry run pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run specific test file
-poetry run pytest tests/test_form_submissions.py -v
+uv run pytest tests/test_form_submissions.py -v
 
 # Run with coverage
-poetry run pytest tests/ --cov=app --cov-report=html
+uv run pytest tests/ --cov=app --cov-report=html
 ```
 
 ### GitHub Actions
@@ -277,7 +276,7 @@ This project includes GitHub Actions for automated testing. The workflow will:
 - **Run on every push** to main/master/develop branches
 - **Run on pull requests** to main/master/develop branches
 - **Test against Python 3.11**
-- **Use Poetry** for dependency management
+- **Use uv** for dependency management
 - **Cache dependencies** for faster builds
 - **Upload test results** as artifacts
 
@@ -299,7 +298,7 @@ This project includes GitHub Actions for automated testing. The workflow will:
 
 The workflow (`.github/workflows/test.yml`) includes:
 
-1. **Setup**: Python environment with Poetry
+1. **Setup**: Python environment with uv
 2. **Caching**: Dependencies are cached between runs
 3. **Linting**: Runs `ruff check` and `ruff format --check`
 4. **Testing**: Runs pytest with proper environment variables
@@ -316,9 +315,9 @@ The workflow (`.github/workflows/test.yml`) includes:
 
 ### Common Issues
 
-1. **"Poetry not found"**:
+1. **"uv not found"**:
    ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
 2. **"Google credentials not found"**:
@@ -354,7 +353,7 @@ ENVIRONMENT=development ./run.sh
 
 1. Fork the repository
 2. Create a feature branch
-3. Install pre-commit hooks (once, after `poetry install`): `poetry run pre-commit install`
+3. Install pre-commit hooks (once, after `uv sync`): `uv run pre-commit install`
 4. Make your changes
 5. Test with `./run.sh -c`
 6. Submit a pull request
@@ -365,9 +364,9 @@ This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and formattin
 Pre-commit hooks run it automatically on `git commit`; to run it manually:
 
 ```bash
-poetry run ruff check .          # lint
-poetry run ruff check . --fix    # lint and auto-fix
-poetry run ruff format .         # format
+uv run ruff check .          # lint
+uv run ruff check . --fix    # lint and auto-fix
+uv run ruff format .         # format
 ```
 
 CI (`test.yml`) enforces both `ruff check` and `ruff format --check` on every PR.

@@ -20,34 +20,21 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v4
+    # setup-uv caches uv's wheel store keyed on uv.lock, and `uv sync --frozen`
+    # always reconciles the venv against the lockfile, so a stale cache
+    # self-heals (this exact skip served a venv without sentry-sdk and failed
+    # the deploy test job for PR #8 back in the Poetry days).
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
       with:
+        enable-cache: true
         python-version: "3.11"
 
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: latest
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-
-    - name: Load cached venv
-      id: cached-poetry-dependencies
-      uses: actions/cache@v4
-      with:
-        path: .venv
-        key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
-
-    # Always run install, even on a cache hit: it is near-instant when the
-    # venv is current, and it self-heals a stale cache (this exact skip served
-    # a venv without sentry-sdk and failed the deploy test job for PR #8,
-    # because the cache key hashed a poetry.lock that was not in git yet).
     - name: Install dependencies
-      run: poetry install --no-interaction
+      run: uv sync --frozen
 
     - name: Run tests
-      run: poetry run pytest tests/ -v --tb=short
+      run: uv run pytest tests/ -v --tb=short
       env:
         DATABASE_URL: "sqlite:///file::memory:?cache=shared&uri=true"
         TESTING: "true"
