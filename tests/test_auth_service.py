@@ -12,6 +12,7 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.services.auth_service import AuthService
 
@@ -53,7 +54,7 @@ class TestGetUserFromApikey:
                 "app.services.auth_service.SUPABASE_SECRET_KEY",
                 CURRENT_FORMAT_SECRET_KEY,
             ),
-            pytest.raises(Exception),
+            pytest.raises(HTTPException),
         ):
             asyncio.run(
                 auth_service._get_user_from_apikey("sb_secret_wrong_key_value_here")
