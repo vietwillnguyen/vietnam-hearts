@@ -228,37 +228,37 @@ class AuthService:
             ) from e
 
     async def _get_user_from_apikey(self, apikey: str) -> dict[str, Any]:
-        """Get user information from service role key"""
-        try:
-            # Check if it's a valid secret key
-            if not self._is_secret_key(apikey):
-                raise HTTPException(status_code=401, detail="Invalid secret key")
+        """Get user information from service role key
 
-            # Validate against configured secret key
-            if apikey != SUPABASE_SECRET_KEY:
-                raise HTTPException(status_code=401, detail="Invalid secret key")
+        A mismatched key is an expected auth rejection (bad caller, stale
+        credential), not an application bug - log it at warning level so it
+        doesn't get promoted to a Sentry error event on every occurrence.
+        """
+        if not self._is_secret_key(apikey) or apikey != SUPABASE_SECRET_KEY:
+            logger.warning("Rejected apikey auth attempt: key is invalid or mismatched")
+            raise HTTPException(status_code=401, detail="Invalid service role key")
 
-            # Return service account user info
-            return {
-                "id": "service-account-auto-scheduler",
-                "email": "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com",
-                "name": "Auto Scheduler Service Account",
-                "avatar_url": None,
-                "email_verified": True,
-                "created_at": "2024-01-01T00:00:00Z",
-                "last_sign_in": "2024-01-01T00:00:00Z",
-            }
-        except Exception as e:
-            logger.error(f"Failed to get user from apikey: {str(e)}")
-            raise HTTPException(
-                status_code=401, detail="Invalid service role key"
-            ) from e
+        # Return service account user info
+        return {
+            "id": "service-account-auto-scheduler",
+            "email": "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com",
+            "name": "Auto Scheduler Service Account",
+            "avatar_url": None,
+            "email_verified": True,
+            "created_at": "2024-01-01T00:00:00Z",
+            "last_sign_in": "2024-01-01T00:00:00Z",
+        }
 
     def _is_secret_key(self, token: str) -> bool:
-        """Check if the token is a valid secret key"""
+        """Check if the token is a valid secret key
+
+        Accepts both the legacy JWT-based service_role key format (long,
+        starts with "eyJ") and Supabase's current sb_secret_/sb_publishable_
+        format, which is much shorter (~41-46 chars) than the old JWTs.
+        """
         try:
             return (token.startswith("eyJ") and len(token) > 100) or (
-                token.startswith("sb_") and len(token) > 50
+                token.startswith("sb_") and len(token) > 20
             )
         except Exception:
             return False
