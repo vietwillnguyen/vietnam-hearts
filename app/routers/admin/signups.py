@@ -420,7 +420,9 @@ def judge_pending_submissions(
         "Full pipeline for the scheduled cron job:\n"
         "1. LLM judges up to `limit` PENDING submissions and writes ACCEPTED/REJECTED to the sheet.\n"
         "2. Syncs all ACCEPTED submissions from the sheet into the volunteer database and sends confirmation emails.\n"
-        "Respects dry_run — when True, step 1 logs only and step 2 still syncs (it reads the sheet state)."
+        "Respects dry_run — when True, step 1 logs only and step 2 still syncs (it reads the sheet state).\n"
+        "Top-level `status` reflects both steps: `success` only if the sync step succeeded and the judge "
+        "step had zero errors; `error` if the sync step hard-failed; `partial_failure` otherwise."
     ),
 )
 def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int = 20):
