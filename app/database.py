@@ -66,7 +66,7 @@ def _stamp_baseline_if_pre_existing_schema(alembic_cfg: Config) -> None:
     from app.models import Base
 
     app_tables = set(Base.metadata.tables.keys())
-    if existing_tables & app_tables:
+    if app_tables.issubset(existing_tables):
         script = ScriptDirectory.from_config(alembic_cfg)
         command.stamp(alembic_cfg, script.get_current_head())
 
@@ -88,6 +88,9 @@ def init_db():
             # Postgres/Supabase is schema-managed by Alembic so that column
             # changes on existing tables (which create_all() can't express)
             # ship as reviewable, versioned migrations. See issue #9.
+            # Assumes a single-instance startup with no concurrent replicas;
+            # if this service is ever scaled horizontally, add an Alembic
+            # advisory lock around the stamp/upgrade calls below.
             alembic_cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
             _stamp_baseline_if_pre_existing_schema(alembic_cfg)
             command.upgrade(alembic_cfg, "head")
