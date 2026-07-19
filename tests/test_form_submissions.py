@@ -542,6 +542,30 @@ class TestFormSubmissionProcessing:
             assert "SSL connection issue" in result["message"]
             assert result["details"]["error_type"] == "ssl_eof_error"
 
+    def test_form_submission_error_is_reported_to_sentry_with_tags(
+        self, client, test_db, mock_auth_service
+    ):
+        """A Sheets fetch failure (e.g. a permission error) must be explicitly
+        reported to Sentry with tags identifying the failing job/component -
+        this endpoint swallows the exception into a 200 response, so it never
+        reaches Sentry's ASGI-level instrumentation and relying solely on the
+        implicit logging integration makes the resulting issue hard to filter
+        or build alert rules on.
+        """
+        with (
+            patch("app.routers.admin.signups.sheets_service") as mock_sheets,
+            patch("app.routers.admin.signups.sentry_sdk") as mock_sentry,
+        ):
+            mock_sheets.get_signup_form_submissions.side_effect = Exception(
+                '<HttpError 403 ... "The caller does not have permission">'
+            )
+
+            response = client.get("/admin/forms/submissions?process_new=true")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "error"
+        mock_sentry.capture_exception.assert_called_once()
+
     def test_form_submission_without_processing(
         self, client, test_db, mock_auth_service
     ):

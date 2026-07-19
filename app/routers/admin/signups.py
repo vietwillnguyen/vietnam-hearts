@@ -9,6 +9,7 @@ import ssl
 import time
 
 import google.generativeai as genai
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -289,6 +290,10 @@ def get_signup_form_submissions(
 
     except ssl.SSLEOFError as e:
         log_ssl_error(e, "get_signup_form_submissions")
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("job", "form_submissions_sync")
+            scope.set_tag("error_type", "ssl_eof_error")
+            sentry_sdk.capture_exception(e)
         return {
             "status": "partial_failure",
             "message": "Failed to fetch form submissions due to SSL connection issue",
@@ -305,6 +310,10 @@ def get_signup_form_submissions(
         }
     except Exception as e:
         logger.error(f"Failed to fetch form submissions: {str(e)}", exc_info=True)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("job", "form_submissions_sync")
+            scope.set_tag("error_type", type(e).__name__)
+            sentry_sdk.capture_exception(e)
         return {
             "status": "error",
             "message": f"Failed to fetch form submissions: {str(e)}",
@@ -427,8 +436,18 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
     sync_details = sync_result.get("details", {})
     logger.info(f"Sync step done: status={sync_status} details={sync_details}")
 
+    # Top-level status must reflect what actually happened in both steps -
+    # a cron run that silently failed to sync/email volunteers must not
+    # report "success" to Cloud Scheduler or any status-based monitoring.
+    if sync_status == "success" and judge_result.get("errors", 0) == 0:
+        overall_status = "success"
+    elif sync_status == "error":
+        overall_status = "error"
+    else:
+        overall_status = "partial_failure"
+
     return {
-        "status": "success",
+        "status": overall_status,
         "judge": judge_result,
         "sync": {
             "status": sync_status,
