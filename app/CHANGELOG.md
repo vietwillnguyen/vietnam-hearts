@@ -1,5 +1,20 @@
 CHANGELOG:
 
+## Version 3.3.0
+
+- Security: Removed `.env.prod` from git tracking — it contained live secrets (Supabase service role key, DB connection string, Gmail app password, Google OAuth client secret).
+- Change: Migrated Supabase auth to the new publishable/secret API key format (`SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`), replacing the legacy anon/service_role JWT env vars.
+- Fix: apikey admin-auth (used by the sync-volunteers Cloud Scheduler job) no longer rejects the current Supabase `sb_secret_`/`sb_publishable_` key format — an overly strict length check sized for the old JWT format was rejecting the app's own configured secret key, 401'ing every apikey-authenticated admin request. Rejected auth attempts now log at warning level instead of promoting every routine rejection to a Sentry error.
+- Fix: Google Sheets/Drive/Docs credential resolution on Cloud Run — Cloud Run's Application Default Credentials are always cloud-platform-scoped, which Workspace APIs reject; credentials are now obtained via self-impersonation through the IAM Credentials API (requires `roles/iam.serviceAccountTokenCreator` on the runtime service account), fixing 500s on Sheets-backed endpoints.
+- Fix: a stale `GOOGLE_APPLICATION_CREDENTIALS` env var pointing at a missing key file (left over from pre-self-impersonation deploys) no longer aborts Application Default Credentials resolution — it's now ignored with a warning instead of hard-failing.
+- Fix: `review_and_sync` (the sync-volunteers cron job) and `/admin/forms/submissions` no longer swallow Google Sheets/SSL fetch failures into a `200` response with a fabricated success/error status — they now raise a `502`, so Cloud Scheduler registers real failures and Sentry's default FastAPI/Starlette integration reports them automatically.
+- Add: Skip weekly reminder emails entirely when no class still needs a teacher/head TA/assistant that week, instead of emailing volunteers every week regardless.
+- Add: Ruff for linting and formatting (replacing the previously-declared-but-unenforced black/flake8), wired into a pre-commit hook and CI.
+- Add: Sentry error tracking, gated behind an optional `SENTRY_DSN` env var (no-op if unset).
+- Change: Migrated the project from Poetry to `uv`, and standardized on Python 3.12 across `pyproject.toml`, the Dockerfile, and CI (previously inconsistent: 3.10 in Docker, 3.11 in CI, 3.12+ claimed in the README).
+- Fix: Cloud Run deploys are now serialized (a `deploy-production` concurrency group) and ship an immutable per-commit image tag with an ordering guard, so two merges in quick succession can no longer race and roll production back to a stale image.
+- Fix: All 52 pre-existing `raise` sites missing `from e` now preserve exception chains for Sentry/tracebacks; replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)` throughout, including a bug where model column defaults were evaluated once at import time instead of per row.
+
 ## Version 3.2.0
 
 - Fix: Schedule rotation no longer aborts when a single sheet cannot be modified (e.g. protected 2025 sheets with no editors).
