@@ -37,6 +37,20 @@ jobs:
     - name: Run ruff format check
       run: uv run ruff format --check .
 
+    - name: Check for missing Alembic migrations
+      run: |
+        uv run alembic upgrade head
+        uv run alembic check
+      env:
+        DATABASE_URL: "sqlite:////tmp/alembic_check.db"
+        TESTING: "true"
+        ENVIRONMENT: "test"
+        PYTHONPATH: ${{ github.workspace }}
+        SUPABASE_URL: "https://fake-url.supabase.co"
+        SUPABASE_PUBLISHABLE_KEY: "fake-publishable-key"
+        SUPABASE_SECRET_KEY: "fake-secret-key"
+        GEMINI_API_KEY: "fake-gemini-key"
+
     - name: Run tests
       run: |
         uv run pytest tests/ -v --tb=short
