@@ -9,7 +9,6 @@ import ssl
 import time
 
 import google.generativeai as genai
-import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -290,44 +289,15 @@ def get_signup_form_submissions(
 
     except ssl.SSLEOFError as e:
         log_ssl_error(e, "get_signup_form_submissions")
-        with sentry_sdk.new_scope() as scope:
-            scope.set_tag("job", "form_submissions_sync")
-            scope.set_tag("error_type", "ssl_eof_error")
-            sentry_sdk.capture_exception(e)
-        return {
-            "status": "partial_failure",
-            "message": "Failed to fetch form submissions due to SSL connection issue",
-            "data": [],
-            "details": {
-                "error_type": "ssl_eof_error",
-                "error_message": str(e),
-                "submissions_retrieved": 0,
-                "accepted_submissions": 0,
-                "non_accepted_submissions": 0,
-                "new_submissions_found": 0,
-                "volunteers_created": 0,
-            },
-        }
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch form submissions due to SSL connection issue: {e}",
+        ) from e
     except Exception as e:
         logger.error(f"Failed to fetch form submissions: {str(e)}", exc_info=True)
-        with sentry_sdk.new_scope() as scope:
-            scope.set_tag("job", "form_submissions_sync")
-            scope.set_tag("error_type", type(e).__name__)
-            sentry_sdk.capture_exception(e)
-        return {
-            "status": "error",
-            "message": f"Failed to fetch form submissions: {str(e)}",
-            "data": [],
-            "details": {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "submissions_retrieved": 0,
-                "accepted_submissions": 0,
-                "non_accepted_submissions": 0,
-                "new_submissions_found": 0,
-                "volunteers_created": 0,
-            },
-        }
+        raise HTTPException(
+            status_code=502, detail=f"Failed to fetch form submissions: {e}"
+        ) from e
 
 
 def _run_llm_judge(db: Session, limit: int) -> dict:
@@ -421,8 +391,8 @@ def judge_pending_submissions(
         "1. LLM judges up to `limit` PENDING submissions and writes ACCEPTED/REJECTED to the sheet.\n"
         "2. Syncs all ACCEPTED submissions from the sheet into the volunteer database and sends confirmation emails.\n"
         "Respects dry_run — when True, step 1 logs only and step 2 still syncs (it reads the sheet state).\n"
-        "Top-level `status` reflects both steps: `success` only if the sync step succeeded and the judge "
-        "step had zero errors; `error` if the sync step hard-failed; `partial_failure` otherwise."
+        "A hard sync failure (e.g. a Sheets permission error) raises a 502 rather than "
+        "returning `status: success` - per-row judge errors are still reported via `judge.errors`."
     ),
 )
 def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int = 20):
@@ -432,24 +402,19 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
     judge_result = _run_llm_judge(db, limit)
     logger.info(f"Judge step done: {judge_result}")
 
-    # Step 2: Sync — re-reads sheet, imports newly ACCEPTED rows into DB, sends confirmation emails
+    # Step 2: Sync — re-reads sheet, imports newly ACCEPTED rows into DB, sends confirmation emails.
+    # A hard upstream failure here (e.g. a Sheets permission error) raises
+    # HTTPException(502) rather than being swallowed, so it propagates as a
+    # real non-2xx response - Cloud Scheduler sees a genuine failure instead
+    # of a fabricated "success", and Sentry's own Starlette/FastAPI
+    # integration captures it uniformly (no per-endpoint tagging needed).
     sync_result = get_signup_form_submissions(db=db, process_new=True)
     sync_status = sync_result.get("status", "unknown")
     sync_details = sync_result.get("details", {})
     logger.info(f"Sync step done: status={sync_status} details={sync_details}")
 
-    # Top-level status must reflect what actually happened in both steps -
-    # a cron run that silently failed to sync/email volunteers must not
-    # report "success" to Cloud Scheduler or any status-based monitoring.
-    if sync_status == "success" and judge_result.get("errors", 0) == 0:
-        overall_status = "success"
-    elif sync_status == "error":
-        overall_status = "error"
-    else:
-        overall_status = "partial_failure"
-
     return {
-        "status": overall_status,
+        "status": "success",
         "judge": judge_result,
         "sync": {
             "status": sync_status,

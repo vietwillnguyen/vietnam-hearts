@@ -523,10 +523,14 @@ class TestFormSubmissionProcessing:
                     assert "Database error" in result["details"]["database_error"]
 
     def test_form_submission_with_ssl_error(self, client, test_db, mock_auth_service):
-        """Test handling of SSL errors during form submission processing"""
+        """An SSL failure while fetching form submissions is a real upstream
+        failure, not a partial success - it must surface as a 502 so it's
+        captured uniformly by Sentry's Starlette integration (which reports
+        any 5xx by default) and by Cloud Scheduler's retry policy, rather than
+        being swallowed into a 200 body that looks fine to both.
+        """
         import ssl
 
-        # Mock the sheets service to raise SSL error
         with patch("app.routers.admin.signups.sheets_service") as mock_sheets:
             mock_sheets.get_signup_form_submissions.side_effect = ssl.SSLEOFError(
                 "SSL connection failed"
@@ -534,37 +538,25 @@ class TestFormSubmissionProcessing:
 
             response = client.get("/admin/forms/submissions?process_new=true")
 
-            assert response.status_code == 200
-            result = response.json()
+        assert response.status_code == 502
+        assert "SSL connection issue" in response.json()["detail"]
 
-            # Should return partial failure status for SSL errors
-            assert result["status"] == "partial_failure"
-            assert "SSL connection issue" in result["message"]
-            assert result["details"]["error_type"] == "ssl_eof_error"
-
-    def test_form_submission_error_is_reported_to_sentry_with_tags(
+    def test_form_submission_permission_error_returns_502(
         self, client, test_db, mock_auth_service
     ):
-        """A Sheets fetch failure (e.g. a permission error) must be explicitly
-        reported to Sentry with tags identifying the failing job/component -
-        this endpoint swallows the exception into a 200 response, so it never
-        reaches Sentry's ASGI-level instrumentation and relying solely on the
-        implicit logging integration makes the resulting issue hard to filter
-        or build alert rules on.
+        """A Google Sheets permission error (e.g. the service account not being
+        shared on the sheet) must surface as a 502, not a fabricated 200
+        "error" body - same reasoning as the SSL case above.
         """
-        with (
-            patch("app.routers.admin.signups.sheets_service") as mock_sheets,
-            patch("app.routers.admin.signups.sentry_sdk") as mock_sentry,
-        ):
+        with patch("app.routers.admin.signups.sheets_service") as mock_sheets:
             mock_sheets.get_signup_form_submissions.side_effect = Exception(
                 '<HttpError 403 ... "The caller does not have permission">'
             )
 
             response = client.get("/admin/forms/submissions?process_new=true")
 
-        assert response.status_code == 200
-        assert response.json()["status"] == "error"
-        mock_sentry.capture_exception.assert_called_once()
+        assert response.status_code == 502
+        assert "does not have permission" in response.json()["detail"]
 
     def test_form_submission_without_processing(
         self, client, test_db, mock_auth_service

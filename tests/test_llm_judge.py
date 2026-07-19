@@ -686,12 +686,17 @@ class TestJudgePendingSubmissionsEndpoint:
         self, client, test_db, mock_auth_service
     ):
         """If the sync step can't reach Google Sheets (e.g. a permission error),
-        the top-level status must reflect that failure, not claim "success".
+        the run must surface as a real failure (502), not claim "success".
 
         Regression test: review_and_sync previously hardcoded
-        {"status": "success"} regardless of what the sync step returned, so a
-        cron run that silently failed to sync/email volunteers still reported
-        success to Cloud Scheduler and any status-based monitoring.
+        {"status": "success"} regardless of what the sync step returned (and
+        an earlier version of this fix swallowed the failure into a 200
+        "status": "error" body), so a cron run that silently failed to
+        sync/email volunteers still looked like a success to Cloud Scheduler
+        and any status-based monitoring. The sync step now raises
+        HTTPException(502) instead, which propagates here uniformly - Cloud
+        Scheduler sees a real non-2xx, and Sentry's own Starlette integration
+        captures it without any custom capture code.
         """
         with (
             patch(
@@ -718,6 +723,5 @@ class TestJudgePendingSubmissionsEndpoint:
         ):
             response = client.post("/admin/review-and-sync")
 
-        data = response.json()
-        assert data["status"] != "success"
-        assert data["sync"]["status"] == "error"
+        assert response.status_code == 502
+        assert "does not have permission" in response.json()["detail"]
