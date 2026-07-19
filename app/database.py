@@ -13,7 +13,9 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from app.config import DATABASE_URL
+from alembic import command
+from alembic.config import Config
+from app.config import DATABASE_URL, PROJECT_ROOT
 
 from .services.settings_service import initialize_default_settings
 from .utils.logging_config import get_database_logger
@@ -47,12 +49,19 @@ def init_db():
     Ensures default settings are present in the database.
     """
     try:
-        # Create any missing tables (idempotent: only creates what doesn't exist).
-        # Existing tables were provisioned manually; new models like SystemLog
-        # rely on this to appear in environments on first deploy.
-        from app.models import Base
+        if DATABASE_URL.startswith("sqlite"):
+            # sqlite is only used for local dev/tests, which start from an
+            # empty file/in-memory db each time, so a straight create_all
+            # (no migration history) is sufficient and keeps that path fast.
+            from app.models import Base
 
-        Base.metadata.create_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
+        else:
+            # Postgres/Supabase is schema-managed by Alembic so that column
+            # changes on existing tables (which create_all() can't express)
+            # ship as reviewable, versioned migrations. See issue #9.
+            alembic_cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
+            command.upgrade(alembic_cfg, "head")
 
         db = SessionLocal()
         initialize_default_settings(db)
