@@ -241,6 +241,7 @@ vietnam-hearts/
 │   ├── routers/           # API route handlers
 │   ├── services/          # Business logic
 │   └── utils/             # Utility functions
+├── alembic/                # Database schema migrations (Postgres/Supabase)
 ├── docs/                  # Extended documentation
 ├── scripts/               # Deployment and setup scripts
 │   ├── create-or-update-scheduler-jobs.sh          # Cloud Scheduler job setup
@@ -253,6 +254,28 @@ vietnam-hearts/
 ├── run.sh                 # Local application runner
 └── pyproject.toml         # Project metadata, dependencies, and tool config
 ```
+
+## Database Migrations
+
+Schema changes are managed with [Alembic](https://alembic.sqlalchemy.org/).
+
+- **sqlite (local dev/tests)**: unaffected. `init_db()` still calls `Base.metadata.create_all()` on startup for a fast, migration-free bootstrap.
+- **Postgres/Supabase (production)**: `init_db()` runs `alembic upgrade head` on startup instead. If it finds an existing database that was previously created via `create_all()` (has the app's tables but no Alembic history), it automatically stamps it to the baseline revision before upgrading, so no manual `alembic stamp head` step is needed.
+
+Whenever you change a model in `app/models.py`, generate a migration for it:
+
+```bash
+# Autogenerate a migration from model changes
+uv run alembic revision --autogenerate -m "describe the change"
+
+# Review the generated file in alembic/versions/, then apply it locally
+uv run alembic upgrade head
+
+# Verify no model changes are missing a migration
+uv run alembic check
+```
+
+Commit the generated migration file alongside your model change. CI runs `alembic upgrade head` and `alembic check` against a fresh sqlite database on every PR and will fail if a model change wasn't captured in a migration.
 
 ## Testing & CI/CD
 
@@ -301,8 +324,9 @@ The workflow (`.github/workflows/test.yml`) includes:
 1. **Setup**: Python environment with uv
 2. **Caching**: Dependencies are cached between runs
 3. **Linting**: Runs `ruff check` and `ruff format --check`
-4. **Testing**: Runs pytest with proper environment variables
-5. **Artifacts**: Saves test results for 7 days
+4. **Migration check**: Runs `alembic upgrade head` + `alembic check` against a fresh sqlite database to catch model changes missing a migration (see [Database Migrations](#database-migrations))
+5. **Testing**: Runs pytest with proper environment variables
+6. **Artifacts**: Saves test results for 7 days
 
 #### Deploy Workflow
 

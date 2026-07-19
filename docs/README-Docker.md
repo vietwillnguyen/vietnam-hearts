@@ -159,6 +159,8 @@ Production deploys normally happen automatically: every push to main runs `.gith
 Deploys are serialized via a concurrency group and guarded by a git-ancestry check so a stale run cannot roll production back.
 The steps below are the manual fallback.
 
+Schema changes ship as Alembic migrations: on startup against a non-sqlite `DATABASE_URL` (Postgres/Supabase), the app runs `alembic upgrade head` automatically before serving traffic, so no manual migration step is needed as part of a deploy. See [Database Migrations](../README.md#database-migrations) in the main README.
+
 ### 1. Build Production Image
 
 ```bash
