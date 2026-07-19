@@ -681,3 +681,47 @@ class TestJudgePendingSubmissionsEndpoint:
         assert "judge" in data
         assert "sync" in data
         assert data["judge"]["accepted"] == 1
+
+    def test_review_and_sync_reports_failure_when_sync_step_fails(
+        self, client, test_db, mock_auth_service
+    ):
+        """If the sync step can't reach Google Sheets (e.g. a permission error),
+        the run must surface as a real failure (502), not claim "success".
+
+        Regression test: review_and_sync previously hardcoded
+        {"status": "success"} regardless of what the sync step returned (and
+        an earlier version of this fix swallowed the failure into a 200
+        "status": "error" body), so a cron run that silently failed to
+        sync/email volunteers still looked like a success to Cloud Scheduler
+        and any status-based monitoring. The sync step now raises
+        HTTPException(502) instead, which propagates here uniformly - Cloud
+        Scheduler sees a real non-2xx, and Sentry's own Starlette integration
+        captures it without any custom capture code.
+        """
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=self._pending_rows_fixture(),
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.update_submission_judgment"
+            ),
+            patch(
+                "app.routers.admin.signups._judge_submission",
+                return_value=self._GOOD_JUDGMENT,
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_signup_form_submissions",
+                side_effect=Exception(
+                    '<HttpError 403 ... "The caller does not have permission">'
+                ),
+            ),
+            patch("time.sleep"),
+        ):
+            response = client.post("/admin/review-and-sync")
+
+        assert response.status_code == 502
+        assert "does not have permission" in response.json()["detail"]

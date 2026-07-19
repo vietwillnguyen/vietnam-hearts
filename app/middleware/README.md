@@ -67,6 +67,7 @@ Provides consistent error handling and response formatting.
 - Request ID tracking
 - Environment-based error detail level
 - Reports unhandled exceptions to Sentry via `sentry_sdk.capture_exception()` (no-op if `SENTRY_DSN` is unset). This middleware catches exceptions before Sentry's own ASGI instrumentation would see them, so reporting must happen here explicitly.
+- This only covers exceptions that propagate out of a route handler. For failures that are a real error rather than a legitimate partial-success outcome, raise `HTTPException` with a 5xx status (e.g. `get_signup_form_submissions` in `app/routers/admin/signups.py` does this for Sheets/SSL fetch failures) rather than catching it and returning a 200 with an error status in the body — Sentry's default FastAPI/Starlette integration reports any 5xx response automatically, so this gets uniform, tag-free error reporting without a manual `sentry_sdk.capture_exception()` call at every catch site.
 
 **Configuration:**
 ```python
