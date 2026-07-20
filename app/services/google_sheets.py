@@ -1039,7 +1039,8 @@ class GoogleSheetsService:
                     after_state[sheet_id]["title"]
                     for sheet_id in before_state
                     if sheet_id in after_state
-                    and before_state[sheet_id]["index"] != after_state[sheet_id]["index"]
+                    and before_state[sheet_id]["index"]
+                    != after_state[sheet_id]["index"]
                 ],
             }
 
