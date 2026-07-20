@@ -41,6 +41,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY app/ ./app/
 COPY static/ ./static/
 COPY templates/ ./templates/
+COPY alembic.ini ./alembic.ini
+COPY alembic/ ./alembic/
 
 # Create logs directory and set permissions BEFORE switching user
 RUN mkdir -p /app/logs && chown -R app:app /app/logs
