@@ -41,6 +41,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY app/ ./app/
 COPY static/ ./static/
 COPY templates/ ./templates/
+# alembic.ini and alembic/ must ship in the image: init_db() runs
+# `alembic upgrade head` against non-sqlite DATABASE_URLs on startup
+# (see Database Migrations in README.md).
 COPY alembic.ini ./alembic.ini
 COPY alembic/ ./alembic/
 
