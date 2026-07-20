@@ -5,6 +5,7 @@ Uses Gemini for both embeddings and chat responses (free tier: 15 RPM, 1M tokens
 Simplified approach: Single vendor, single API key, no local model dependencies.
 """
 
+import math
 import os
 from typing import Any
 
@@ -24,6 +25,19 @@ EMBEDDING_MODEL = "gemini-embedding-001"
 # pgvector column (sized for the old text-embedding-001 model) and the
 # fallback hash-based embeddings below, so no DB migration is needed.
 EMBEDDING_DIMENSIONS = 768
+
+
+def _l2_normalize(vector: list[float]) -> list[float]:
+    """L2-normalize a vector.
+
+    gemini-embedding-001 only returns pre-normalized output at its default
+    3072 dimensions; truncated (Matryoshka) outputs like the 768-d ones used
+    here are not unit-normalized, so callers must normalize them themselves.
+    """
+    norm = math.sqrt(sum(x * x for x in vector))
+    if norm == 0:
+        return vector
+    return [x / norm for x in vector]
 
 
 class KnowledgeService:
@@ -158,6 +172,7 @@ class KnowledgeService:
                             result.embeddings[0].values if result.embeddings else None
                         )
                         if embedding:
+                            embedding = _l2_normalize(embedding)
                             all_embeddings.append(embedding)
                             logger.debug(f"Created embedding for chunk {i + 1}")
                         else:
@@ -346,6 +361,7 @@ class KnowledgeService:
                         logger.error("No embedding returned for query")
                         return await self._fallback_text_search(query, limit)
 
+                    query_embedding = _l2_normalize(query_embedding)
                     logger.info(f"Created query embedding for: {query[:50]}...")
 
             except Exception as e:
