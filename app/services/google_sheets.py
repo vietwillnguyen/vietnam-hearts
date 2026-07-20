@@ -848,8 +848,12 @@ class GoogleSheetsService:
 
             # Get all existing schedule sheets before rotation
             existing_sheets = self.get_schedule_sheets(db)
+            # Keyed by sheetId (stable across renames) rather than title, so
+            # PASS 1 renaming a legacy-titled sheet doesn't make the before/after
+            # diff below mistake it for a newly added sheet.
             before_state = {
-                sheet["properties"]["title"]: {
+                sheet["properties"]["sheetId"]: {
+                    "title": sheet["properties"]["title"],
                     "hidden": sheet["properties"].get("hidden", False),
                     "index": sheet["properties"].get("index", 0),
                 }
@@ -994,37 +998,42 @@ class GoogleSheetsService:
             # Get final state after all changes
             final_sheets = self.get_schedule_sheets(db)
             after_state = {
-                sheet["properties"]["title"]: {
+                sheet["properties"]["sheetId"]: {
+                    "title": sheet["properties"]["title"],
                     "hidden": sheet["properties"].get("hidden", False),
                     "index": sheet["properties"].get("index", 0),
                 }
                 for sheet in final_sheets
             }
 
-            # Calculate final changes by comparing before and after
+            # Calculate final changes by comparing before and after, keyed by
+            # sheetId so a sheet renamed in PASS 1 is still recognized as the
+            # same sheet (using its post-rotation title for display).
             changes = {
                 "sheets_added": [
-                    title for title in after_state if title not in before_state
+                    after_state[sheet_id]["title"]
+                    for sheet_id in after_state
+                    if sheet_id not in before_state
                 ],
                 "sheets_hidden": [
-                    title
-                    for title in before_state
-                    if title in after_state
-                    and not before_state[title]["hidden"]
-                    and after_state[title]["hidden"]
+                    after_state[sheet_id]["title"]
+                    for sheet_id in before_state
+                    if sheet_id in after_state
+                    and not before_state[sheet_id]["hidden"]
+                    and after_state[sheet_id]["hidden"]
                 ],
                 "sheets_unhidden": [
-                    title
-                    for title in before_state
-                    if title in after_state
-                    and before_state[title]["hidden"]
-                    and not after_state[title]["hidden"]
+                    after_state[sheet_id]["title"]
+                    for sheet_id in before_state
+                    if sheet_id in after_state
+                    and before_state[sheet_id]["hidden"]
+                    and not after_state[sheet_id]["hidden"]
                 ],
                 "sheets_reordered": [
-                    title
-                    for title in before_state
-                    if title in after_state
-                    and before_state[title]["index"] != after_state[title]["index"]
+                    after_state[sheet_id]["title"]
+                    for sheet_id in before_state
+                    if sheet_id in after_state
+                    and before_state[sheet_id]["index"] != after_state[sheet_id]["index"]
                 ],
             }
 
@@ -1032,12 +1041,14 @@ class GoogleSheetsService:
                 "changes": changes,
                 "current_state": {
                     "visible_sheets": [
-                        title
-                        for title, state in after_state.items()
+                        state["title"]
+                        for state in after_state.values()
                         if not state["hidden"]
                     ],
                     "hidden_sheets": [
-                        title for title, state in after_state.items() if state["hidden"]
+                        state["title"]
+                        for state in after_state.values()
+                        if state["hidden"]
                     ],
                 },
                 "display_dates": [date.strftime("%d/%m/%Y") for date in display_dates],

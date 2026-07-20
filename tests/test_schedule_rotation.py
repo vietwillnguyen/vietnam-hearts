@@ -75,7 +75,15 @@ class TestRotationResilience:
 
         service.set_sheet_visibility.side_effect = fail_on_protected
 
-        result = rotate(service, existing, weeks=2)
+        now = datetime(2026, 7, 20)
+        with (
+            patch("app.services.google_sheets.datetime") as mock_dt,
+            patch("app.utils.schedule_dates.datetime") as mock_dates_dt,
+        ):
+            mock_dt.now.return_value = now
+            mock_dates_dt.now.return_value = now
+            mock_dates_dt.strptime = datetime.strptime
+            result = rotate(service, existing, weeks=2)
 
         # Both display weeks still get created despite the hide failure
         assert service.create_sheet_from_template.call_count == 2
@@ -209,8 +217,13 @@ class TestRotationBackfill:
         legacy_title = f"Schedule {past_date.strftime('%m/%d')}"
         legacy = sheet_props(legacy_title, sheet_id=88, hidden=False)
 
-        with patch("app.services.google_sheets.datetime") as mock_dt:
+        with (
+            patch("app.services.google_sheets.datetime") as mock_dt,
+            patch("app.utils.schedule_dates.datetime") as mock_dates_dt,
+        ):
             mock_dt.now.return_value = monday
+            mock_dates_dt.now.return_value = monday
+            mock_dates_dt.strptime = datetime.strptime
             result = rotate(service, [legacy], weeks=1)
 
         service.rename_sheet.assert_called_once()
