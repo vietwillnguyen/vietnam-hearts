@@ -299,6 +299,8 @@ uv run pytest tests/test_form_submissions.py -v
 uv run pytest tests/ --cov=app --cov-report=html
 ```
 
+CI enforces a coverage gate (`--cov-fail-under=45`); a PR that drops `app/` coverage below 45% fails the test job.
+
 ### GitHub Actions
 
 This project includes GitHub Actions for automated testing and deployment. The test workflow will:
@@ -332,7 +334,7 @@ The workflow (`.github/workflows/test.yml`) includes:
 2. **Caching**: Dependencies are cached between runs
 3. **Linting**: Runs `ruff check` and `ruff format --check`
 4. **Migration check**: Runs `alembic upgrade head` + `alembic check` against a fresh sqlite database to catch model changes missing a migration (see [Database Migrations](#database-migrations))
-5. **Testing**: Runs pytest with proper environment variables
+5. **Testing**: Runs pytest with coverage (`--cov=app --cov-report=term-missing --cov-fail-under=45`) and proper environment variables
 6. **Artifacts**: Saves test results for 7 days
 
 #### Deploy Workflow

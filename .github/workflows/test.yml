@@ -53,7 +53,7 @@ jobs:
 
     - name: Run tests
       run: |
-        uv run pytest tests/ -v --tb=short
+        uv run pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=45
       env:
         DATABASE_URL: "sqlite:///file::memory:?cache=shared&uri=true"
         TESTING: "true"
