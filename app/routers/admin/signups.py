@@ -101,9 +101,7 @@ def _judge_submission(submission: dict) -> dict:
         referral_source=_field("referral_source"),
     )
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash", contents=prompt
-    )
+    response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
     raw_text = response.text.strip()
 
     # Strip markdown fences if present (```json ... ```)

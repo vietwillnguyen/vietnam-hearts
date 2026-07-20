@@ -154,7 +154,9 @@ class KnowledgeService:
                         )
 
                         # Extract embedding vector
-                        embedding = result.embeddings[0].values if result.embeddings else None
+                        embedding = (
+                            result.embeddings[0].values if result.embeddings else None
+                        )
                         if embedding:
                             all_embeddings.append(embedding)
                             logger.debug(f"Created embedding for chunk {i + 1}")
@@ -337,7 +339,9 @@ class KnowledgeService:
                         ),
                     )
 
-                    query_embedding = result.embeddings[0].values if result.embeddings else None
+                    query_embedding = (
+                        result.embeddings[0].values if result.embeddings else None
+                    )
                     if not query_embedding:
                         logger.error("No embedding returned for query")
                         return await self._fallback_text_search(query, limit)
