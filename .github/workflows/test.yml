@@ -16,7 +16,7 @@ jobs:
         python-version: [3.12]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     
     # setup-uv caches uv's wheel store keyed on uv.lock, and `uv sync --frozen`
     # always reconciles the venv against the lockfile, so a stale cache
