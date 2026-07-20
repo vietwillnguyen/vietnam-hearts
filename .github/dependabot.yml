@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  # Python dependencies, managed via uv (pyproject.toml + the committed
+  # uv.lock). Dependabot security updates run immediately whenever a
+  # vulnerability is disclosed, independent of this schedule - that's how
+  # python-multipart sat on a CVE-affected version unnoticed before this was
+  # enabled. This schedule only governs routine version updates, grouped
+  # weekly to keep noise low.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Actions referenced in .github/workflows/*.yml
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
