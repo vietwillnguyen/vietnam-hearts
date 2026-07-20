@@ -64,7 +64,7 @@ async def rotate_schedule_sheets(
         None, description="Number of weeks to display (1-12), overrides default setting"
     ),
 ):
-    """Rotate schedule sheets to show next week"""
+    """Sync schedule sheets so the current week plus N-1 future weeks are visible, in order."""
     try:
         with get_db_session() as db:
             if display_weeks is not None:

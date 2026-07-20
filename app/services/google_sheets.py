@@ -820,7 +820,12 @@ class GoogleSheetsService:
         self, db: Session, display_weeks_override: int | None = None
     ) -> dict[str, Any]:
         """
-        Rotate schedule sheets.
+        Sync schedule sheets to the current date: exactly `display_weeks_count`
+        dated sheets are visible, starting from the Monday of the week
+        containing "now" and running forward in chronological order. Every
+        other dated sheet is hidden. This is idempotent reconciliation, not
+        incremental rotation - it can be called at any time, on any day of
+        the week, and always converges on the same target state for "now".
 
         Args:
             db: Database session
@@ -833,25 +838,27 @@ class GoogleSheetsService:
                 - display_dates: The dates that should be displayed
         """
         try:
-            # Get current date and time in Vietnam timezone
             now = datetime.now()
 
+            # Anchor to the Monday of the week containing "now" - not next
+            # Monday - so the display is always accurate to today's date
+            # regardless of which day of the week this runs on.
             days_since_monday = now.weekday()
             current_monday = now - timedelta(days=days_since_monday)
 
             # Get all existing schedule sheets before rotation
             existing_sheets = self.get_schedule_sheets(db)
+            # Keyed by sheetId (stable across renames) rather than title, so
+            # PASS 1 renaming a legacy-titled sheet doesn't make the before/after
+            # diff below mistake it for a newly added sheet.
             before_state = {
-                sheet["properties"]["title"]: {
+                sheet["properties"]["sheetId"]: {
+                    "title": sheet["properties"]["title"],
                     "hidden": sheet["properties"].get("hidden", False),
                     "index": sheet["properties"].get("index", 0),
                 }
                 for sheet in existing_sheets
             }
-
-            # Calculate the date range to display
-            # Start from next Monday since current week is over
-            next_monday = current_monday + timedelta(days=7)
 
             # Use override if provided, otherwise use setting
             display_weeks_count = (
@@ -861,17 +868,13 @@ class GoogleSheetsService:
             )
 
             display_dates = [
-                next_monday + timedelta(days=7 * i) for i in range(display_weeks_count)
+                current_monday + timedelta(days=7 * i)
+                for i in range(display_weeks_count)
             ]
 
             # Dates that should be visible after rotation
             display_date_set = {date.date() for date in display_dates}
 
-            # Track what we're doing
-            sheets_created = []
-            sheets_made_visible = []
-            sheets_made_hidden = []
-            sheets_reordered = []
             sheets_renamed = []
             sheets_failed = []
 
@@ -889,7 +892,6 @@ class GoogleSheetsService:
                     self.set_sheet_visibility(
                         template_sheet["properties"]["sheetId"], True, db
                     )
-                    sheets_made_hidden.append("Schedule Template")
                     logger.info("Set 'Schedule Template' sheet to hidden")
                 except Exception as e:
                     logger.error(
@@ -897,7 +899,18 @@ class GoogleSheetsService:
                         exc_info=True,
                     )
 
-            # PASS 1: Hide all dated schedule sheets outside the display range FIRST.
+            # PASS 1: Backfill legacy-titled sheets to the canonical
+            # DD/MM/YYYY format, then hide all dated schedule sheets outside
+            # the display range. Backfill only fires for a sheet that is
+            # either currently visible or about to enter the display range
+            # this run (PASS 2 will show it below), because a legacy
+            # "Schedule MM/DD" title carries no year - it is only safe to
+            # guess "current year" for a sheet that is or is about to be
+            # actively part of the display window. A sheet that is hidden
+            # and staying outside the display range could be from any past
+            # year, so renaming it would bake in the wrong year and risk a
+            # stale sheet silently resurfacing as this year's content when
+            # that date rolls around again; such sheets are left untouched.
             # Running hide before show ensures visible count never exceeds display_weeks_count,
             # even if the operation is interrupted partway through.
             # Only sheets whose title parses as a date are considered, which
@@ -910,26 +923,44 @@ class GoogleSheetsService:
                 if sheet_date is None:
                     continue
 
-                if sheet_date.date() not in display_date_set:
-                    currently_visible = not sheet["properties"].get("hidden", False)
-                    if currently_visible:
-                        try:
-                            self.set_sheet_visibility(
-                                sheet["properties"]["sheetId"], True, db
-                            )
-                            sheets_made_hidden.append(title)
-                            logger.info(f"Set sheet {title} visibility to hidden")
-                        except Exception as e:
-                            sheets_failed.append(
-                                {"title": title, "action": "hide", "error": str(e)}
-                            )
-                            logger.warning(
-                                f"Could not hide sheet '{title}', continuing rotation: {e}"
-                            )
+                currently_visible = not sheet["properties"].get("hidden", False)
+                in_display_range = sheet_date.date() in display_date_set
 
-            # PASS 2: Make each display-range sheet visible and move it into position.
-            # Existing sheets are matched by parsed date so legacy MM/DD titles
-            # are reused (and migrated to DD/MM/YYYY) instead of duplicated.
+                canonical_title = format_schedule_sheet_title(sheet_date)
+                if (currently_visible or in_display_range) and title != canonical_title:
+                    try:
+                        self.rename_sheet(
+                            sheet["properties"]["sheetId"], canonical_title, db
+                        )
+                        sheets_renamed.append(canonical_title)
+                        title = canonical_title
+                    except Exception as e:
+                        sheets_failed.append(
+                            {"title": title, "action": "rename", "error": str(e)}
+                        )
+                        logger.warning(
+                            f"Could not rename sheet '{title}', continuing: {e}"
+                        )
+
+                if not in_display_range and currently_visible:
+                    try:
+                        self.set_sheet_visibility(
+                            sheet["properties"]["sheetId"], True, db
+                        )
+                        logger.info(f"Set sheet {title} visibility to hidden")
+                    except Exception as e:
+                        sheets_failed.append(
+                            {"title": title, "action": "hide", "error": str(e)}
+                        )
+                        logger.warning(
+                            f"Could not hide sheet '{title}', continuing rotation: {e}"
+                        )
+
+            # PASS 2: Make each display-range sheet visible and move it into
+            # position, in chronological order. Existing sheets are matched
+            # by parsed date (not title text) so sheets already migrated to
+            # DD/MM/YYYY in PASS 1 are still found and reused instead of
+            # duplicated.
             for i, date in enumerate(display_dates):
                 sheet_name = format_schedule_sheet_title(date)
                 existing_sheet = next(
@@ -948,41 +979,12 @@ class GoogleSheetsService:
 
                 try:
                     if existing_sheet:
-                        was_hidden = existing_sheet["properties"].get("hidden", False)
-                        old_index = existing_sheet["properties"].get("index", 0)
-                        old_title = existing_sheet["properties"]["title"]
-
-                        if old_title != sheet_name:
-                            try:
-                                self.rename_sheet(
-                                    existing_sheet["properties"]["sheetId"],
-                                    sheet_name,
-                                    db,
-                                )
-                                sheets_renamed.append(sheet_name)
-                            except Exception as e:
-                                sheets_failed.append(
-                                    {
-                                        "title": old_title,
-                                        "action": "rename",
-                                        "error": str(e),
-                                    }
-                                )
-                                logger.warning(
-                                    f"Could not rename sheet '{old_title}', continuing: {e}"
-                                )
-
                         self.set_sheet_visibility(
                             existing_sheet["properties"]["sheetId"], False, db
                         )
                         self.move_sheet(
                             existing_sheet["properties"]["sheetId"], i + 1, db
                         )  # +1 to account for template sheet at index 0
-
-                        if was_hidden:
-                            sheets_made_visible.append(sheet_name)
-                        if old_index != i + 1:
-                            sheets_reordered.append(sheet_name)
                     else:
                         new_sheet_id = self.create_sheet_from_template(
                             "Schedule Template", date, db
@@ -990,7 +992,6 @@ class GoogleSheetsService:
                         self.update_sheet_dates(date, db)
                         self.set_sheet_visibility(int(new_sheet_id), False, db)
                         self.move_sheet(int(new_sheet_id), i + 1, db)
-                        sheets_created.append(sheet_name)
                 except Exception as e:
                     sheets_failed.append(
                         {"title": sheet_name, "action": "show", "error": str(e)}
@@ -1003,37 +1004,43 @@ class GoogleSheetsService:
             # Get final state after all changes
             final_sheets = self.get_schedule_sheets(db)
             after_state = {
-                sheet["properties"]["title"]: {
+                sheet["properties"]["sheetId"]: {
+                    "title": sheet["properties"]["title"],
                     "hidden": sheet["properties"].get("hidden", False),
                     "index": sheet["properties"].get("index", 0),
                 }
                 for sheet in final_sheets
             }
 
-            # Calculate final changes by comparing before and after
+            # Calculate final changes by comparing before and after, keyed by
+            # sheetId so a sheet renamed in PASS 1 is still recognized as the
+            # same sheet (using its post-rotation title for display).
             changes = {
                 "sheets_added": [
-                    title for title in after_state if title not in before_state
+                    after_state[sheet_id]["title"]
+                    for sheet_id in after_state
+                    if sheet_id not in before_state
                 ],
                 "sheets_hidden": [
-                    title
-                    for title in before_state
-                    if title in after_state
-                    and not before_state[title]["hidden"]
-                    and after_state[title]["hidden"]
+                    after_state[sheet_id]["title"]
+                    for sheet_id in before_state
+                    if sheet_id in after_state
+                    and not before_state[sheet_id]["hidden"]
+                    and after_state[sheet_id]["hidden"]
                 ],
                 "sheets_unhidden": [
-                    title
-                    for title in before_state
-                    if title in after_state
-                    and before_state[title]["hidden"]
-                    and not after_state[title]["hidden"]
+                    after_state[sheet_id]["title"]
+                    for sheet_id in before_state
+                    if sheet_id in after_state
+                    and before_state[sheet_id]["hidden"]
+                    and not after_state[sheet_id]["hidden"]
                 ],
                 "sheets_reordered": [
-                    title
-                    for title in before_state
-                    if title in after_state
-                    and before_state[title]["index"] != after_state[title]["index"]
+                    after_state[sheet_id]["title"]
+                    for sheet_id in before_state
+                    if sheet_id in after_state
+                    and before_state[sheet_id]["index"]
+                    != after_state[sheet_id]["index"]
                 ],
             }
 
@@ -1041,12 +1048,14 @@ class GoogleSheetsService:
                 "changes": changes,
                 "current_state": {
                     "visible_sheets": [
-                        title
-                        for title, state in after_state.items()
+                        state["title"]
+                        for state in after_state.values()
                         if not state["hidden"]
                     ],
                     "hidden_sheets": [
-                        title for title, state in after_state.items() if state["hidden"]
+                        state["title"]
+                        for state in after_state.values()
+                        if state["hidden"]
                     ],
                 },
                 "display_dates": [date.strftime("%d/%m/%Y") for date in display_dates],
