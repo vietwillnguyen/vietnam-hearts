@@ -92,7 +92,7 @@ The application uses the following environment variables (see `env.template` for
 - `SUPABASE_PUBLISHABLE_KEY` - Publishable key for client-facing Supabase auth (replaces legacy "anon" key)
 - `SUPABASE_SECRET_KEY` - Secret key for privileged database operations (replaces legacy "service_role" key)
 - `SUPABASE_JWKS_URL` - JWKS endpoint for verifying Supabase-issued user access tokens
-- **Note**: Uses Gemini for both embeddings (text-embedding-001) and chat responses (free tier)
+- **Note**: Uses Gemini for both embeddings (gemini-embedding-001) and chat responses (free tier)
 
 #### Optional
 - `PORT` - API server port (default: 8080)
@@ -230,6 +230,12 @@ Local application runner (no Docker):
 Template for secret environment variables. Copy to `.env` and fill in values.
 Never commit `.env` to version control.
 
+### `scripts/reembed_knowledge_base.py`
+One-off migration helper that re-embeds every document in `document_chunks` with the current Gemini embedding model, since vectors from different embedding models/spaces aren't comparable. Not run automatically by any deploy or CI step.
+```bash
+uv run scripts/reembed_knowledge_base.py [--dry-run]
+```
+
 ## Project Structure
 
 ```
@@ -247,6 +253,7 @@ vietnam-hearts/
 │   ├── create-or-update-scheduler-jobs.sh          # Cloud Scheduler job setup
 │   ├── deploy.config      # Non-secret deployment settings (GCP, Docker)
 │   ├── docker.sh          # Docker build/push/run management
+│   ├── reembed_knowledge_base.py  # Re-embed knowledge base after an embedding model change
 │   └── setup-dev-env.sh   # Developer environment setup
 ├── templates/             # Email and HTML templates
 ├── secrets/               # Credentials (not in git)

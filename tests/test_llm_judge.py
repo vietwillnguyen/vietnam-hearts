@@ -414,13 +414,10 @@ class TestJudgeSubmission:
 
     def test_returns_accepted_verdict_on_valid_response(self):
         """Parses Gemini JSON and returns verdict ACCEPTED."""
-        with (
-            patch("google.generativeai.configure"),
-            patch("google.generativeai.GenerativeModel") as mock_model_cls,
-        ):
-            mock_model = MagicMock()
-            mock_model_cls.return_value = mock_model
-            mock_model.generate_content.return_value = MagicMock(
+        with patch("app.routers.admin.signups.genai.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.models.generate_content.return_value = MagicMock(
                 text=GEMINI_ACCEPT_RESPONSE
             )
 
@@ -434,13 +431,10 @@ class TestJudgeSubmission:
 
     def test_returns_rejected_verdict_on_missing_docs(self):
         """Parses Gemini JSON and returns verdict REJECTED."""
-        with (
-            patch("google.generativeai.configure"),
-            patch("google.generativeai.GenerativeModel") as mock_model_cls,
-        ):
-            mock_model = MagicMock()
-            mock_model_cls.return_value = mock_model
-            mock_model.generate_content.return_value = MagicMock(
+        with patch("app.routers.admin.signups.genai.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.models.generate_content.return_value = MagicMock(
                 text=GEMINI_REJECT_RESPONSE
             )
 
@@ -454,13 +448,10 @@ class TestJudgeSubmission:
     def test_strips_markdown_fences_from_response(self):
         """Handles responses wrapped in ```json ... ``` fences."""
         fenced = f"```json\n{GEMINI_ACCEPT_RESPONSE}\n```"
-        with (
-            patch("google.generativeai.configure"),
-            patch("google.generativeai.GenerativeModel") as mock_model_cls,
-        ):
-            mock_model = MagicMock()
-            mock_model_cls.return_value = mock_model
-            mock_model.generate_content.return_value = MagicMock(text=fenced)
+        with patch("app.routers.admin.signups.genai.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.models.generate_content.return_value = MagicMock(text=fenced)
 
             from app.routers.admin.signups import _judge_submission
 
@@ -470,13 +461,12 @@ class TestJudgeSubmission:
 
     def test_raises_on_invalid_json(self):
         """Raises ValueError if Gemini returns unparseable response."""
-        with (
-            patch("google.generativeai.configure"),
-            patch("google.generativeai.GenerativeModel") as mock_model_cls,
-        ):
-            mock_model = MagicMock()
-            mock_model_cls.return_value = mock_model
-            mock_model.generate_content.return_value = MagicMock(text="not json at all")
+        with patch("app.routers.admin.signups.genai.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.models.generate_content.return_value = MagicMock(
+                text="not json at all"
+            )
 
             from app.routers.admin.signups import _judge_submission
 
@@ -490,9 +480,10 @@ class TestJudgeSubmission:
         with patch.dict("os.environ", {}, clear=True):
             # Force re-evaluation by calling the function without the env var
             with pytest.raises((RuntimeError, ValueError)):
-                # Patch GenerativeModel to simulate missing key scenario
+                # Patch Client to simulate missing key scenario
                 with patch(
-                    "google.generativeai.configure", side_effect=Exception("No API key")
+                    "app.routers.admin.signups.genai.Client",
+                    side_effect=Exception("No API key"),
                 ):
                     signups_mod._judge_submission(SAMPLE_PENDING_ROW)
 

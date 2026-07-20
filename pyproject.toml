@@ -25,7 +25,7 @@ dependencies = [
     "tenacity>=8.2.3,<9",
     "httpx==0.28.1",
     "pyjwt>=2.8.0,<3",
-    "google-generativeai>=0.3.0,<0.4",
+    "google-genai>=2.0.0,<3",
     "sentry-sdk[fastapi]>=2.19.0,<3",
     "alembic>=1.18.5,<2",
 ]

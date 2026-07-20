@@ -9,7 +9,7 @@ from typing import Any
 from app.utils.logging_config import get_api_logger
 
 from .document_service import DocumentService
-from .knowledge_service import KnowledgeService
+from .knowledge_service import CHAT_MODEL, KnowledgeService
 
 logger = get_api_logger()
 
@@ -225,7 +225,9 @@ class BotService:
             prompt = self._build_prompt(message, context, user_context)
 
             # Generate response using Gemini
-            response = self.knowledge_service.gemini_client.generate_content(prompt)
+            response = self.knowledge_service.gemini_client.models.generate_content(
+                model=CHAT_MODEL, contents=prompt
+            )
 
             ai_response = response.text.strip()
             logger.info(f"Generated Gemini response: {ai_response[:100]}...")
