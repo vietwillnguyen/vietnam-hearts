@@ -899,13 +899,18 @@ class GoogleSheetsService:
                         exc_info=True,
                     )
 
-            # PASS 1: Backfill every dated sheet's title to the canonical
+            # PASS 1: Backfill legacy-titled sheets to the canonical
             # DD/MM/YYYY format, then hide all dated schedule sheets outside
-            # the display range. Backfill runs regardless of display range so
-            # legacy "Schedule MM/DD" titles get migrated even on sheets that
-            # are about to be hidden - otherwise a sheet that rotates out of
-            # view keeps its legacy title forever, since it will never pass
-            # through PASS 2 again.
+            # the display range. Backfill only fires for a sheet that is
+            # either currently visible or about to enter the display range
+            # this run (PASS 2 will show it below), because a legacy
+            # "Schedule MM/DD" title carries no year - it is only safe to
+            # guess "current year" for a sheet that is or is about to be
+            # actively part of the display window. A sheet that is hidden
+            # and staying outside the display range could be from any past
+            # year, so renaming it would bake in the wrong year and risk a
+            # stale sheet silently resurfacing as this year's content when
+            # that date rolls around again; such sheets are left untouched.
             # Running hide before show ensures visible count never exceeds display_weeks_count,
             # even if the operation is interrupted partway through.
             # Only sheets whose title parses as a date are considered, which
@@ -918,8 +923,11 @@ class GoogleSheetsService:
                 if sheet_date is None:
                     continue
 
+                currently_visible = not sheet["properties"].get("hidden", False)
+                in_display_range = sheet_date.date() in display_date_set
+
                 canonical_title = format_schedule_sheet_title(sheet_date)
-                if title != canonical_title:
+                if (currently_visible or in_display_range) and title != canonical_title:
                     try:
                         self.rename_sheet(
                             sheet["properties"]["sheetId"], canonical_title, db
@@ -934,21 +942,19 @@ class GoogleSheetsService:
                             f"Could not rename sheet '{title}', continuing: {e}"
                         )
 
-                if sheet_date.date() not in display_date_set:
-                    currently_visible = not sheet["properties"].get("hidden", False)
-                    if currently_visible:
-                        try:
-                            self.set_sheet_visibility(
-                                sheet["properties"]["sheetId"], True, db
-                            )
-                            logger.info(f"Set sheet {title} visibility to hidden")
-                        except Exception as e:
-                            sheets_failed.append(
-                                {"title": title, "action": "hide", "error": str(e)}
-                            )
-                            logger.warning(
-                                f"Could not hide sheet '{title}', continuing rotation: {e}"
-                            )
+                if not in_display_range and currently_visible:
+                    try:
+                        self.set_sheet_visibility(
+                            sheet["properties"]["sheetId"], True, db
+                        )
+                        logger.info(f"Set sheet {title} visibility to hidden")
+                    except Exception as e:
+                        sheets_failed.append(
+                            {"title": title, "action": "hide", "error": str(e)}
+                        )
+                        logger.warning(
+                            f"Could not hide sheet '{title}', continuing rotation: {e}"
+                        )
 
             # PASS 2: Make each display-range sheet visible and move it into
             # position, in chronological order. Existing sheets are matched

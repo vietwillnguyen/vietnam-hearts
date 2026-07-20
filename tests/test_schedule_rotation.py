@@ -16,7 +16,12 @@ These pin down two production failure modes:
   shown in the new format never got backfilled. Rotation must always anchor
   to the Monday of the week containing "now", keep display sheets in
   chronological order, show exactly `display_weeks_count` of them, and
-  backfill every legacy title it touches regardless of visibility.
+  backfill legacy titles on sheets that are visible or entering the display
+  range this run. A legacy "Schedule MM/DD" title carries no year, so
+  backfilling one that stays hidden and outside the display range would
+  guess a year that could be wrong and later cause a stale sheet to be
+  reused as if it were the current week's sheet - such sheets are left
+  untouched until they next become relevant.
 """
 
 from datetime import datetime, timedelta
@@ -202,14 +207,24 @@ class TestRotationAnchorDate:
 
 class TestRotationBackfill:
     """Regression tests: legacy MM/DD titles must be backfilled to DD/MM/YYYY
-    even for sheets that fall outside the display window and only get hidden.
+    for sheets that fall outside the display window and only get hidden,
+    but only while they are still visible when rotation encounters them.
 
     Previously only sheets still inside the display window were renamed
     (in the "show" pass), so a legacy-titled sheet that rotated out of view
     kept its old-format title forever.
+
+    2026-07-21: backfilling was briefly made unconditional (regardless of
+    visibility), which meant an already-hidden legacy sheet from a past year
+    would be renamed using a guessed current year, baking in a wrong date
+    that could later be matched and reused as if it were this year's sheet.
+    Backfill is now restricted to sheets that are visible, or that are about
+    to become visible this run because their (guessed-year) date falls in
+    the display range - a sheet that stays hidden and out of range is left
+    untouched instead of having a year guessed for it.
     """
 
-    def test_legacy_sheet_outside_display_range_is_backfilled_when_hidden(
+    def test_legacy_sheet_outside_display_range_is_backfilled_when_visible(
         self, service
     ):
         monday = datetime(2026, 7, 20)
@@ -232,6 +247,26 @@ class TestRotationBackfill:
             past_date
         )
         assert format_schedule_sheet_title(past_date) in result["sheets_renamed"]
+
+    def test_already_hidden_legacy_sheet_outside_display_range_is_left_untouched(
+        self, service
+    ):
+        monday = datetime(2026, 7, 20)
+        past_date = datetime(2026, 7, 6)  # two weeks before the display window
+        legacy_title = f"Schedule {past_date.strftime('%m/%d')}"
+        legacy = sheet_props(legacy_title, sheet_id=89, hidden=True)
+
+        with (
+            patch("app.services.google_sheets.datetime") as mock_dt,
+            patch("app.utils.schedule_dates.datetime") as mock_dates_dt,
+        ):
+            mock_dt.now.return_value = monday
+            mock_dates_dt.now.return_value = monday
+            mock_dates_dt.strptime = datetime.strptime
+            result = rotate(service, [legacy], weeks=1)
+
+        service.rename_sheet.assert_not_called()
+        assert result["sheets_renamed"] == []
 
 
 class TestRotationOrderingAndCount:
