@@ -83,7 +83,7 @@ jobs:
         service_account: github-actions@refined-vector-457419-n6.iam.gserviceaccount.com
 
     - name: Set up gcloud
-      uses: google-github-actions/setup-gcloud@v2
+      uses: google-github-actions/setup-gcloud@v3
 
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker gcr.io --quiet
