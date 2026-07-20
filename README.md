@@ -337,6 +337,15 @@ Safeguards against racing deploys (issue #21):
 - **Ordering guard**: Before deploying, the job checks that the currently serving commit is an ancestor of the one being deployed and skips the deploy otherwise, so a stale run can never roll production back.
 - **Immutable image tags**: Each run deploys the `sha-<short-sha>` tag it built, so a deploy can only ever ship its own commit. The `IMAGE_VERSION` tag is still pushed as a human-friendly pointer.
 
+#### Dependency Updates
+
+Dependabot (`.github/dependabot.yml`) keeps dependencies current so vulnerable or deprecated packages don't sit unnoticed (issue #14):
+
+- **`uv` ecosystem**: Python dependencies in `pyproject.toml`/`uv.lock`.
+- **`github-actions` ecosystem**: action versions pinned in `.github/workflows/*.yml`.
+- Both run **weekly**, with minor/patch updates grouped into a single PR per ecosystem to keep noise low. Major version bumps are left ungrouped so they still surface individually for manual review.
+- Security updates (triggered by GitHub security advisories) run immediately regardless of this schedule, once enabled under the repo's Security settings.
+
 #### Viewing Results
 
 - Go to your GitHub repository
