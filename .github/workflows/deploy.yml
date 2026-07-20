@@ -25,7 +25,7 @@ jobs:
     # self-heals (this exact skip served a venv without sentry-sdk and failed
     # the deploy test job for PR #8 back in the Poetry days).
     - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v7
       with:
         enable-cache: true
         python-version: "3.12"
