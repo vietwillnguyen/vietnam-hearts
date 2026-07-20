@@ -820,7 +820,12 @@ class GoogleSheetsService:
         self, db: Session, display_weeks_override: int | None = None
     ) -> dict[str, Any]:
         """
-        Rotate schedule sheets.
+        Sync schedule sheets to the current date: exactly `display_weeks_count`
+        dated sheets are visible, starting from the Monday of the week
+        containing "now" and running forward in chronological order. Every
+        other dated sheet is hidden. This is idempotent reconciliation, not
+        incremental rotation - it can be called at any time, on any day of
+        the week, and always converges on the same target state for "now".
 
         Args:
             db: Database session
@@ -833,9 +838,11 @@ class GoogleSheetsService:
                 - display_dates: The dates that should be displayed
         """
         try:
-            # Get current date and time in Vietnam timezone
             now = datetime.now()
 
+            # Anchor to the Monday of the week containing "now" - not next
+            # Monday - so the display is always accurate to today's date
+            # regardless of which day of the week this runs on.
             days_since_monday = now.weekday()
             current_monday = now - timedelta(days=days_since_monday)
 
@@ -849,10 +856,6 @@ class GoogleSheetsService:
                 for sheet in existing_sheets
             }
 
-            # Calculate the date range to display
-            # Start from next Monday since current week is over
-            next_monday = current_monday + timedelta(days=7)
-
             # Use override if provided, otherwise use setting
             display_weeks_count = (
                 display_weeks_override
@@ -861,17 +864,13 @@ class GoogleSheetsService:
             )
 
             display_dates = [
-                next_monday + timedelta(days=7 * i) for i in range(display_weeks_count)
+                current_monday + timedelta(days=7 * i)
+                for i in range(display_weeks_count)
             ]
 
             # Dates that should be visible after rotation
             display_date_set = {date.date() for date in display_dates}
 
-            # Track what we're doing
-            sheets_created = []
-            sheets_made_visible = []
-            sheets_made_hidden = []
-            sheets_reordered = []
             sheets_renamed = []
             sheets_failed = []
 
@@ -889,7 +888,6 @@ class GoogleSheetsService:
                     self.set_sheet_visibility(
                         template_sheet["properties"]["sheetId"], True, db
                     )
-                    sheets_made_hidden.append("Schedule Template")
                     logger.info("Set 'Schedule Template' sheet to hidden")
                 except Exception as e:
                     logger.error(
@@ -897,7 +895,13 @@ class GoogleSheetsService:
                         exc_info=True,
                     )
 
-            # PASS 1: Hide all dated schedule sheets outside the display range FIRST.
+            # PASS 1: Backfill every dated sheet's title to the canonical
+            # DD/MM/YYYY format, then hide all dated schedule sheets outside
+            # the display range. Backfill runs regardless of display range so
+            # legacy "Schedule MM/DD" titles get migrated even on sheets that
+            # are about to be hidden - otherwise a sheet that rotates out of
+            # view keeps its legacy title forever, since it will never pass
+            # through PASS 2 again.
             # Running hide before show ensures visible count never exceeds display_weeks_count,
             # even if the operation is interrupted partway through.
             # Only sheets whose title parses as a date are considered, which
@@ -910,6 +914,22 @@ class GoogleSheetsService:
                 if sheet_date is None:
                     continue
 
+                canonical_title = format_schedule_sheet_title(sheet_date)
+                if title != canonical_title:
+                    try:
+                        self.rename_sheet(
+                            sheet["properties"]["sheetId"], canonical_title, db
+                        )
+                        sheets_renamed.append(canonical_title)
+                        title = canonical_title
+                    except Exception as e:
+                        sheets_failed.append(
+                            {"title": title, "action": "rename", "error": str(e)}
+                        )
+                        logger.warning(
+                            f"Could not rename sheet '{title}', continuing: {e}"
+                        )
+
                 if sheet_date.date() not in display_date_set:
                     currently_visible = not sheet["properties"].get("hidden", False)
                     if currently_visible:
@@ -917,7 +937,6 @@ class GoogleSheetsService:
                             self.set_sheet_visibility(
                                 sheet["properties"]["sheetId"], True, db
                             )
-                            sheets_made_hidden.append(title)
                             logger.info(f"Set sheet {title} visibility to hidden")
                         except Exception as e:
                             sheets_failed.append(
@@ -927,9 +946,11 @@ class GoogleSheetsService:
                                 f"Could not hide sheet '{title}', continuing rotation: {e}"
                             )
 
-            # PASS 2: Make each display-range sheet visible and move it into position.
-            # Existing sheets are matched by parsed date so legacy MM/DD titles
-            # are reused (and migrated to DD/MM/YYYY) instead of duplicated.
+            # PASS 2: Make each display-range sheet visible and move it into
+            # position, in chronological order. Existing sheets are matched
+            # by parsed date (not title text) so sheets already migrated to
+            # DD/MM/YYYY in PASS 1 are still found and reused instead of
+            # duplicated.
             for i, date in enumerate(display_dates):
                 sheet_name = format_schedule_sheet_title(date)
                 existing_sheet = next(
@@ -948,41 +969,12 @@ class GoogleSheetsService:
 
                 try:
                     if existing_sheet:
-                        was_hidden = existing_sheet["properties"].get("hidden", False)
-                        old_index = existing_sheet["properties"].get("index", 0)
-                        old_title = existing_sheet["properties"]["title"]
-
-                        if old_title != sheet_name:
-                            try:
-                                self.rename_sheet(
-                                    existing_sheet["properties"]["sheetId"],
-                                    sheet_name,
-                                    db,
-                                )
-                                sheets_renamed.append(sheet_name)
-                            except Exception as e:
-                                sheets_failed.append(
-                                    {
-                                        "title": old_title,
-                                        "action": "rename",
-                                        "error": str(e),
-                                    }
-                                )
-                                logger.warning(
-                                    f"Could not rename sheet '{old_title}', continuing: {e}"
-                                )
-
                         self.set_sheet_visibility(
                             existing_sheet["properties"]["sheetId"], False, db
                         )
                         self.move_sheet(
                             existing_sheet["properties"]["sheetId"], i + 1, db
                         )  # +1 to account for template sheet at index 0
-
-                        if was_hidden:
-                            sheets_made_visible.append(sheet_name)
-                        if old_index != i + 1:
-                            sheets_reordered.append(sheet_name)
                     else:
                         new_sheet_id = self.create_sheet_from_template(
                             "Schedule Template", date, db
@@ -990,7 +982,6 @@ class GoogleSheetsService:
                         self.update_sheet_dates(date, db)
                         self.set_sheet_visibility(int(new_sheet_id), False, db)
                         self.move_sheet(int(new_sheet_id), i + 1, db)
-                        sheets_created.append(sheet_name)
                 except Exception as e:
                     sheets_failed.append(
                         {"title": sheet_name, "action": "show", "error": str(e)}
