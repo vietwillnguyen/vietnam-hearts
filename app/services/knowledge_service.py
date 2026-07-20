@@ -8,11 +8,22 @@ Simplified approach: Single vendor, single API key, no local model dependencies.
 import os
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
+
+# gemini-1.5-flash and the text-embedding-00x family are retired; these are
+# the currently supported models as of the google-genai SDK migration.
+CHAT_MODEL = "gemini-3.5-flash"
+EMBEDDING_MODEL = "gemini-embedding-001"
+# gemini-embedding-001 defaults to 3072-d output. Pin it down via Matryoshka
+# Representation Learning to 768-d to match the existing document_chunks
+# pgvector column (sized for the old text-embedding-001 model) and the
+# fallback hash-based embeddings below, so no DB migration is needed.
+EMBEDDING_DIMENSIONS = 768
 
 
 class KnowledgeService:
@@ -21,7 +32,7 @@ class KnowledgeService:
     def __init__(self, supabase_client=None):
         """
         Initialize knowledge service with Gemini-only approach:
-        - Gemini text-embedding-001 for embeddings (free tier)
+        - Gemini gemini-embedding-001 for embeddings (free tier)
         - Gemini for chat responses (free tier: 15 RPM, 1M tokens/day)
 
         Args:
@@ -32,8 +43,8 @@ class KnowledgeService:
         self.embedding_model = self._get_embedding_model()
         logger.info("Knowledge service initialized with Gemini-only approach")
 
-    def _get_gemini_client(self) -> genai.GenerativeModel | None:
-        """Get Gemini client for chat responses"""
+    def _get_gemini_client(self) -> genai.Client | None:
+        """Get Gemini client for chat and embedding requests"""
         try:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
@@ -42,8 +53,7 @@ class KnowledgeService:
                 )
                 return None
 
-            genai.configure(api_key=api_key)
-            client = genai.GenerativeModel("gemini-1.5-flash")  # Fast, free tier
+            client = genai.Client(api_key=api_key)
             logger.info("Gemini client initialized successfully")
             return client
 
@@ -53,58 +63,46 @@ class KnowledgeService:
 
     def _get_embedding_model(self) -> Any | None:
         """Get Gemini embedding capability for free embeddings"""
-        try:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                logger.warning("GEMINI_API_KEY not set - embeddings will use fallback")
-                return None
-
-            genai.configure(api_key=api_key)
-
-            # Try different embedding approaches
-            embedding_models_to_try = [
-                "text-embedding-001",
-                "embedding-001",
-                "text-embedding-002",
-            ]
-
-            for model_name in embedding_models_to_try:
-                try:
-                    # Test with a simple text to verify API works
-                    genai.embed_content(
-                        model=model_name, content="test", task_type="retrieval_document"
-                    )
-                    logger.info(
-                        f"Gemini embedding capability verified with model: {model_name}"
-                    )
-                    return model_name  # Return the working model name
-
-                except Exception as e:
-                    logger.debug(f"Model {model_name} not available: {e}")
-                    continue
-
-            # If no embedding models work, try using the chat model for simple text processing
-            try:
-                test_model = genai.GenerativeModel("gemini-1.5-flash")
-                test_response = test_model.generate_content("test")
-                if test_response.text:
-                    logger.info(
-                        "Gemini chat model available - using for text processing"
-                    )
-                    return "chat_model"  # Special indicator for chat-based approach
-            except Exception as e:
-                logger.debug(f"Chat model test failed: {e}")
-
-            logger.warning("No Gemini embedding models available - using fallback")
+        if not self.gemini_client:
+            logger.warning("Gemini client not available - embeddings will use fallback")
             return None
+
+        try:
+            # Verify the embedding model actually works before relying on it.
+            self.gemini_client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents="test",
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=EMBEDDING_DIMENSIONS,
+                ),
+            )
+            logger.info(
+                f"Gemini embedding capability verified with model: {EMBEDDING_MODEL}"
+            )
+            return EMBEDDING_MODEL
 
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini embedding capability: {e}")
-            return None
+            logger.debug(f"Model {EMBEDDING_MODEL} not available: {e}")
+
+        # If the embedding model doesn't work, try using the chat model for
+        # simple text processing.
+        try:
+            test_response = self.gemini_client.models.generate_content(
+                model=CHAT_MODEL, contents="test"
+            )
+            if test_response.text:
+                logger.info("Gemini chat model available - using for text processing")
+                return "chat_model"  # Special indicator for chat-based approach
+        except Exception as e:
+            logger.debug(f"Chat model test failed: {e}")
+
+        logger.warning("No Gemini embedding models available - using fallback")
+        return None
 
     async def create_embeddings(self, texts: list[str]) -> list[list[float]]:
         """
-        Create embeddings using Gemini text-embedding-001 (free tier)
+        Create embeddings using Gemini gemini-embedding-001 (free tier)
 
         Args:
             texts: List of text chunks to embed
@@ -146,14 +144,17 @@ class KnowledgeService:
                         all_embeddings.append(embedding)
                     else:
                         # Use the available embedding model
-                        result = genai.embed_content(
+                        result = self.gemini_client.models.embed_content(
                             model=self.embedding_model,
-                            content=text,
-                            task_type="retrieval_document",
+                            contents=text,
+                            config=types.EmbedContentConfig(
+                                task_type="RETRIEVAL_DOCUMENT",
+                                output_dimensionality=EMBEDDING_DIMENSIONS,
+                            ),
                         )
 
                         # Extract embedding vector
-                        embedding = result.embedding
+                        embedding = result.embeddings[0].values if result.embeddings else None
                         if embedding:
                             all_embeddings.append(embedding)
                             logger.debug(f"Created embedding for chunk {i + 1}")
@@ -187,7 +188,7 @@ class KnowledgeService:
 
             hash_obj = hashlib.md5(text.encode())
             hash_bytes = hash_obj.digest()
-            # Convert to 768-dimensional vector (same as Gemini text-embedding-001)
+            # Convert to 768-dimensional vector (matches EMBEDDING_DIMENSIONS)
             embedding = [
                 float(b) / 255.0 for b in hash_bytes
             ] * 24  # Repeat to get 768 dimensions
@@ -327,13 +328,16 @@ class KnowledgeService:
                     query_embedding = query_embedding[:768]
                 else:
                     # Use the available embedding model
-                    result = genai.embed_content(
+                    result = self.gemini_client.models.embed_content(
                         model=self.embedding_model,
-                        content=query,
-                        task_type="retrieval_query",
+                        contents=query,
+                        config=types.EmbedContentConfig(
+                            task_type="RETRIEVAL_QUERY",
+                            output_dimensionality=EMBEDDING_DIMENSIONS,
+                        ),
                     )
 
-                    query_embedding = result.embedding
+                    query_embedding = result.embeddings[0].values if result.embeddings else None
                     if not query_embedding:
                         logger.error("No embedding returned for query")
                         return await self._fallback_text_search(query, limit)

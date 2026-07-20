@@ -8,8 +8,8 @@ import re
 import ssl
 import time
 
-import google.generativeai as genai
 from fastapi import APIRouter, Depends, HTTPException, Request
+from google import genai
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -78,7 +78,7 @@ def _judge_submission(submission: dict) -> dict:
         raise RuntimeError("GEMINI_API_KEY is not set — cannot call LLM judge")
 
     try:
-        genai.configure(api_key=api_key)
+        client = genai.Client(api_key=api_key)
     except Exception as e:
         raise RuntimeError(f"Failed to configure Gemini: {e}") from e
 
@@ -101,8 +101,9 @@ def _judge_submission(submission: dict) -> dict:
         referral_source=_field("referral_source"),
     )
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-3.5-flash", contents=prompt
+    )
     raw_text = response.text.strip()
 
     # Strip markdown fences if present (```json ... ```)
@@ -353,7 +354,7 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
             )
             errors += 1
 
-        # Gemini 2.5 Flash Tier 1: 1K RPM — 1s gap is safe.
+        # Gemini 3.5 Flash Tier 1: 150-300 RPM — 1s gap is safe.
         # If on the free tier (15 RPM), increase this to 4s.
         time.sleep(1)
 

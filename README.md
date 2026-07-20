@@ -92,7 +92,7 @@ The application uses the following environment variables (see `env.template` for
 - `SUPABASE_PUBLISHABLE_KEY` - Publishable key for client-facing Supabase auth (replaces legacy "anon" key)
 - `SUPABASE_SECRET_KEY` - Secret key for privileged database operations (replaces legacy "service_role" key)
 - `SUPABASE_JWKS_URL` - JWKS endpoint for verifying Supabase-issued user access tokens
-- **Note**: Uses Gemini for both embeddings (text-embedding-001) and chat responses (free tier)
+- **Note**: Uses Gemini for both embeddings (gemini-embedding-001) and chat responses (free tier)
 
 #### Optional
 - `PORT` - API server port (default: 8080)
