@@ -93,7 +93,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.8.0,<3" },
     { name = "python-dotenv", specifier = ">=1.0.0,<2" },
     { name = "python-multipart", specifier = ">=0.0.20,<0.1" },
-    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.19.0,<3" },
+    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.66.0,<3" },
     { name = "sqlalchemy", specifier = ">=2.0.25,<3" },
     { name = "supabase", specifier = ">=2.2.0,<3" },
     { name = "tenacity", specifier = ">=8.2.3,<9" },
