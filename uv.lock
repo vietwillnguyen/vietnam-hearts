@@ -75,6 +75,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "requests" },
     { name = "ruff" },
 ]
 
@@ -107,6 +108,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.0.0,<5" },
     { name = "pytest", specifier = ">=7.4.3,<9" },
     { name = "pytest-cov", specifier = ">=6.0.0,<7" },
+    { name = "requests", specifier = ">=2.31.0,<3" },
     { name = "ruff", specifier = ">=0.8.0,<0.9" },
 ]
 
