@@ -1,185 +1,73 @@
-# Scheduler API Tests
+# API Tests
 
-This directory contains test scripts for the Vietnam Hearts Scheduler API endpoints.
+Pytest suite for the Vietnam Hearts API, plus notes on exercising the admin endpoints by hand against a running server.
 
-## Files
+## Layout
 
-- `test_api.py` - Main test script for scheduler API endpoints
-- `test_db.py` - Database connection test script
+- `conftest.py` - shared fixtures: an in-memory sqlite engine, a `client` fixture wired to it, and mocked Supabase dependencies.
+- `test_api.py` - endpoint-level integration tests covering route wiring, admin authentication, and status-code contracts.
+- The remaining `test_*.py` files are grouped by feature (schedules, settings, email, logging, migrations, and so on).
 
-## Prerequisites
+## Running the tests
 
-### 1. Google Cloud CLI Setup
-
-Make sure you have the Google Cloud CLI installed and configured:
-
-```bash
-# Install gcloud CLI (if not already installed)
-# Follow instructions at: https://cloud.google.com/sdk/docs/install
-
-# Authenticate with Google Cloud
-gcloud auth login
-
-# Set the correct project
-gcloud config set project refined-vector-457419
-
-# Verify your configuration
-gcloud config list
-```
-
-### 3. Environment Variables
-
-Create a `.env` file in the project root with the following variables:
-
-```env
-# API Configuration
-API_BASE_URL=http://localhost:8080
-
-# Google OAuth Configuration (REQUIRED for scheduler tests)
-GOOGLE_OAUTH_CLIENT_ID=your-oauth-client-id-here
-
-# Database Configuration (if needed)
-DATABASE_URL=your_database_url_here
-
-# Other environment variables as needed
-```
-
-**Important**: The `GOOGLE_OAUTH_CLIENT_ID` is required for the scheduler API tests to work. This should be the same value that your API uses for OIDC token validation.
-
-## Usage
-
-### Test Individual Endpoints
+See [Running Tests Locally](../README.md#running-tests-locally) for the standard commands.
+To run only the endpoint integration tests:
 
 ```bash
-# Test health check endpoint
-uv run python tests/test_api.py health
-
-# Test send confirmation emails
-uv run python tests/test_api.py send-confirmation-emails
-
-# Test sync volunteers
-uv run python tests/test_api.py sync-volunteers
-
-# Test send weekly reminders
-uv run python tests/test_api.py send-weekly-reminders
-
-# Test rotate schedule
-uv run python tests/test_api.py rotate-schedule
+uv run pytest tests/test_api.py -v
 ```
 
-### Test All Endpoints
+The suite is self-contained.
+It uses an in-memory sqlite database and mocks Supabase, Google Sheets, and email, so no `.env` file, network access, or gcloud login is needed.
+
+## Exercising an endpoint by hand
+
+Admin endpoints authenticate the same way Cloud Scheduler does: an `apikey` header carrying the value of `SUPABASE_SECRET_KEY`.
+That key resolves to the service account identity, which must also be listed in `ADMIN_EMAILS` (or exist as an admin user in the database) or the request is rejected with `403` - see [Service Account Setup](../docs/SERVICE_ACCOUNT_SETUP.md).
+
+`tools/api_tester.py` wraps this up as a CLI, reading `SUPABASE_SECRET_KEY` from `.env`:
 
 ```bash
-# Test all scheduler endpoints
-uv run python tests/test_api.py all
+# API_URL defaults to the PRODUCTION service, so always set it explicitly
+API_URL=http://localhost:8080 uv run python tools/api_tester.py rotate-schedule
+API_URL=http://localhost:8080 uv run python tools/api_tester.py all
 ```
 
-### Database Connection Test
+Leave `--auth-type` at its `supabase` default; the `gcloud` option mints an OIDC token, which no longer matches any server-side auth path and always yields `401`.
+
+For anything the tool does not have a mapping for, such as `sync-cron-schedules`, call the endpoint directly:
 
 ```bash
-# Test database connectivity
-uv run python tests/test_db.py
+curl -X POST http://localhost:8080/admin/sync-cron-schedules \
+  -H "apikey: $SUPABASE_SECRET_KEY"
 ```
+
+A `401` means the key is missing, malformed, or does not match the server's `SUPABASE_SECRET_KEY`.
+A `403` means the key was accepted but its identity is not an admin.
 
 ## Available Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/scheduler/health` | GET | Health check and Google Sheets connectivity test |
-| `/api/scheduler/send-confirmation-emails` | POST | Process and send confirmation emails to new volunteers |
-| `/api/scheduler/sync-volunteers` | POST | Sync volunteers from Google Sheets signup form |
-| `/api/scheduler/send-weekly-reminders` | POST | Send weekly reminder emails to subscribed volunteers (skipped if no class has an open volunteer slot) |
-| `/api/scheduler/rotate-schedule` | POST | Sync schedule sheets so the current week plus N-1 future weeks are visible, in order, each protected against accidental edits. Idempotent, so it is safe to run hourly. Answers `502` (with the full per-sheet detail) if any sheet was skipped, so a partial reconciliation is never recorded as a successful run |
+| `/admin/health` | GET | Health check across database, Google Sheets, and email service connectivity |
+| `/admin/send-confirmation-emails` | POST | Process and send confirmation emails to new volunteers |
+| `/admin/sync-volunteers` | POST | Sync volunteers from Google Sheets signup form |
+| `/admin/send-weekly-reminders` | POST | Send weekly reminder emails to subscribed volunteers (skipped if no class has an open volunteer slot) |
+| `/admin/rotate-schedule` | POST | Sync schedule sheets so the current week plus N-1 future weeks are visible, in order, each protected against accidental edits. Idempotent, so it is safe to run hourly. Answers `502` (with the full per-sheet detail) if any sheet was skipped, so a partial reconciliation is never recorded as a successful run |
 | `/admin/sync-cron-schedules` | POST | Apply the `CRON_*` settings to their Cloud Scheduler jobs (cadence only; never touches job credentials) |
-
-## Authentication
-
-The test script uses Google Cloud authentication with the service account:
-`auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com`
-
-The script automatically:
-1. Uses `gcloud auth print-identity-token` to get an OIDC token
-2. Includes the token in the `Authorization: Bearer <token>` header
-3. Validates the token against your API's OAuth client ID
 
 ## Troubleshooting
 
-### Authentication Issues
+### Tests fail on import
 
-If you encounter authentication errors:
+Run `uv sync` to install the dev dependency group (pytest, pytest-cov, ruff), then re-run from the project root.
 
-1. **Check gcloud configuration:**
-   ```bash
-   gcloud config list
-   gcloud auth list
-   ```
+### A manual request returns 401 or 403
 
-2. **Re-authenticate if needed:**
-   ```bash
-   gcloud auth login
-   gcloud auth application-default login
-   ```
+1. Confirm the `apikey` value matches the running server's `SUPABASE_SECRET_KEY` exactly (a rotated key is the usual cause).
+2. Confirm the service account email is in `ADMIN_EMAILS` and restart the application after changing it.
 
-3. **Verify project setting:**
-   ```bash
-   gcloud config set project refined-vector-457419
-   ```
+### Cannot connect to the API
 
-### Connection Issues
-
-If you can't connect to the API:
-
-1. **Check if the API server is running:**
-   ```bash
-   curl http://localhost:8080/api/scheduler/health
-   ```
-
-2. **Verify the API_BASE_URL in your .env file**
-
-3. **Check firewall/network settings**
-
-### Permission Issues
-
-If you get permission errors:
-
-1. **Verify service account permissions:**
-   - The service account should have the necessary IAM roles
-   - Check if the service account can access the required resources
-
-2. **Check API configuration:**
-   - Verify the `GOOGLE_OAUTH_CLIENT_ID` matches your API configuration
-   - Ensure the service account email is correctly configured
-
-## Example Output
-
-```
-🔧 Scheduler API Tester
-Base URL: http://localhost:8080
-Service Account: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
-API Prefix: /api/scheduler
-============================================================
-
-🔑 Getting authentication token...
-✅ Authentication token obtained successfully
-
-🏥 Testing Health Check Endpoint
-----------------------------------------
-
-🌐 Making GET request to: http://localhost:8080/api/scheduler/health
-📊 Response Status: 200
-📄 Response Data: {
-  "status": "healthy",
-  "google_sheets_connectivity": "ok",
-  "submissions_count": 5
-}
-✅ Health check passed!
-   Google Sheets connectivity: ok
-   Submissions count: 5
-```
-
-## Notes
-
-- The test script includes delays between requests to avoid overwhelming the server
-- All responses are logged with detailed information for debugging
-- The script handles both successful and error responses gracefully
-- Make sure your API server is running before executing tests 
+1. Check the server is running: `curl http://localhost:8080/docs`.
+2. Check the port matches the one `./run.sh` reported (default 8080).

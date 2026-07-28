@@ -120,6 +120,7 @@ The application uses the following environment variables (see `env.template` for
      service's runtime service account the `roles/iam.serviceAccountTokenCreator`
      role on itself, and the app will self-impersonate to mint Sheets/Drive/Docs-scoped
      tokens from Application Default Credentials (see `app/utils/google_credentials.py`)
+   - That same runtime service account also needs `roles/cloudscheduler.admin` for `POST /admin/sync-cron-schedules` to apply the `CRON_*` settings; without it the endpoint reports a per-job permission error
 
 4. **Share Google Sheets**:
    - Share your schedule and signup sheets with the service account email
@@ -164,8 +165,8 @@ The application uses the following environment variables (see `env.template` for
 Once running, the API will be available at:
 
 - **API Documentation**: `http://localhost:8080/docs`
-- **Health Check**: `http://localhost:8080/health`
-- **Admin Endpoints**: `http://localhost:8080/admin/*` (development only)
+- **Health Check**: `http://localhost:8080/health` (public)
+- **Admin Endpoints**: `http://localhost:8080/admin/*` (admin auth required; Cloud Scheduler calls these in production - see [`tests/README.md`](tests/README.md) for the endpoint list and how to call them by hand)
 
 ## Deploy Configuration
 
