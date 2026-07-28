@@ -163,6 +163,57 @@ class TestSyncCronSchedules:
         assert "not a cron" in result["failed"][0]["error"]
         jobs.patch.assert_not_called()
 
+    @pytest.mark.parametrize("blank", ["", "   ", None])
+    def test_blank_setting_fails_instead_of_reporting_unchanged(
+        self, settings_db, blank
+    ):
+        """A wiped cadence must never read as a clean sync.
+
+        Counting a missing CRON_* value as `unchanged` answered 200 "already
+        current" while the real job kept its stale schedule - the dishonest
+        success this whole change exists to remove. The job genuinely is
+        unreconciled, so it is a failure and the endpoint must say 502.
+        """
+        db, values = settings_db
+        if blank is None:
+            del values["CRON_ROTATE_SCHEDULE"]
+        else:
+            values["CRON_ROTATE_SCHEDULE"] = blank
+        client, jobs = make_client(
+            {
+                "sync-volunteers": "0 */2 * * *",
+                "send-weekly-reminders": "0 12 * * 0",
+                "rotate-schedule": "0 17 * * 5",  # stale, and about to stay stale
+            }
+        )
+
+        result = sync_cron_schedules(db, client=client)
+
+        assert [f["job"] for f in result["failed"]] == ["rotate-schedule"]
+        assert "CRON_ROTATE_SCHEDULE" in result["failed"][0]["error"]
+        assert "rotate-schedule" not in result["unchanged"]
+        jobs.patch.assert_not_called()
+
+    def test_blank_setting_does_not_stop_the_other_jobs(self, settings_db):
+        """Per-item tolerance still applies to the empty case."""
+        db, values = settings_db
+        values["CRON_ROTATE_SCHEDULE"] = ""
+        client, jobs = make_client(
+            {
+                "sync-volunteers": "0 0 1 1 *",
+                "send-weekly-reminders": "0 0 1 1 *",
+                "rotate-schedule": "0 17 * * 5",
+            }
+        )
+
+        result = sync_cron_schedules(db, client=client)
+
+        assert sorted(j["job"] for j in result["synced"]) == [
+            "send-weekly-reminders",
+            "sync-volunteers",
+        ]
+        assert [f["job"] for f in result["failed"]] == ["rotate-schedule"]
+
     def test_one_failing_job_does_not_stop_the_others(self, settings_db):
         # Same lesson as the 2026-07-03 rotation incident: never let one
         # bad item abort the whole reconciliation.

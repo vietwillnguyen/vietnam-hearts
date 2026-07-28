@@ -131,9 +131,21 @@ def sync_cron_schedules(db: Session, client=None) -> dict:
 
     for setting_key, job_id in CRON_SETTING_TO_JOB.items():
         desired = get_setting(db, setting_key)
-        if not desired:
-            logger.info(f"No {setting_key} setting; leaving {job_id} as deployed")
-            result["unchanged"].append(job_id)
+        if not desired or not desired.strip():
+            # Not "unchanged": the job keeps whatever cadence it was deployed
+            # with, which is precisely the drift this endpoint exists to close.
+            # Reporting that as already-current is the dishonest success the
+            # rest of this module refuses to emit.
+            result["failed"].append(
+                {
+                    "job": job_id,
+                    "error": (
+                        f"{setting_key} is empty, so {job_id} still runs on its "
+                        "deployed schedule; set a cron expression and apply again"
+                    ),
+                }
+            )
+            logger.warning(f"{setting_key} is empty; {job_id} left unreconciled")
             continue
 
         if not is_valid_cron(desired):

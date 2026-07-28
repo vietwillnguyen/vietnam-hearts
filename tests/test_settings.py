@@ -32,6 +32,19 @@ def db(test_db):
     return test_db
 
 
+@pytest.fixture
+def admin_client(client):
+    from app.dependencies.auth import get_current_admin_user
+    from app.main import app
+
+    app.dependency_overrides[get_current_admin_user] = lambda: {
+        "id": "test-admin",
+        "email": "admin@vietnamhearts.org",
+    }
+    yield client
+    app.dependency_overrides.pop(get_current_admin_user, None)
+
+
 class TestCronDefaultSettings:
     def test_all_cron_keys_created_after_init(self, db):
         initialize_default_settings(db)
@@ -81,6 +94,48 @@ class TestCronSettingsPersistence:
             setting = db.query(Setting).filter(Setting.key == key).first()
             assert setting is not None
             assert setting.description, f"{key} has no description"
+
+
+class TestBlankCronValuesAreRejected:
+    """A CRON_* key drives a live Cloud Scheduler job, so blanking one is
+    never a meaningful edit - it just deletes the cadence.
+
+    The dashboard's "Save All Settings" PUTs every field on the form at once,
+    so one field rendering empty was enough to wipe all three schedules in a
+    single routine click. Refusing the write here means no client can silently
+    erase a cadence, whatever the form happens to render.
+    """
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+    @pytest.mark.parametrize("key", CRON_KEYS)
+    def test_blank_value_is_refused(self, admin_client, db, key: str, blank: str):
+        initialize_default_settings(db)
+        original = get_setting(db, key)
+
+        response = admin_client.put(f"/settings/{key}", json={"value": blank})
+
+        assert response.status_code == 400
+        assert key in response.json()["detail"]
+        assert get_setting(db, key) == original
+
+    def test_a_real_expression_still_saves(self, admin_client, db):
+        initialize_default_settings(db)
+
+        response = admin_client.put(
+            "/settings/CRON_ROTATE_SCHEDULE", json={"value": "15 3 * * 1"}
+        )
+
+        assert response.status_code == 200
+        assert get_setting(db, "CRON_ROTATE_SCHEDULE") == "15 3 * * 1"
+
+    def test_non_cron_settings_may_still_be_blanked(self, admin_client, db):
+        """Only the cadence keys are protected; this is not a global rule."""
+        initialize_default_settings(db)
+
+        response = admin_client.put("/settings/SCHEDULE_SIGNUP_LINK", json={"value": ""})
+
+        assert response.status_code == 200
+        assert get_setting(db, "SCHEDULE_SIGNUP_LINK") == ""
 
 
 class TestDefaultDescriptionRefresh:

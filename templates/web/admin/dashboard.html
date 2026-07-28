@@ -562,12 +562,11 @@
                         ] %}
 
                         {% for job in cron_jobs %}
-                            {% set current_value = "" %}
-                            {% for s in settings %}
-                                {% if s.key == job.key %}
-                                    {% set current_value = s.value %}
-                                {% endif %}
-                            {% endfor %}
+                            {# Resolved as one expression rather than a nested loop with
+                               {% set %}: Jinja scopes an assignment to the block it sits
+                               in, so setting current_value inside a {% for %} is discarded
+                               at {% endfor %} and every field rendered value="". #}
+                            {% set current_value = settings | selectattr("key", "equalto", job.key) | map(attribute="value") | first | default("", true) %}
                         <div class="form-group">
                             <label for="{{ job.key }}" class="form-label">
                                 {{ job.label }}
@@ -578,7 +577,7 @@
                                    id="{{ job.key }}"
                                    name="{{ job.key }}"
                                    value="{{ current_value }}"
-                                   placeholder="{{ job.example.split('→')[0].strip() }}">
+                                   placeholder="Not set - enter a cron expression">
                             <div class="form-text">{{ job.description }} <span class="text-secondary">e.g. {{ job.example }}</span></div>
                         </div>
                         {% endfor %}

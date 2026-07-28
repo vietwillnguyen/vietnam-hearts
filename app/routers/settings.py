@@ -31,6 +31,29 @@ router = APIRouter(
 )
 
 
+def reject_blank_cron_value(key: str, value: str | None) -> None:
+    """Refuse to persist an empty cadence for a CRON_* key.
+
+    Each CRON_* setting drives a live Cloud Scheduler job, so blanking one is
+    never a meaningful edit - it deletes the schedule while leaving the job
+    running on whatever cadence it was last deployed with. The dashboard saves
+    every settings field in a single pass, so one field rendering empty was
+    enough to wipe all three schedules in one routine click; refusing the write
+    here keeps that from happening whatever a client sends.
+
+    Raises:
+        HTTPException: 400 if a CRON_* value is empty or whitespace-only.
+    """
+    if key.startswith("CRON_") and not (value or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"{key} is a cron schedule and cannot be empty; "
+                "provide an expression such as '0 * * * *'"
+            ),
+        )
+
+
 @router.get("/", response_model=SettingsList)
 async def get_settings(db: Session = Depends(get_db)):
     """
@@ -90,6 +113,8 @@ async def create_setting(setting_data: SettingCreate, db: Session = Depends(get_
         The created setting object
     """
     try:
+        reject_blank_cron_value(setting_data.key, setting_data.value)
+
         # Check if setting already exists
         existing = (
             db.query(SettingModel).filter(SettingModel.key == setting_data.key).first()
@@ -135,6 +160,8 @@ async def update_setting(
         The updated setting object
     """
     try:
+        reject_blank_cron_value(key, setting_data.value)
+
         # Check if setting exists
         existing = db.query(SettingModel).filter(SettingModel.key == key).first()
         if not existing:
