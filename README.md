@@ -214,7 +214,13 @@ Docker management CLI for build/push/pull/run:
 
 ### `scripts/create-or-update-scheduler-jobs.sh`
 Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule).
-Reads scheduler region and timezone from `deploy.config`.
+Reads scheduler region and timezone from `deploy.config`, and the `apikey` header from `SUPABASE_SECRET_KEY` in `.env`.
+
+Run this after rotating the Supabase secret key.
+Each job stores its own copy of that key in an HTTP header, so a rotated key leaves every job authenticating with a stale credential until the script is re-run - the jobs keep firing on schedule and the endpoint answers `401`, which surfaces only as a job-level error status in Cloud Scheduler.
+
+This script owns job *existence* and *credentials*.
+The job *cadence* is owned by the `CRON_*` settings and applied by `POST /admin/sync-cron-schedules`; the values here are only bootstrap defaults for a job that does not exist yet.
 
 ### `run.sh`
 Local application runner (no Docker):

@@ -22,6 +22,13 @@ PROJECT_ROOT = Path(__file__).parent.parent
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 
+# Cloud Scheduler Configuration
+# Used to address the cron jobs whose cadence is owned by the CRON_* settings.
+# Must match SCHEDULER_REGION in scripts/deploy.config, which is where the jobs
+# are actually created.
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+CLOUD_SCHEDULER_LOCATION = os.getenv("CLOUD_SCHEDULER_LOCATION", "asia-southeast1")
+
 # API Configuration
 PORT = os.getenv("PORT", "8080")
 API_URL = os.getenv("API_URL", f"http://localhost:{PORT}")

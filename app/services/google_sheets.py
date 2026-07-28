@@ -17,11 +17,18 @@ from app.utils.google_credentials import default_credentials, get_scoped_credent
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error, safe_api_call
 from app.utils.schedule_dates import (
+    current_week_monday,
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
 )
 
 logger = get_api_logger()
+
+# Shown in the Sheets UI when someone edits a protected schedule tab.
+SCHEDULE_SHEET_PROTECTION_DESCRIPTION = (
+    "Vietnam Hearts schedule sheet - managed automatically. "
+    "Edit your own signup rows only; do not rename or delete this tab."
+)
 
 # Google Sheets API setup
 # Update the scopes to include write permissions
@@ -425,6 +432,67 @@ class GoogleSheetsService:
                 f"Failed to create sheet from template: {str(e)}", exc_info=True
             )
             raise
+
+    def ensure_sheet_protected(
+        self,
+        sheet_id: int,
+        db: Session,
+        existing_protected_ranges: list[dict] | None = None,
+    ) -> bool:
+        """
+        Ensure a schedule sheet carries a warning-only whole-sheet protection.
+
+        `duplicateSheet` copies a tab's content and formatting but not its
+        protected ranges, so every sheet cloned from "Schedule Template"
+        starts out unprotected. The spreadsheet is shared as link-editable,
+        which means an anonymous visitor can edit or delete those tabs with
+        no audit trail - the likely cause of "Schedule 07/06" disappearing
+        twice in June/July 2026.
+
+        Args:
+            sheet_id: Target sheet
+            db: Database session
+            existing_protected_ranges: The sheet's current protectedRanges as
+                returned by spreadsheets.get. Passing them avoids a re-fetch
+                and keeps this a no-op on the hourly reconciliation runs.
+
+        Returns:
+            True if a protection was added, False if one already existed.
+        """
+        if existing_protected_ranges:
+            return False
+
+        request = {
+            "requests": [
+                {
+                    "addProtectedRange": {
+                        "protectedRange": {
+                            "range": {"sheetId": sheet_id},
+                            "description": SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
+                            # warningOnly keeps the sheet editable so volunteers
+                            # can still fill in their own signups - it only
+                            # interposes a confirmation prompt. The API rejects
+                            # a protectedRange that sets both warningOnly and
+                            # editors, so no editor list is sent here.
+                            "warningOnly": True,
+                        }
+                    }
+                }
+            ]
+        }
+
+        def _protect():
+            return self.sheet.batchUpdate(
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
+            ).execute()
+
+        safe_api_call(
+            _protect,
+            max_attempts=ConfigHelper.get_google_sheets_max_retries(db),
+            context=f"protect sheet {sheet_id}",
+        )
+        logger.info(f"Added warning-only protection to sheet {sheet_id}")
+        return True
 
     def hide_sheet(self, sheet_name: str, db: Session):
         """
@@ -838,13 +906,13 @@ class GoogleSheetsService:
                 - display_dates: The dates that should be displayed
         """
         try:
-            now = datetime.now()
-
             # Anchor to the Monday of the week containing "now" - not next
             # Monday - so the display is always accurate to today's date
-            # regardless of which day of the week this runs on.
-            days_since_monday = now.weekday()
-            current_monday = now - timedelta(days=days_since_monday)
+            # regardless of which day of the week this runs on. "Now" is
+            # evaluated in the organization's timezone, not the container's:
+            # Cloud Run has no TZ set, so a naive clock reads UTC and would
+            # anchor a week behind between 00:00 and 07:00 Vietnam time.
+            current_monday = current_week_monday(ConfigHelper.get_schedule_timezone(db))
 
             # Get all existing schedule sheets before rotation
             existing_sheets = self.get_schedule_sheets(db)
@@ -876,6 +944,7 @@ class GoogleSheetsService:
             display_date_set = {date.date() for date in display_dates}
 
             sheets_renamed = []
+            sheets_protected = []
             sheets_failed = []
 
             # Hide the 'Schedule Template' sheet if it exists
@@ -977,21 +1046,26 @@ class GoogleSheetsService:
                     None,
                 )
 
+                target_sheet_id = None
+                protected_ranges = None
                 try:
                     if existing_sheet:
-                        self.set_sheet_visibility(
-                            existing_sheet["properties"]["sheetId"], False, db
-                        )
+                        target_sheet_id = existing_sheet["properties"]["sheetId"]
+                        # Present on the spreadsheets.get response we already
+                        # hold, so protection state costs no extra API call.
+                        protected_ranges = existing_sheet.get("protectedRanges")
+                        self.set_sheet_visibility(target_sheet_id, False, db)
                         self.move_sheet(
-                            existing_sheet["properties"]["sheetId"], i + 1, db
+                            target_sheet_id, i + 1, db
                         )  # +1 to account for template sheet at index 0
                     else:
                         new_sheet_id = self.create_sheet_from_template(
                             "Schedule Template", date, db
                         )
+                        target_sheet_id = int(new_sheet_id)
                         self.update_sheet_dates(date, db)
-                        self.set_sheet_visibility(int(new_sheet_id), False, db)
-                        self.move_sheet(int(new_sheet_id), i + 1, db)
+                        self.set_sheet_visibility(target_sheet_id, False, db)
+                        self.move_sheet(target_sheet_id, i + 1, db)
                 except Exception as e:
                     sheets_failed.append(
                         {"title": sheet_name, "action": "show", "error": str(e)}
@@ -999,6 +1073,26 @@ class GoogleSheetsService:
                     logger.error(
                         f"Failed to prepare sheet '{sheet_name}', continuing rotation: {e}",
                         exc_info=True,
+                    )
+                    continue
+
+                # Protection is applied to every sheet entering the display
+                # window, not just newly created ones, so sheets created before
+                # this existed get repaired in place on the next run. Reported
+                # separately from "show" because a sheet that is visible but
+                # unprotected is a materially different state from one that
+                # never appeared at all.
+                try:
+                    if self.ensure_sheet_protected(
+                        target_sheet_id, db, protected_ranges
+                    ):
+                        sheets_protected.append(sheet_name)
+                except Exception as e:
+                    sheets_failed.append(
+                        {"title": sheet_name, "action": "protect", "error": str(e)}
+                    )
+                    logger.warning(
+                        f"Could not protect sheet '{sheet_name}', continuing rotation: {e}"
                     )
 
             # Get final state after all changes
@@ -1062,6 +1156,7 @@ class GoogleSheetsService:
                 "display_weeks_count": display_weeks_count,
                 "display_weeks_override_used": display_weeks_override is not None,
                 "sheets_renamed": sheets_renamed,
+                "sheets_protected": sheets_protected,
                 "sheets_failed": sheets_failed,
             }
 

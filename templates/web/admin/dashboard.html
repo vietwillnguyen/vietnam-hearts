@@ -537,7 +537,7 @@
                         <hr class="my-4">
                         <div class="mb-3">
                             <h4>⏰ Cron Job Schedules</h4>
-                            <p class="text-muted">Configure when each automated job runs using standard cron expressions (<code>minute hour day-of-month month day-of-week</code>). Changes take effect on the next Cloud Scheduler sync.</p>
+                            <p class="text-muted">Configure when each automated job runs using standard cron expressions (<code>minute hour day-of-month month day-of-week</code>). Save your changes, then press <strong>Apply to Cloud Scheduler</strong> below - saving alone only records the value, it does not reschedule the job. Times use the <code>SCHEDULE_TIMEZONE</code> setting.</p>
                         </div>
 
                         {% set cron_jobs = [
@@ -556,8 +556,8 @@
 {
                                 "key": "CRON_ROTATE_SCHEDULE",
                                 "label": "Rotate Schedule",
-                                "description": "Hide old schedule sheets and reveal the next week's sheet.",
-                                "example": "0 17 * * 5  →  Every Friday at 5:00 PM"
+                                "description": "Reconcile the visible schedule sheets to the current week. Idempotent, so it is safe to run often.",
+                                "example": "0 * * * *  →  Every hour"
                             }
                         ] %}
 
@@ -586,7 +586,11 @@
                         <div class="form-group">
                             <button type="submit" class="btn btn-primary">Save All Settings</button>
                             <button type="button" class="btn btn-secondary ms-2" onclick="resetToDefaults()">Reset to Defaults</button>
+                            <button type="button" class="btn btn-outline-primary ms-2" id="sync-cron-btn" onclick="syncCronSchedules()">
+                                <i class="fas fa-clock"></i> Apply to Cloud Scheduler
+                            </button>
                         </div>
+                        <div id="sync-cron-result" class="mt-2"></div>
                     </form>
                 </div>
             </div>
@@ -1501,6 +1505,54 @@
                 alert(`Error: ${error.message}`);
             } finally {
                 // Restore button state
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function syncCronSchedules() {
+            const button = document.getElementById('sync-cron-btn');
+            const resultDiv = document.getElementById('sync-cron-result');
+            const originalText = button.innerHTML;
+
+            try {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying...';
+                button.disabled = true;
+                resultDiv.innerHTML = '';
+
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/sync-cron-schedules', {
+                    method: 'POST',
+                    headers: headers
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    const synced = (result.details?.synced || [])
+                        .map(j => `${j.job}: ${j.previous_schedule} → ${j.schedule}`)
+                        .join('<br>');
+                    resultDiv.innerHTML =
+                        `<div class="alert alert-success mb-0">${result.message}` +
+                        (synced ? `<div class="mt-2 font-monospace small">${synced}</div>` : '') +
+                        `</div>`;
+                } else {
+                    // Surface partial failures rather than reporting a clean success -
+                    // a job that silently stayed on its old cadence is the whole
+                    // problem this button exists to solve.
+                    const detail = result.detail;
+                    const message = typeof detail === 'string' ? detail : detail?.message;
+                    const failures = (detail?.details?.failed || [])
+                        .map(f => `${f.job}: ${f.error}`)
+                        .join('<br>');
+                    resultDiv.innerHTML =
+                        `<div class="alert alert-danger mb-0">${message || 'Failed to apply cron schedules'}` +
+                        (failures ? `<div class="mt-2 font-monospace small">${failures}</div>` : '') +
+                        `</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
+            } finally {
                 button.innerHTML = originalText;
                 button.disabled = false;
             }

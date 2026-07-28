@@ -21,7 +21,9 @@ CRON_KEYS = [
 EXPECTED_DEFAULTS = {
     "CRON_SYNC_VOLUNTEERS": "0 */2 * * *",
     "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
-    "CRON_ROTATE_SCHEDULE": "0 17 * * 5",
+    # Reconciliation is idempotent, so it runs hourly rather than once a week -
+    # a missed run or a week boundary self-corrects within the hour.
+    "CRON_ROTATE_SCHEDULE": "0 * * * *",
 }
 
 

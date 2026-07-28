@@ -37,38 +37,56 @@ if [ -z "$SUPABASE_SECRET_KEY" ]; then
   exit 1
 fi
 
+# Jobs that could not be created or updated. Reported at the end so one
+# broken job never hides the state of the others.
+FAILED_JOBS=()
+
 # Function to create or update a job
+#
+# `create` takes a whole-value --headers, but `update` only accepts the
+# merge-semantics --update-headers/--remove-headers/--clear-headers trio.
+# Passing --headers to the update path makes gcloud reject the whole command,
+# which is what silently froze the apikey header on rotate-schedule and
+# send-weekly-reminders at a pre-migration Supabase key.
 create_or_update_job() {
     local job_name=$1
     local schedule=$2
     local endpoint=$3
     local description=$4
-    
+
     echo -e "${YELLOW}Setting up job: ${job_name}${NC}"
-    
+
     # Check if job exists
     if gcloud scheduler jobs describe "$job_name" --location="$REGION" >/dev/null 2>&1; then
         echo "Job $job_name already exists. Updating..."
-        gcloud scheduler jobs update http "$job_name" \
+        if gcloud scheduler jobs update http "$job_name" \
             --schedule="$schedule" \
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
-            --headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
+            --update-headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
             --time-zone="$TIMEZONE" \
             --location="$REGION" \
-            --description="$description"
-        echo -e "${GREEN}✓ Updated job: ${job_name}${NC}"
+            --description="$description"; then
+            echo -e "${GREEN}✓ Updated job: ${job_name}${NC}"
+        else
+            FAILED_JOBS+=("$job_name")
+            echo -e "${RED}✗ Failed to update job: ${job_name}${NC}"
+        fi
     else
         echo "Creating new job: $job_name"
-        gcloud scheduler jobs create http "$job_name" \
+        if gcloud scheduler jobs create http "$job_name" \
             --schedule="$schedule" \
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
             --headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
             --time-zone="$TIMEZONE" \
             --location="$REGION" \
-            --description="$description"
-        echo -e "${GREEN}✓ Created job: ${job_name}${NC}"
+            --description="$description"; then
+            echo -e "${GREEN}✓ Created job: ${job_name}${NC}"
+        else
+            FAILED_JOBS+=("$job_name")
+            echo -e "${RED}✗ Failed to create job: ${job_name}${NC}"
+        fi
     fi
 }
 
@@ -105,11 +123,24 @@ create_or_update_job \
     "/admin/send-weekly-reminders" \
     "Send weekly reminders every Sunday at 12 PM"
 
+# Reconciling schedule sheets is idempotent - it converges on the same target
+# state for "now" no matter how often it runs - so it is scheduled frequently
+# rather than once a week. That way a missed run, a manual edit, or a week
+# boundary is corrected within the hour instead of waiting until Friday.
+# This value is only the bootstrap default; the live cadence is owned by the
+# CRON_ROTATE_SCHEDULE setting and applied by POST /admin/sync-cron-schedules.
 create_or_update_job \
     "rotate-schedule" \
-    "0 17 * * 5" \
+    "0 * * * *" \
     "/admin/rotate-schedule" \
-    "Rotate schedule every Friday at 5 PM"
+    "Reconcile schedule sheets to the current week (hourly)"
+
+if [ ${#FAILED_JOBS[@]} -gt 0 ]; then
+    echo -e "${RED}❌ ${#FAILED_JOBS[@]} job(s) failed: ${FAILED_JOBS[*]}${NC}"
+    echo -e "${YELLOW}Final job status:${NC}"
+    list_existing_jobs
+    exit 1
+fi
 
 echo -e "${GREEN}✅ All scheduled jobs deployed successfully!${NC}"
 
