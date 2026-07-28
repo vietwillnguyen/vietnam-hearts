@@ -47,6 +47,12 @@ The admin dashboard now includes real-time validation for Google Sheets URLs:
 - Tooltip showing the extracted sheet ID
 - Helpful placeholder text with example URLs
 
+### Schedule Sheet Protection
+
+Every schedule tab that enters the visible window carries a warning-only Google Sheets protection.
+Volunteers can still fill in their own signup rows; Sheets only interposes a confirmation prompt, so an accidental edit, rename, or tab deletion has to be confirmed first.
+The protection is applied to existing tabs as well as newly created ones, so tabs that predate it are repaired in place on the next reconciliation run without any manual backfill.
+
 ### Backward Compatibility
 
 The system maintains backward compatibility:

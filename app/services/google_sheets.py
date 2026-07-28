@@ -17,11 +17,18 @@ from app.utils.google_credentials import default_credentials, get_scoped_credent
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error, safe_api_call
 from app.utils.schedule_dates import (
+    current_week_monday,
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
 )
 
 logger = get_api_logger()
+
+# Shown in the Sheets UI when someone edits a protected schedule tab.
+SCHEDULE_SHEET_PROTECTION_DESCRIPTION = (
+    "Vietnam Hearts schedule sheet - managed automatically. "
+    "Edit your own signup rows only; do not rename or delete this tab."
+)
 
 # Google Sheets API setup
 # Update the scopes to include write permissions
@@ -85,6 +92,75 @@ SIGNUP_SHEET_HEADERS = [
     "ta_per_class",  # AX
     "current_address",  # AY
 ]
+
+# A whole-sheet protectedRange carries only the sheetId - any start/end row or
+# column bound narrows it to a sub-range.
+_RANGE_BOUND_KEYS = (
+    "startRowIndex",
+    "endRowIndex",
+    "startColumnIndex",
+    "endColumnIndex",
+)
+
+
+def _is_whole_sheet_protection(protected_range: dict, sheet_id: int) -> bool:
+    """Whether a protectedRange is the whole-sheet protection this app adds.
+
+    Matched on shape or on our own description, so an unrelated narrow
+    protection (e.g. a manually locked header row) is not mistaken for
+    whole-sheet coverage and does not stop the sheet from getting it.
+    """
+    if not isinstance(protected_range, dict):
+        return False
+    if protected_range.get("description") == SCHEDULE_SHEET_PROTECTION_DESCRIPTION:
+        return True
+    target = protected_range.get("range") or {}
+    return target.get("sheetId") == sheet_id and not any(
+        key in target for key in _RANGE_BOUND_KEYS
+    )
+
+
+def _live_index_after_move(
+    live_indexes: dict[int, int], sheet_id: int, target_index: int
+) -> None:
+    """Update a local sheetId -> index map to reflect one completed move.
+
+    Reconciliation reads sheet positions from a single metadata snapshot but
+    then reorders sheets, so every move invalidates part of that snapshot.
+    Mirroring the moves here is what lets a later "is this sheet already in
+    position?" check compare against the order this run has produced rather
+    than the order it started from.
+    """
+    previous_index = live_indexes.get(sheet_id)
+    if previous_index is None or previous_index == target_index:
+        live_indexes[sheet_id] = target_index
+        return
+
+    if target_index < previous_index:
+        # Moving a sheet earlier pushes everything it passed one place later.
+        for other_id, index in live_indexes.items():
+            if other_id != sheet_id and target_index <= index < previous_index:
+                live_indexes[other_id] = index + 1
+        live_indexes[sheet_id] = target_index
+        return
+
+    # The Sheets API reads a higher target index in "before the move"
+    # coordinates, so the sheet settles one place earlier than requested.
+    landed_index = target_index - 1
+    for other_id, index in live_indexes.items():
+        if other_id != sheet_id and previous_index < index <= landed_index:
+            live_indexes[other_id] = index - 1
+    live_indexes[sheet_id] = landed_index
+
+
+def _live_index_after_insert(
+    live_indexes: dict[int, int], sheet_id: int, target_index: int
+) -> None:
+    """Update the map for a freshly created sheet that ended up at target_index."""
+    for other_id, index in live_indexes.items():
+        if other_id != sheet_id and index >= target_index:
+            live_indexes[other_id] = index + 1
+    live_indexes[sheet_id] = target_index
 
 
 class GoogleSheetsService:
@@ -425,6 +501,73 @@ class GoogleSheetsService:
                 f"Failed to create sheet from template: {str(e)}", exc_info=True
             )
             raise
+
+    def ensure_sheet_protected(
+        self,
+        sheet_id: int,
+        db: Session,
+        existing_protected_ranges: list[dict] | None = None,
+    ) -> bool:
+        """
+        Ensure a schedule sheet carries a warning-only whole-sheet protection.
+
+        `duplicateSheet` copies a tab's content and formatting but not its
+        protected ranges, so every sheet cloned from "Schedule Template"
+        starts out unprotected. The spreadsheet is shared as link-editable,
+        which means an anonymous visitor can edit or delete those tabs with
+        no audit trail - the likely cause of "Schedule 07/06" disappearing
+        twice in June/July 2026.
+
+        Args:
+            sheet_id: Target sheet
+            db: Database session
+            existing_protected_ranges: The sheet's current protectedRanges as
+                returned by spreadsheets.get. Passing them avoids a re-fetch
+                and keeps this a no-op on the hourly reconciliation runs.
+                Only a whole-sheet protection counts as coverage: a sheet that
+                merely carries an unrelated narrow protection (say a manually
+                locked header row) still needs the whole-sheet one added.
+
+        Returns:
+            True if a protection was added, False if one already existed.
+        """
+        if any(
+            _is_whole_sheet_protection(protected_range, sheet_id)
+            for protected_range in (existing_protected_ranges or [])
+        ):
+            return False
+
+        request = {
+            "requests": [
+                {
+                    "addProtectedRange": {
+                        "protectedRange": {
+                            "range": {"sheetId": sheet_id},
+                            "description": SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
+                            # warningOnly keeps the sheet editable so volunteers
+                            # can still fill in their own signups - it only
+                            # interposes a confirmation prompt. The API rejects
+                            # a protectedRange that sets both warningOnly and
+                            # editors, so no editor list is sent here.
+                            "warningOnly": True,
+                        }
+                    }
+                }
+            ]
+        }
+
+        def _protect():
+            return self.sheet.batchUpdate(
+                spreadsheetId=ConfigHelper.get_schedule_sheet_id(db), body=request
+            ).execute()
+
+        safe_api_call(
+            _protect,
+            max_attempts=ConfigHelper.get_google_sheets_max_retries(db),
+            context=f"protect sheet {sheet_id}",
+        )
+        logger.info(f"Added warning-only protection to sheet {sheet_id}")
+        return True
 
     def hide_sheet(self, sheet_name: str, db: Session):
         """
@@ -838,13 +981,13 @@ class GoogleSheetsService:
                 - display_dates: The dates that should be displayed
         """
         try:
-            now = datetime.now()
-
             # Anchor to the Monday of the week containing "now" - not next
             # Monday - so the display is always accurate to today's date
-            # regardless of which day of the week this runs on.
-            days_since_monday = now.weekday()
-            current_monday = now - timedelta(days=days_since_monday)
+            # regardless of which day of the week this runs on. "Now" is
+            # evaluated in the organization's timezone, not the container's:
+            # Cloud Run has no TZ set, so a naive clock reads UTC and would
+            # anchor a week behind between 00:00 and 07:00 Vietnam time.
+            current_monday = current_week_monday(ConfigHelper.get_schedule_timezone(db))
 
             # Get all existing schedule sheets before rotation
             existing_sheets = self.get_schedule_sheets(db)
@@ -876,7 +1019,17 @@ class GoogleSheetsService:
             display_date_set = {date.date() for date in display_dates}
 
             sheets_renamed = []
+            sheets_protected = []
             sheets_failed = []
+
+            # Live position of every sheet, kept in step with the moves made
+            # below. PASS 2 skips writes for sheets already in place, and at an
+            # hourly cadence "already in place" is the normal case - so the
+            # comparison has to be against current reality, not the snapshot.
+            live_indexes = {
+                sheet["properties"]["sheetId"]: sheet["properties"].get("index", 0)
+                for sheet in existing_sheets
+            }
 
             # Hide the 'Schedule Template' sheet if it exists
             template_sheet = next(
@@ -977,21 +1130,37 @@ class GoogleSheetsService:
                     None,
                 )
 
+                target_sheet_id = None
+                protected_ranges = None
+                target_index = i + 1  # +1 to account for template sheet at index 0
                 try:
                     if existing_sheet:
-                        self.set_sheet_visibility(
-                            existing_sheet["properties"]["sheetId"], False, db
-                        )
-                        self.move_sheet(
-                            existing_sheet["properties"]["sheetId"], i + 1, db
-                        )  # +1 to account for template sheet at index 0
+                        target_sheet_id = existing_sheet["properties"]["sheetId"]
+                        # Present on the spreadsheets.get response we already
+                        # hold, so protection state costs no extra API call.
+                        protected_ranges = existing_sheet.get("protectedRanges")
+                        # Each skipped write is one fewer entry in the
+                        # spreadsheet's revision history, which at 24 runs a
+                        # day is the difference between a quiet reconciliation
+                        # and one that reattributes every tab daily.
+                        if existing_sheet["properties"].get("hidden", False):
+                            self.set_sheet_visibility(target_sheet_id, False, db)
+                        if live_indexes.get(target_sheet_id) != target_index:
+                            self.move_sheet(target_sheet_id, target_index, db)
+                            _live_index_after_move(
+                                live_indexes, target_sheet_id, target_index
+                            )
                     else:
                         new_sheet_id = self.create_sheet_from_template(
                             "Schedule Template", date, db
                         )
+                        target_sheet_id = int(new_sheet_id)
                         self.update_sheet_dates(date, db)
-                        self.set_sheet_visibility(int(new_sheet_id), False, db)
-                        self.move_sheet(int(new_sheet_id), i + 1, db)
+                        self.set_sheet_visibility(target_sheet_id, False, db)
+                        self.move_sheet(target_sheet_id, target_index, db)
+                        _live_index_after_insert(
+                            live_indexes, target_sheet_id, target_index
+                        )
                 except Exception as e:
                     sheets_failed.append(
                         {"title": sheet_name, "action": "show", "error": str(e)}
@@ -999,6 +1168,26 @@ class GoogleSheetsService:
                     logger.error(
                         f"Failed to prepare sheet '{sheet_name}', continuing rotation: {e}",
                         exc_info=True,
+                    )
+                    continue
+
+                # Protection is applied to every sheet entering the display
+                # window, not just newly created ones, so sheets created before
+                # this existed get repaired in place on the next run. Reported
+                # separately from "show" because a sheet that is visible but
+                # unprotected is a materially different state from one that
+                # never appeared at all.
+                try:
+                    if self.ensure_sheet_protected(
+                        target_sheet_id, db, protected_ranges
+                    ):
+                        sheets_protected.append(sheet_name)
+                except Exception as e:
+                    sheets_failed.append(
+                        {"title": sheet_name, "action": "protect", "error": str(e)}
+                    )
+                    logger.warning(
+                        f"Could not protect sheet '{sheet_name}', continuing rotation: {e}"
                     )
 
             # Get final state after all changes
@@ -1062,6 +1251,7 @@ class GoogleSheetsService:
                 "display_weeks_count": display_weeks_count,
                 "display_weeks_override_used": display_weeks_override is not None,
                 "sheets_renamed": sheets_renamed,
+                "sheets_protected": sheets_protected,
                 "sheets_failed": sheets_failed,
             }
 

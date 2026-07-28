@@ -382,7 +382,10 @@ class TestRotateScheduleEndpoint:
         assert response.status_code == 500
         assert "boom" in response.json()["detail"]
 
-    def test_partial_failure_returns_200_with_skip_message(self, admin_client):
+    def test_partial_failure_returns_502_with_details(self, admin_client):
+        # Cloud Scheduler calls this hourly and only sees the status code, so a
+        # sheet left unreconciled must not be recorded as a green run - that
+        # blind spot is why the pre-migration 401s went unnoticed for weeks.
         result = {
             "sheets_failed": [
                 {"title": "Schedule 07/07", "action": "hide", "error": "protected"}
@@ -392,10 +395,21 @@ class TestRotateScheduleEndpoint:
             sheets_service, "rotate_schedule_sheets", return_value=result
         ):
             response = admin_client.post("/admin/rotate-schedule")
+        assert response.status_code == 502
+        detail = response.json()["detail"]
+        assert "1 sheet(s) skipped" in detail["message"]
+        assert detail["details"]["sheets_failed"] == result["sheets_failed"]
+
+    def test_clean_rotation_returns_200(self, admin_client):
+        result = {"sheets_failed": [], "sheets_renamed": []}
+        with patch.object(
+            sheets_service, "rotate_schedule_sheets", return_value=result
+        ):
+            response = admin_client.post("/admin/rotate-schedule")
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "success"
-        assert "skipped" in body["message"]
+        assert body["details"] == result
 
     def test_invalid_display_weeks_returns_400(self, admin_client):
         response = admin_client.post("/admin/rotate-schedule?display_weeks=13")

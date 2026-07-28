@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.models import Setting
+from app.utils.schedule_dates import DEFAULT_SCHEDULE_TIMEZONE
 
 
 def get_setting(db: Session, key: str, default: str | None = None) -> str | None:
@@ -147,7 +148,16 @@ def initialize_default_settings(db: Session) -> None:
         },
         "SCHEDULE_SHEETS_DISPLAY_WEEKS_COUNT": {
             "value": "4",
-            "description": "The default number of weeks to display in the schedule sheets",
+            "description": "How many weeks of schedule sheets stay visible, counting from the current week",
+        },
+        "SCHEDULE_TIMEZONE": {
+            "value": DEFAULT_SCHEDULE_TIMEZONE,
+            "description": (
+                "IANA timezone the schedule week is anchored to, e.g. Asia/Ho_Chi_Minh. "
+                "Cloud Run containers run on UTC, so without this the display window "
+                "would shift a week early between midnight and 7am Vietnam time. Also "
+                "used as the timezone of the Cloud Scheduler cron jobs below."
+            ),
         },
         "CRON_SYNC_VOLUNTEERS": {
             "value": "0 */2 * * *",
@@ -158,8 +168,13 @@ def initialize_default_settings(db: Session) -> None:
             "description": "Cron schedule for sending weekly reminder emails (default: every Sunday at 12:00 PM)",
         },
         "CRON_ROTATE_SCHEDULE": {
-            "value": "0 17 * * 5",
-            "description": "Cron schedule for rotating schedule sheets (default: every Friday at 5:00 PM)",
+            "value": "0 * * * *",
+            "description": (
+                "Cron schedule for reconciling schedule sheets to the current week "
+                "(default: hourly). The operation is idempotent, so running it often "
+                "just means a missed run, a manual edit, or a week boundary is "
+                "corrected within the hour instead of days later."
+            ),
         },
     }
 
@@ -170,5 +185,12 @@ def initialize_default_settings(db: Session) -> None:
                 key=key, value=config["value"], description=config["description"]
             )
             db.add(setting)
+        elif existing.description != config["description"]:
+            # Values belong to whoever last edited them, but descriptions are
+            # this code's own documentation of the key: without this, rewording
+            # one leaves every already-deployed database showing the old text
+            # forever. updated_at is deliberately left alone so a doc refresh
+            # is not mistaken for a configuration change.
+            existing.description = config["description"]
 
     db.commit()

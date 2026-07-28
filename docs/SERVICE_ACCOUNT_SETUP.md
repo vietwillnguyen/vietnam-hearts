@@ -8,17 +8,12 @@ The application uses Supabase authentication for all admin endpoints:
 
 1. **Admin Endpoints** (`/admin/*`): Supabase authentication required
 2. **Auth Endpoints** (`/auth/*`): Handle Supabase authentication
-3. **Public Endpoints** (`/public/*`): No authentication required
+3. **Public Endpoints** (`/`, `/health`, `/unsubscribe`): No authentication required
 
 ## Admin API Access
 
-All the scheduler API endpoints are now under the admin router and require authentication:
-
-```bash
-# Test admin API endpoints (requires Supabase auth)
-python tests/test_api.py health --auth-type=supabase
-python tests/test_api.py all --auth-type=supabase
-```
+All the scheduler API endpoints are now under the admin router (`/admin/*`) and require authentication.
+Non-interactive callers such as Cloud Scheduler authenticate with an `apikey` header carrying `SUPABASE_SECRET_KEY`; see [Exercising an endpoint by hand](../tests/README.md#exercising-an-endpoint-by-hand) for the full request recipe and the endpoint list.
 
 ## Admin Access via Supabase
 
@@ -40,43 +35,17 @@ Install the required dependencies:
 uv sync
 ```
 
-### Step 3: Test Admin Access
+### Step 3: Verify Admin Access
 
-Test admin endpoints using Supabase authentication:
-
-```bash
-# Test individual endpoints
-python tests/test_api.py health --auth-type=supabase
-python tests/test_api.py send-confirmation-emails --auth-type=supabase
-python tests/test_api.py sync-volunteers --auth-type=supabase
-python tests/test_api.py send-weekly-reminders --auth-type=supabase
-python tests/test_api.py rotate-schedule --auth-type=supabase
-
-# Test all endpoints
-python tests/test_api.py all --auth-type=supabase
-```
-
-## Testing Your Setup
-
-### Test Admin Endpoints
-
-All scheduler endpoints now require Supabase authentication:
+With the application running, confirm the service account is recognised as an admin:
 
 ```bash
-# Test with Supabase authentication (all endpoints)
-python tests/test_api.py health --auth-type=supabase
-python tests/test_api.py send-confirmation-emails --auth-type=supabase
-python tests/test_api.py sync-volunteers --auth-type=supabase
-python tests/test_api.py send-weekly-reminders --auth-type=supabase
-python tests/test_api.py rotate-schedule --auth-type=supabase
+curl http://localhost:8080/admin/health \
+  -H "apikey: $SUPABASE_SECRET_KEY"
 ```
 
-### Test All Endpoints
-
-```bash
-# Test all endpoints with appropriate authentication
-python tests/test_api.py all --auth-type=supabase
-```
+A `200` with a health payload means the setup is complete.
+A `401` means the key does not match the server's `SUPABASE_SECRET_KEY`; a `403` means the key was accepted but its identity is not in `ADMIN_EMAILS`.
 
 ## Environment Variables Required
 
@@ -106,23 +75,22 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 
 ## Troubleshooting
 
-### "Failed to get Supabase authentication token"
+### `401 Invalid service role key`
 
-1. Check that `SUPABASE_SECRET_KEY` is set in your `.env` file
-2. Verify the secret key is correct
-3. Make sure PyJWT is installed: `uv sync`
+1. Check that `SUPABASE_SECRET_KEY` is set in the environment the *server* runs with
+2. Verify the `apikey` header value matches it exactly - a rotated key is the usual cause
+3. After rotating the key, re-run `scripts/create-or-update-scheduler-jobs.sh` so the Cloud Scheduler jobs pick up the new value
 
-### "Access denied" for admin endpoints
+### `403 Admin access required`
 
 1. Check that your service account email is in `ADMIN_EMAILS`
 2. Verify the email spelling (no extra spaces)
 3. Restart the application after changing `ADMIN_EMAILS`
 
-### "Connection error"
+### Connection errors
 
 1. Make sure the application is running on the expected URL
-2. Check the `API_BASE_URL` environment variable
-3. Verify the application is accessible
+2. Verify the application is accessible at that URL (`curl <url>/docs`)
 
 ## Security Considerations
 
@@ -142,19 +110,21 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
 
 ## Example Usage in CI/CD
 
-For automated testing in CI/CD pipelines:
+To smoke-test a deployed service from a pipeline, call an admin endpoint with the same `apikey` header the scheduler jobs use:
 
 ```yaml
-# Example GitHub Actions workflow
-- name: Test API Endpoints
+# Example GitHub Actions step
+- name: Smoke-test admin API
   run: |
-    python tests/test_api.py health
-    python tests/test_api.py all --auth-type=supabase
+    curl --fail --silent --show-error \
+      "${BASE_URL}/admin/health" \
+      -H "apikey: ${SUPABASE_SECRET_KEY}"
   env:
-    SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+    BASE_URL: ${{ vars.BASE_URL }}
     SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-    ADMIN_EMAILS: auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com
 ```
+
+The repository's own test workflow does not do this; it runs the pytest suite, which mocks Supabase entirely and needs no credentials.
 
 ## Next Steps
 

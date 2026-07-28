@@ -120,6 +120,7 @@ The application uses the following environment variables (see `env.template` for
      service's runtime service account the `roles/iam.serviceAccountTokenCreator`
      role on itself, and the app will self-impersonate to mint Sheets/Drive/Docs-scoped
      tokens from Application Default Credentials (see `app/utils/google_credentials.py`)
+   - That same runtime service account also needs `roles/cloudscheduler.admin` for `POST /admin/sync-cron-schedules` to apply the `CRON_*` settings; without it the endpoint reports a per-job permission error
 
 4. **Share Google Sheets**:
    - Share your schedule and signup sheets with the service account email
@@ -164,8 +165,8 @@ The application uses the following environment variables (see `env.template` for
 Once running, the API will be available at:
 
 - **API Documentation**: `http://localhost:8080/docs`
-- **Health Check**: `http://localhost:8080/health`
-- **Admin Endpoints**: `http://localhost:8080/admin/*` (development only)
+- **Health Check**: `http://localhost:8080/health` (public)
+- **Admin Endpoints**: `http://localhost:8080/admin/*` (admin auth required; Cloud Scheduler calls these in production - see [`tests/README.md`](tests/README.md) for the endpoint list and how to call them by hand)
 
 ## Deploy Configuration
 
@@ -183,7 +184,7 @@ CLOUD_RUN_SERVICE     # Cloud Run service identifier
 CLOUD_RUN_REGION      # Cloud Run region (northamerica-northeast1)
 BASE_URL              # Public service URL
 SCHEDULER_REGION      # Cloud Scheduler region
-SCHEDULER_TIMEZONE    # Cron job timezone
+SCHEDULER_TIMEZONE    # Cron job timezone at creation (live value: SCHEDULE_TIMEZONE setting)
 ```
 
 To change the deployment target (e.g. bump version or change region), edit `scripts/deploy.config`.
@@ -214,7 +215,14 @@ Docker management CLI for build/push/pull/run:
 
 ### `scripts/create-or-update-scheduler-jobs.sh`
 Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule).
-Reads scheduler region and timezone from `deploy.config`.
+Reads scheduler region and timezone from `deploy.config`, and the `apikey` header from `SUPABASE_SECRET_KEY` in `.env`.
+
+Run this after rotating the Supabase secret key.
+Each job stores its own copy of that key in an HTTP header, so a rotated key leaves every job authenticating with a stale credential until the script is re-run - the jobs keep firing on schedule and the endpoint answers `401`, which surfaces only as a job-level error status in Cloud Scheduler.
+
+This script owns job *existence* and *credentials*.
+The job *cadence* is owned by the `CRON_*` settings and applied by `POST /admin/sync-cron-schedules`; the schedule and timezone in this script are only bootstrap defaults, sent when creating a job that does not exist yet.
+Re-running the script against existing jobs refreshes the `apikey` header, URI, and description but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
 
 ### `run.sh`
 Local application runner (no Docker):

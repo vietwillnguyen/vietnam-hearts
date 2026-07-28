@@ -537,7 +537,7 @@
                         <hr class="my-4">
                         <div class="mb-3">
                             <h4>⏰ Cron Job Schedules</h4>
-                            <p class="text-muted">Configure when each automated job runs using standard cron expressions (<code>minute hour day-of-month month day-of-week</code>). Changes take effect on the next Cloud Scheduler sync.</p>
+                            <p class="text-muted">Configure when each automated job runs using standard cron expressions (<code>minute hour day-of-month month day-of-week</code>). Save your changes, then press <strong>Apply to Cloud Scheduler</strong> below - saving alone only records the value, it does not reschedule the job. Times use the <code>SCHEDULE_TIMEZONE</code> setting.</p>
                         </div>
 
                         {% set cron_jobs = [
@@ -556,18 +556,17 @@
 {
                                 "key": "CRON_ROTATE_SCHEDULE",
                                 "label": "Rotate Schedule",
-                                "description": "Hide old schedule sheets and reveal the next week's sheet.",
-                                "example": "0 17 * * 5  →  Every Friday at 5:00 PM"
+                                "description": "Reconcile the visible schedule sheets to the current week. Idempotent, so it is safe to run often.",
+                                "example": "0 * * * *  →  Every hour"
                             }
                         ] %}
 
                         {% for job in cron_jobs %}
-                            {% set current_value = "" %}
-                            {% for s in settings %}
-                                {% if s.key == job.key %}
-                                    {% set current_value = s.value %}
-                                {% endif %}
-                            {% endfor %}
+                            {# Resolved as one expression rather than a nested loop with
+                               {% set %}: Jinja scopes an assignment to the block it sits
+                               in, so setting current_value inside a {% for %} is discarded
+                               at {% endfor %} and every field rendered value="". #}
+                            {% set current_value = settings | selectattr("key", "equalto", job.key) | map(attribute="value") | first | default("", true) %}
                         <div class="form-group">
                             <label for="{{ job.key }}" class="form-label">
                                 {{ job.label }}
@@ -578,7 +577,7 @@
                                    id="{{ job.key }}"
                                    name="{{ job.key }}"
                                    value="{{ current_value }}"
-                                   placeholder="{{ job.example.split('→')[0].strip() }}">
+                                   placeholder="Not set - enter a cron expression">
                             <div class="form-text">{{ job.description }} <span class="text-secondary">e.g. {{ job.example }}</span></div>
                         </div>
                         {% endfor %}
@@ -586,7 +585,11 @@
                         <div class="form-group">
                             <button type="submit" class="btn btn-primary">Save All Settings</button>
                             <button type="button" class="btn btn-secondary ms-2" onclick="resetToDefaults()">Reset to Defaults</button>
+                            <button type="button" class="btn btn-outline-primary ms-2" id="sync-cron-btn" onclick="syncCronSchedules()">
+                                <i class="fas fa-clock"></i> Apply to Cloud Scheduler
+                            </button>
                         </div>
+                        <div id="sync-cron-result" class="mt-2"></div>
                     </form>
                 </div>
             </div>
@@ -1506,6 +1509,58 @@
             }
         }
 
+        async function syncCronSchedules() {
+            const button = document.getElementById('sync-cron-btn');
+            const resultDiv = document.getElementById('sync-cron-result');
+            const originalText = button.innerHTML;
+
+            try {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying...';
+                button.disabled = true;
+                resultDiv.innerHTML = '';
+
+                const headers = await getAuthHeaders();
+                const response = await fetch('/admin/sync-cron-schedules', {
+                    method: 'POST',
+                    headers: headers
+                });
+
+                const result = await response.json();
+
+                // Every interpolated value below originates server-side and can
+                // contain a stored setting value verbatim (an invalid cron
+                // expression is echoed back, not sanitized), so it is escaped
+                // rather than trusted.
+                if (response.ok) {
+                    const synced = (result.details?.synced || [])
+                        .map(j => `${escapeHtml(j.job)}: ${escapeHtml(j.previous_schedule)} → ${escapeHtml(j.schedule)}`)
+                        .join('<br>');
+                    resultDiv.innerHTML =
+                        `<div class="alert alert-success mb-0">${escapeHtml(result.message)}` +
+                        (synced ? `<div class="mt-2 font-monospace small">${synced}</div>` : '') +
+                        `</div>`;
+                } else {
+                    // Surface partial failures rather than reporting a clean success -
+                    // a job that silently stayed on its old cadence is the whole
+                    // problem this button exists to solve.
+                    const detail = result.detail;
+                    const message = typeof detail === 'string' ? detail : detail?.message;
+                    const failures = (detail?.details?.failed || [])
+                        .map(f => `${escapeHtml(f.job)}: ${escapeHtml(f.error)}`)
+                        .join('<br>');
+                    resultDiv.innerHTML =
+                        `<div class="alert alert-danger mb-0">${escapeHtml(message || 'Failed to apply cron schedules')}` +
+                        (failures ? `<div class="mt-2 font-monospace small">${failures}</div>` : '') +
+                        `</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.message)}</div>`;
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
         async function judgePendingSubmissions() {
             const button = document.querySelector('[data-action="judge-pending-submissions"]');
             const resultDiv = document.getElementById('judgeResult');
@@ -2092,7 +2147,22 @@
                     // Refresh the schedule data
                     await loadScheduleData();
                 } else {
-                    alert(`❌ Error: ${result.detail || result.message || 'Failed to rotate schedule'}`);
+                    // A partial rotation answers 502 with a structured detail, so
+                    // spell out which sheets were skipped instead of alerting
+                    // "[object Object]" - and still refresh, because the sheets
+                    // that did reconcile have changed.
+                    const detail = result.detail;
+                    let message = typeof detail === 'string'
+                        ? detail
+                        : (detail?.message || result.message || 'Failed to rotate schedule');
+                    const failures = detail?.details?.sheets_failed || [];
+                    if (failures.length > 0) {
+                        message += `\n\n` + failures
+                            .map(f => `• ${f.title} (${f.action}): ${f.error}`)
+                            .join('\n');
+                    }
+                    alert(`❌ Error: ${message}`);
+                    await loadScheduleData();
                 }
             } catch (error) {
                 console.error('Error rotating schedule:', error);

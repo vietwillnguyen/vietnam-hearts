@@ -18,6 +18,7 @@ from app.config import (
     PORT,
 )
 from app.services.settings_service import get_setting
+from app.utils.schedule_dates import DEFAULT_SCHEDULE_TIMEZONE
 from app.utils.sheet_utils import extract_sheet_id_from_url
 
 
@@ -103,6 +104,19 @@ class ConfigHelper:
             return int(value) if value else default
         except (ValueError, TypeError):
             return default
+
+    @staticmethod
+    def get_schedule_timezone(
+        db: Session, default: str = DEFAULT_SCHEDULE_TIMEZONE
+    ) -> str:
+        """Get the IANA timezone the schedule week is anchored to.
+
+        Cloud Run runs the container on UTC, so this must not fall back to the
+        host clock - see current_week_monday().
+        """
+        if db is None:
+            return default
+        return get_setting(db, "SCHEDULE_TIMEZONE", default) or default
 
     @staticmethod
     def get_google_sheets_max_retries(db: Session, default: int = 3) -> int:

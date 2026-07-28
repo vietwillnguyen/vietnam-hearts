@@ -28,6 +28,11 @@ dependencies = [
     "google-genai>=2.0.0,<3",
     "sentry-sdk[fastapi]>=2.19.0,<3",
     "alembic>=1.18.5,<2",
+    # Ships the IANA zone database inside the venv so zoneinfo lookups
+    # (SCHEDULE_TIMEZONE, see app/utils/schedule_dates.py) never depend on
+    # the base image carrying /usr/share/zoneinfo. No upper bound: tzdata is
+    # calendar-versioned data, so any ceiling would expire on its own.
+    "tzdata>=2024.1",
 ]
 
 [dependency-groups]
@@ -36,6 +41,12 @@ dev = [
     "pytest-cov>=6.0.0,<7",
     "ruff>=0.8.0,<0.9",
     "pre-commit>=4.0.0,<5",
+    # tools/api_tester.py (the manual-invocation CLI documented in
+    # tests/README.md) imports requests. It resolved before only because
+    # google-api-core pulls requests in transitively, so any future dependency
+    # change could have broken a documented command. Dev group, not runtime:
+    # the Dockerfile builds with `uv sync --no-dev` and never copies tools/.
+    "requests>=2.31.0,<3",
 ]
 
 [build-system]

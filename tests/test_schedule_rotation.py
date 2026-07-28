@@ -29,7 +29,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.google_sheets import GoogleSheetsService
+from app.services.google_sheets import (
+    SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
+    GoogleSheetsService,
+)
 from app.utils.schedule_dates import format_schedule_sheet_title
 
 
@@ -184,8 +187,9 @@ class TestRotationAnchorDate:
         monday = datetime(2026, 7, 20)
         assert monday.weekday() == 0  # sanity check: this really is a Monday
 
-        with patch("app.services.google_sheets.datetime") as mock_dt:
-            mock_dt.now.return_value = monday
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
             result = rotate(service, [], weeks=2)
 
         assert result["display_dates"][0] == monday.strftime("%d/%m/%Y")
@@ -194,15 +198,36 @@ class TestRotationAnchorDate:
         )
 
     def test_display_starts_on_current_weeks_monday_when_run_midweek(self, service):
-        wednesday = datetime(2026, 7, 22)
-        assert wednesday.weekday() == 2
+        # current_week_monday() already collapses any day of the week to that
+        # week's Monday (covered in test_schedule_dates.py); what matters here
+        # is that rotation builds its window from that anchor rather than from
+        # the raw call time.
         expected_monday = datetime(2026, 7, 20)
 
-        with patch("app.services.google_sheets.datetime") as mock_dt:
-            mock_dt.now.return_value = wednesday
+        with patch(
+            "app.services.google_sheets.current_week_monday",
+            return_value=expected_monday,
+        ):
             result = rotate(service, [], weeks=1)
 
         assert result["display_dates"][0] == expected_monday.strftime("%d/%m/%Y")
+
+    def test_anchor_is_resolved_in_the_configured_timezone(self, service):
+        # Rotation must ask for the org's timezone, not use the container clock.
+        with (
+            patch(
+                "app.services.google_sheets.ConfigHelper.get_schedule_timezone",
+                return_value="Asia/Ho_Chi_Minh",
+            ) as mock_tz,
+            patch(
+                "app.services.google_sheets.current_week_monday",
+                return_value=datetime(2026, 7, 20),
+            ) as mock_anchor,
+        ):
+            rotate(service, [], weeks=1)
+
+        mock_tz.assert_called_once()
+        mock_anchor.assert_called_once_with("Asia/Ho_Chi_Minh")
 
 
 class TestRotationBackfill:
@@ -334,3 +359,288 @@ class TestRotationOrderingAndCount:
         assert 23 in hidden_ids
         assert 20 not in hidden_ids
         assert 21 not in hidden_ids
+
+
+class TestRotationWriteEconomy:
+    """Reconciliation must be a true no-op when nothing has drifted.
+
+    The cadence moved from weekly to hourly, so an unconditional
+    show + move on every display sheet went from ~8 pointless batchUpdate
+    writes a week to ~192 a day, each one adding a revision-history entry and
+    reattributing the spreadsheet's last edit to the service account.
+    """
+
+    @pytest.fixture
+    def aligned_service(self, service):
+        service.ensure_sheet_protected = MagicMock(return_value=False)
+        return service
+
+    def _window(self, monday, weeks, hidden=False, indexes=None):
+        return [
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=7 * i)),
+                sheet_id=10 + i,
+                index=indexes[i] if indexes else i + 1,
+                hidden=hidden,
+            )
+            for i in range(weeks)
+        ]
+
+    def test_no_writes_when_window_is_already_correct(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        sheets = [sheet_props("Schedule Template", sheet_id=1, hidden=True)]
+        sheets += self._window(monday, weeks=3)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            result = rotate(aligned_service, sheets, weeks=3)
+
+        aligned_service.set_sheet_visibility.assert_not_called()
+        aligned_service.move_sheet.assert_not_called()
+        aligned_service.rename_sheet.assert_not_called()
+        aligned_service.create_sheet_from_template.assert_not_called()
+        assert result["sheets_failed"] == []
+
+    def test_hidden_display_sheet_is_still_unhidden(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        sheets = [sheet_props("Schedule Template", sheet_id=1, hidden=True)]
+        sheets += self._window(monday, weeks=1, hidden=True)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, sheets, weeks=1)
+
+        assert [
+            (c.args[0], c.args[1])
+            for c in aligned_service.set_sheet_visibility.call_args_list
+        ] == [(10, False)]
+        aligned_service.move_sheet.assert_not_called()
+
+    def test_out_of_position_display_sheet_is_still_moved(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        sheets = [sheet_props("Schedule Template", sheet_id=1, hidden=True)]
+        sheets += self._window(monday, weeks=1, indexes=[4])
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, sheets, weeks=1)
+
+        aligned_service.set_sheet_visibility.assert_not_called()
+        assert [
+            (c.args[0], c.args[1]) for c in aligned_service.move_sheet.call_args_list
+        ] == [(10, 1)]
+
+    def test_newly_created_sheet_still_gets_shown_and_positioned(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        aligned_service.create_sheet_from_template = MagicMock(return_value=999)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, [], weeks=1)
+
+        assert (999, False) in [
+            (c.args[0], c.args[1])
+            for c in aligned_service.set_sheet_visibility.call_args_list
+        ]
+        assert (999, 1) in [
+            (c.args[0], c.args[1]) for c in aligned_service.move_sheet.call_args_list
+        ]
+
+    def test_scrambled_window_is_reordered_despite_stale_snapshot_indexes(
+        self, aligned_service
+    ):
+        """Skipping a move must be decided on live positions, not the snapshot.
+
+        Positions are read once, up front, but each move shifts every sheet it
+        passes. Here moving week 1 into place pushes week 2 off the index its
+        snapshot claims, so a snapshot-based comparison would conclude week 2
+        was already positioned and leave the window out of order - the exact
+        symptom this reconciliation exists to correct.
+        """
+        monday = datetime(2026, 7, 20)
+        sheets = [
+            sheet_props("Schedule Template", sheet_id=1, index=0, hidden=True),
+            # Not a dated sheet, so rotation never moves it - it just occupies
+            # the slot week 1 has to land on.
+            sheet_props("Schedule Config", sheet_id=2, index=1),
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=7)),
+                sheet_id=11,
+                index=2,
+            ),
+            sheet_props(format_schedule_sheet_title(monday), sheet_id=10, index=3),
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=14)),
+                sheet_id=12,
+                index=4,
+            ),
+        ]
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, sheets, weeks=3)
+
+        assert [
+            (c.args[0], c.args[1]) for c in aligned_service.move_sheet.call_args_list
+        ] == [(10, 1), (11, 2), (12, 3)]
+
+
+class TestSheetProtection:
+    """Sheets the app creates must carry their own protection.
+
+    The Google Sheets `duplicateSheet` request copies a tab's content and
+    formatting but NOT its protected ranges, so every schedule sheet cloned
+    from "Schedule Template" landed unprotected. The spreadsheet is shared
+    as link-editable, so an anonymous visitor could edit or delete those
+    tabs untraceably - which is how "Schedule 07/06" disappeared twice in
+    June/July 2026 with no corresponding app log.
+
+    Protection is warningOnly: volunteers must still be able to fill in
+    their own signups, so this is a confirm-prompt speed bump against
+    accidents, not a hard lock.
+    """
+
+    def test_adds_warning_only_whole_sheet_protection(self, service):
+        service.ensure_sheet_protected(4242, MagicMock(), existing_protected_ranges=[])
+
+        body = service.sheet.batchUpdate.call_args.kwargs["body"]
+        protected = body["requests"][0]["addProtectedRange"]["protectedRange"]
+        assert protected["range"] == {"sheetId": 4242}
+        assert protected["warningOnly"] is True
+
+    def test_warning_only_protection_declares_no_editors(self, service):
+        # The Sheets API rejects a protectedRange that sets both warningOnly
+        # and editors; sending editors here would fail every creation.
+        service.ensure_sheet_protected(4242, MagicMock(), existing_protected_ranges=[])
+
+        body = service.sheet.batchUpdate.call_args.kwargs["body"]
+        protected = body["requests"][0]["addProtectedRange"]["protectedRange"]
+        assert "editors" not in protected
+
+    def test_already_protected_sheet_is_not_protected_again(self, service):
+        # Rotation runs hourly; re-adding would stack a new protected range
+        # on every run until the sheet is buried in duplicates.
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[{"range": {"sheetId": 4242}}],
+        )
+
+        assert added is False
+        service.sheet.batchUpdate.assert_not_called()
+
+    def test_sheet_carrying_only_a_narrow_protection_still_gets_whole_sheet_cover(
+        self, service
+    ):
+        # A manually protected header row is not whole-sheet coverage. Treating
+        # any protectedRange as "done" would skip such a sheet forever while
+        # reporting no failure at all.
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[
+                {
+                    "range": {
+                        "sheetId": 4242,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                    },
+                    "description": "header row",
+                }
+            ],
+        )
+
+        assert added is True
+        protected = service.sheet.batchUpdate.call_args.kwargs["body"]["requests"][0][
+            "addProtectedRange"
+        ]["protectedRange"]
+        assert protected["range"] == {"sheetId": 4242}
+
+    def test_protection_recognized_by_its_own_description(self, service):
+        # Matches even if the API echoes the range back in a different shape.
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[
+                {
+                    "protectedRangeId": 7,
+                    "description": SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
+                }
+            ],
+        )
+
+        assert added is False
+        service.sheet.batchUpdate.assert_not_called()
+
+    def test_protection_for_a_different_sheet_does_not_count(self, service):
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[{"range": {"sheetId": 9999}}],
+        )
+
+        assert added is True
+
+    def test_rotation_backfills_protection_on_unprotected_display_sheets(self, service):
+        # Sheets already in the window but created before protection existed
+        # (03/08/2026, 10/08/2026, 17/08/2026 in production) must be repaired
+        # in place, not left for a human to notice.
+        monday = datetime(2026, 7, 20)
+        service.ensure_sheet_protected = MagicMock(return_value=True)
+        sheets = [sheet_props(format_schedule_sheet_title(monday), sheet_id=70)]
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(service, sheets, weeks=1)
+
+        protected_ids = [
+            c.args[0] for c in service.ensure_sheet_protected.call_args_list
+        ]
+        assert 70 in protected_ids
+
+    def test_rotation_protects_newly_created_sheet(self, service):
+        monday = datetime(2026, 7, 20)
+        service.ensure_sheet_protected = MagicMock(return_value=True)
+        service.create_sheet_from_template = MagicMock(return_value=999)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(service, [], weeks=1)
+
+        protected_ids = [
+            c.args[0] for c in service.ensure_sheet_protected.call_args_list
+        ]
+        assert 999 in protected_ids
+
+    def test_protection_failure_does_not_abort_rotation(self, service):
+        # Same lesson as the 2026-07-03 incident: one sheet's failure must
+        # never take the whole reconciliation down.
+        monday = datetime(2026, 7, 20)
+        service.ensure_sheet_protected = MagicMock(
+            side_effect=Exception("permission denied")
+        )
+        sheets = [
+            sheet_props(format_schedule_sheet_title(monday), sheet_id=70),
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=7)), sheet_id=71
+            ),
+        ]
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            result = rotate(service, sheets, weeks=2)
+
+        # Both sheets still got positioned; only the protection step is recorded
+        # failed. Asserted on move rather than on show because these sheets are
+        # already visible, and reconciliation no longer rewrites state that is
+        # already correct.
+        assert [c.args[0] for c in service.move_sheet.call_args_list] == [70, 71]
+        assert [f["action"] for f in result["sheets_failed"]] == ["protect", "protect"]
