@@ -185,5 +185,12 @@ def initialize_default_settings(db: Session) -> None:
                 key=key, value=config["value"], description=config["description"]
             )
             db.add(setting)
+        elif existing.description != config["description"]:
+            # Values belong to whoever last edited them, but descriptions are
+            # this code's own documentation of the key: without this, rewording
+            # one leaves every already-deployed database showing the old text
+            # forever. updated_at is deliberately left alone so a doc refresh
+            # is not mistaken for a configuration change.
+            existing.description = config["description"]
 
     db.commit()

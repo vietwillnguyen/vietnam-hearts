@@ -29,7 +29,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.google_sheets import GoogleSheetsService
+from app.services.google_sheets import (
+    SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
+    GoogleSheetsService,
+)
 from app.utils.schedule_dates import format_schedule_sheet_title
 
 
@@ -358,6 +361,135 @@ class TestRotationOrderingAndCount:
         assert 21 not in hidden_ids
 
 
+class TestRotationWriteEconomy:
+    """Reconciliation must be a true no-op when nothing has drifted.
+
+    The cadence moved from weekly to hourly, so an unconditional
+    show + move on every display sheet went from ~8 pointless batchUpdate
+    writes a week to ~192 a day, each one adding a revision-history entry and
+    reattributing the spreadsheet's last edit to the service account.
+    """
+
+    @pytest.fixture
+    def aligned_service(self, service):
+        service.ensure_sheet_protected = MagicMock(return_value=False)
+        return service
+
+    def _window(self, monday, weeks, hidden=False, indexes=None):
+        return [
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=7 * i)),
+                sheet_id=10 + i,
+                index=indexes[i] if indexes else i + 1,
+                hidden=hidden,
+            )
+            for i in range(weeks)
+        ]
+
+    def test_no_writes_when_window_is_already_correct(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        sheets = [sheet_props("Schedule Template", sheet_id=1, hidden=True)]
+        sheets += self._window(monday, weeks=3)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            result = rotate(aligned_service, sheets, weeks=3)
+
+        aligned_service.set_sheet_visibility.assert_not_called()
+        aligned_service.move_sheet.assert_not_called()
+        aligned_service.rename_sheet.assert_not_called()
+        aligned_service.create_sheet_from_template.assert_not_called()
+        assert result["sheets_failed"] == []
+
+    def test_hidden_display_sheet_is_still_unhidden(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        sheets = [sheet_props("Schedule Template", sheet_id=1, hidden=True)]
+        sheets += self._window(monday, weeks=1, hidden=True)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, sheets, weeks=1)
+
+        assert [
+            (c.args[0], c.args[1])
+            for c in aligned_service.set_sheet_visibility.call_args_list
+        ] == [(10, False)]
+        aligned_service.move_sheet.assert_not_called()
+
+    def test_out_of_position_display_sheet_is_still_moved(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        sheets = [sheet_props("Schedule Template", sheet_id=1, hidden=True)]
+        sheets += self._window(monday, weeks=1, indexes=[4])
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, sheets, weeks=1)
+
+        aligned_service.set_sheet_visibility.assert_not_called()
+        assert [
+            (c.args[0], c.args[1]) for c in aligned_service.move_sheet.call_args_list
+        ] == [(10, 1)]
+
+    def test_newly_created_sheet_still_gets_shown_and_positioned(self, aligned_service):
+        monday = datetime(2026, 7, 20)
+        aligned_service.create_sheet_from_template = MagicMock(return_value=999)
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, [], weeks=1)
+
+        assert (999, False) in [
+            (c.args[0], c.args[1])
+            for c in aligned_service.set_sheet_visibility.call_args_list
+        ]
+        assert (999, 1) in [
+            (c.args[0], c.args[1]) for c in aligned_service.move_sheet.call_args_list
+        ]
+
+    def test_scrambled_window_is_reordered_despite_stale_snapshot_indexes(
+        self, aligned_service
+    ):
+        """Skipping a move must be decided on live positions, not the snapshot.
+
+        Positions are read once, up front, but each move shifts every sheet it
+        passes. Here moving week 1 into place pushes week 2 off the index its
+        snapshot claims, so a snapshot-based comparison would conclude week 2
+        was already positioned and leave the window out of order - the exact
+        symptom this reconciliation exists to correct.
+        """
+        monday = datetime(2026, 7, 20)
+        sheets = [
+            sheet_props("Schedule Template", sheet_id=1, index=0, hidden=True),
+            # Not a dated sheet, so rotation never moves it - it just occupies
+            # the slot week 1 has to land on.
+            sheet_props("Schedule Config", sheet_id=2, index=1),
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=7)),
+                sheet_id=11,
+                index=2,
+            ),
+            sheet_props(format_schedule_sheet_title(monday), sheet_id=10, index=3),
+            sheet_props(
+                format_schedule_sheet_title(monday + timedelta(days=14)),
+                sheet_id=12,
+                index=4,
+            ),
+        ]
+
+        with patch(
+            "app.services.google_sheets.current_week_monday", return_value=monday
+        ):
+            rotate(aligned_service, sheets, weeks=3)
+
+        assert [
+            (c.args[0], c.args[1]) for c in aligned_service.move_sheet.call_args_list
+        ] == [(10, 1), (11, 2), (12, 3)]
+
+
 class TestSheetProtection:
     """Sheets the app creates must carry their own protection.
 
@@ -401,6 +533,58 @@ class TestSheetProtection:
 
         assert added is False
         service.sheet.batchUpdate.assert_not_called()
+
+    def test_sheet_carrying_only_a_narrow_protection_still_gets_whole_sheet_cover(
+        self, service
+    ):
+        # A manually protected header row is not whole-sheet coverage. Treating
+        # any protectedRange as "done" would skip such a sheet forever while
+        # reporting no failure at all.
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[
+                {
+                    "range": {
+                        "sheetId": 4242,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                    },
+                    "description": "header row",
+                }
+            ],
+        )
+
+        assert added is True
+        protected = service.sheet.batchUpdate.call_args.kwargs["body"]["requests"][0][
+            "addProtectedRange"
+        ]["protectedRange"]
+        assert protected["range"] == {"sheetId": 4242}
+
+    def test_protection_recognized_by_its_own_description(self, service):
+        # Matches even if the API echoes the range back in a different shape.
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[
+                {
+                    "protectedRangeId": 7,
+                    "description": SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
+                }
+            ],
+        )
+
+        assert added is False
+        service.sheet.batchUpdate.assert_not_called()
+
+    def test_protection_for_a_different_sheet_does_not_count(self, service):
+        added = service.ensure_sheet_protected(
+            4242,
+            MagicMock(),
+            existing_protected_ranges=[{"range": {"sheetId": 9999}}],
+        )
+
+        assert added is True
 
     def test_rotation_backfills_protection_on_unprotected_display_sheets(self, service):
         # Sheets already in the window but created before protection existed
@@ -454,6 +638,9 @@ class TestSheetProtection:
         ):
             result = rotate(service, sheets, weeks=2)
 
-        # Both sheets still got shown; only the protection step is recorded failed.
-        assert service.set_sheet_visibility.called
+        # Both sheets still got positioned; only the protection step is recorded
+        # failed. Asserted on move rather than on show because these sheets are
+        # already visible, and reconciliation no longer rewrites state that is
+        # already correct.
+        assert [c.args[0] for c in service.move_sheet.call_args_list] == [70, 71]
         assert [f["action"] for f in result["sheets_failed"]] == ["protect", "protect"]

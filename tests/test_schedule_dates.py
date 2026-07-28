@@ -2,8 +2,10 @@
 
 from datetime import UTC, datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.utils.schedule_dates import (
+    _FIXED_DEFAULT_OFFSET,
     DEFAULT_SCHEDULE_TIMEZONE,
     current_week_monday,
     format_schedule_sheet_title,
@@ -142,3 +144,32 @@ class TestCurrentWeekMonday:
     def test_empty_timezone_falls_back_to_default(self):
         with frozen_at("2026-07-26T17:30:00"):
             assert current_week_monday("") == datetime(2026, 7, 27)
+
+
+class TestMissingTimezoneDatabase:
+    """The fallback must not be able to raise the error it exists to absorb.
+
+    `tzdata` is a declared dependency so the IANA database ships inside the
+    venv, but if a zone lookup ever fails outright the fallback previously
+    called ZoneInfo() again on the default zone - which fails for exactly the
+    same reason, re-raising out of current_week_monday and turning every
+    hourly reconciliation into a 500.
+    """
+
+    def test_falls_back_to_a_fixed_offset_when_no_zone_can_be_loaded(self):
+        with (
+            frozen_at("2026-07-26T17:30:00"),
+            patch(
+                "app.utils.schedule_dates.ZoneInfo",
+                side_effect=ZoneInfoNotFoundError("No time zone found"),
+            ),
+        ):
+            # 17:30 UTC Sunday is already Monday 00:30 at UTC+7, so the fixed
+            # offset must still anchor to the same Monday a real zone would.
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
+
+    def test_fixed_offset_matches_the_default_zone(self):
+        # Vietnam has had no DST since 1975, so the stand-in is exact.
+        assert _FIXED_DEFAULT_OFFSET.utcoffset(None) == ZoneInfo(
+            DEFAULT_SCHEDULE_TIMEZONE
+        ).utcoffset(datetime(2026, 7, 27))

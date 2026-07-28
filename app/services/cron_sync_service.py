@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import CLOUD_SCHEDULER_LOCATION, GCP_PROJECT_ID
 from app.services.settings_service import get_setting
 from app.utils.config_helper import ConfigHelper
-from app.utils.google_credentials import get_scoped_credentials
+from app.utils.google_credentials import default_credentials, get_scoped_credentials
 from app.utils.logging_config import get_logger
 
 logger = get_logger("cron_sync_service")
@@ -60,6 +60,41 @@ def is_valid_cron(expression: object) -> bool:
     return all(_CRON_FIELD.match(field) for field in fields)
 
 
+def resolve_project_id() -> str:
+    """The project the Cloud Scheduler jobs live in.
+
+    GCP_PROJECT_ID wins when set, so a non-default project stays configurable.
+    Otherwise the project attached to Application Default Credentials is used,
+    which on Cloud Run is the project the service is deployed to - the same
+    project the jobs are created in - so the endpoint works without anyone
+    having to hand-edit env vars on the service after a deploy.
+
+    Raises:
+        ValueError: If neither source yields a project, since every job path
+            would otherwise be malformed and every job would "fail" for the
+            same uninformative reason.
+    """
+    if GCP_PROJECT_ID:
+        return GCP_PROJECT_ID
+
+    try:
+        _, adc_project = default_credentials()
+    except Exception as e:
+        raise ValueError(
+            "GCP_PROJECT_ID is not set and Application Default Credentials could "
+            f"not be resolved to fall back on: {e}"
+        ) from e
+
+    if not adc_project:
+        raise ValueError(
+            "GCP_PROJECT_ID is not set and Application Default Credentials report "
+            "no project; cannot address Cloud Scheduler jobs"
+        )
+
+    logger.info(f"GCP_PROJECT_ID unset; using ADC project {adc_project!r}")
+    return adc_project
+
+
 def _scheduler_client():
     return build(
         "cloudscheduler",
@@ -83,19 +118,14 @@ def sync_cron_schedules(db: Session, client=None) -> dict:
         being reconciled.
 
     Raises:
-        ValueError: If GCP_PROJECT_ID is not configured, since every job path
-            would otherwise be malformed and every job would "fail" for the
-            same uninformative reason.
+        ValueError: If the project cannot be resolved (see resolve_project_id).
     """
-    if not GCP_PROJECT_ID:
-        raise ValueError(
-            "GCP_PROJECT_ID is not configured; cannot address Cloud Scheduler jobs"
-        )
+    project_id = resolve_project_id()
 
     client = client or _scheduler_client()
     jobs_api = client.projects().locations().jobs()
     timezone = ConfigHelper.get_schedule_timezone(db)
-    parent = f"projects/{GCP_PROJECT_ID}/locations/{CLOUD_SCHEDULER_LOCATION}/jobs"
+    parent = f"projects/{project_id}/locations/{CLOUD_SCHEDULER_LOCATION}/jobs"
 
     result: dict[str, list] = {"synced": [], "unchanged": [], "failed": []}
 

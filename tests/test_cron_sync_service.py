@@ -183,11 +183,68 @@ class TestSyncCronSchedules:
             "sync-volunteers",
         ]
 
+    def test_unset_project_id_falls_back_to_the_adc_project(self, settings_db):
+        # Nothing in the repo sets GCP_PROJECT_ID on the Cloud Run service, and
+        # requiring a hand-edited env var to make the endpoint work at all is
+        # the same out-of-band configuration that let the jobs rot.
+        db, _ = settings_db
+        client, jobs = make_client(
+            {v: "0 0 1 1 *" for v in CRON_SETTING_TO_JOB.values()}
+        )
+
+        with (
+            patch("app.services.cron_sync_service.GCP_PROJECT_ID", ""),
+            patch(
+                "app.services.cron_sync_service.default_credentials",
+                return_value=(MagicMock(), "adc-project"),
+            ),
+        ):
+            sync_cron_schedules(db, client=client)
+
+        for call in jobs.patch.call_args_list:
+            assert call.kwargs["name"].startswith("projects/adc-project/")
+
+    def test_explicit_project_id_wins_over_adc(self, settings_db):
+        db, _ = settings_db
+        client, jobs = make_client(
+            {v: "0 0 1 1 *" for v in CRON_SETTING_TO_JOB.values()}
+        )
+
+        with patch(
+            "app.services.cron_sync_service.default_credentials",
+            return_value=(MagicMock(), "adc-project"),
+        ) as mock_adc:
+            sync_cron_schedules(db, client=client)
+
+        mock_adc.assert_not_called()
+        for call in jobs.patch.call_args_list:
+            assert call.kwargs["name"].startswith("projects/test-project/")
+
     def test_missing_project_id_fails_loudly(self, settings_db):
         db, _ = settings_db
         client, _ = make_client({})
 
-        with patch("app.services.cron_sync_service.GCP_PROJECT_ID", ""):
+        with (
+            patch("app.services.cron_sync_service.GCP_PROJECT_ID", ""),
+            patch(
+                "app.services.cron_sync_service.default_credentials",
+                return_value=(MagicMock(), None),
+            ),
+        ):
+            with pytest.raises(ValueError, match="GCP_PROJECT_ID"):
+                sync_cron_schedules(db, client=client)
+
+    def test_unresolvable_credentials_fail_loudly(self, settings_db):
+        db, _ = settings_db
+        client, _ = make_client({})
+
+        with (
+            patch("app.services.cron_sync_service.GCP_PROJECT_ID", ""),
+            patch(
+                "app.services.cron_sync_service.default_credentials",
+                side_effect=Exception("no metadata server"),
+            ),
+        ):
             with pytest.raises(ValueError, match="GCP_PROJECT_ID"):
                 sync_cron_schedules(db, client=client)
 

@@ -81,3 +81,41 @@ class TestCronSettingsPersistence:
             setting = db.query(Setting).filter(Setting.key == key).first()
             assert setting is not None
             assert setting.description, f"{key} has no description"
+
+
+class TestDefaultDescriptionRefresh:
+    """Descriptions are this code's documentation of a key, not user data.
+
+    Init only ever inserted missing keys, so rewording a description left
+    every already-deployed database displaying the old text indefinitely -
+    which is how the dashboard kept describing hourly reconciliation as
+    "rotating schedule sheets ... every Friday at 5:00 PM".
+    """
+
+    def test_stale_description_is_refreshed(self, db):
+        initialize_default_settings(db)
+        setting = (
+            db.query(Setting).filter(Setting.key == "CRON_ROTATE_SCHEDULE").first()
+        )
+        current_description = setting.description
+        setting.description = "Cron schedule for rotating schedule sheets"
+        db.commit()
+
+        initialize_default_settings(db)
+
+        refreshed = (
+            db.query(Setting).filter(Setting.key == "CRON_ROTATE_SCHEDULE").first()
+        )
+        assert refreshed.description == current_description
+
+    def test_refresh_never_touches_a_customized_value(self, db):
+        initialize_default_settings(db)
+        set_setting(db, "CRON_ROTATE_SCHEDULE", "0 */6 * * *")
+        db.query(Setting).filter(
+            Setting.key == "CRON_ROTATE_SCHEDULE"
+        ).first().description = "stale"
+        db.commit()
+
+        initialize_default_settings(db)
+
+        assert get_setting(db, "CRON_ROTATE_SCHEDULE") == "0 */6 * * *"

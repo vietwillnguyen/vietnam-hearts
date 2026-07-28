@@ -80,10 +80,26 @@ async def rotate_schedule_sheets(
 
             failures = result.get("sheets_failed", [])
             if failures:
-                message = f"Schedule sheets rotated with {len(failures)} sheet(s) skipped due to errors"
-            else:
-                message = "Schedule sheets rotated successfully"
-            return {"status": "success", "message": message, "details": result}
+                # A sheet that was skipped is a sheet that is still wrong, so
+                # this must not answer 200: Cloud Scheduler calls this hourly
+                # and a green run history is the reason the earlier 401s went
+                # unnoticed for weeks. The full result travels with the error
+                # so the reconciliation that did succeed is still visible.
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "message": (
+                            f"{len(failures)} sheet(s) skipped due to errors; "
+                            "the rest of the rotation completed"
+                        ),
+                        "details": result,
+                    },
+                )
+            return {
+                "status": "success",
+                "message": "Schedule sheets rotated successfully",
+                "details": result,
+            }
     except HTTPException:
         raise
     except Exception as e:

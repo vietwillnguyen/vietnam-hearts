@@ -1528,12 +1528,16 @@
 
                 const result = await response.json();
 
+                // Every interpolated value below originates server-side and can
+                // contain a stored setting value verbatim (an invalid cron
+                // expression is echoed back, not sanitized), so it is escaped
+                // rather than trusted.
                 if (response.ok) {
                     const synced = (result.details?.synced || [])
-                        .map(j => `${j.job}: ${j.previous_schedule} → ${j.schedule}`)
+                        .map(j => `${escapeHtml(j.job)}: ${escapeHtml(j.previous_schedule)} → ${escapeHtml(j.schedule)}`)
                         .join('<br>');
                     resultDiv.innerHTML =
-                        `<div class="alert alert-success mb-0">${result.message}` +
+                        `<div class="alert alert-success mb-0">${escapeHtml(result.message)}` +
                         (synced ? `<div class="mt-2 font-monospace small">${synced}</div>` : '') +
                         `</div>`;
                 } else {
@@ -1543,15 +1547,15 @@
                     const detail = result.detail;
                     const message = typeof detail === 'string' ? detail : detail?.message;
                     const failures = (detail?.details?.failed || [])
-                        .map(f => `${f.job}: ${f.error}`)
+                        .map(f => `${escapeHtml(f.job)}: ${escapeHtml(f.error)}`)
                         .join('<br>');
                     resultDiv.innerHTML =
-                        `<div class="alert alert-danger mb-0">${message || 'Failed to apply cron schedules'}` +
+                        `<div class="alert alert-danger mb-0">${escapeHtml(message || 'Failed to apply cron schedules')}` +
                         (failures ? `<div class="mt-2 font-monospace small">${failures}</div>` : '') +
                         `</div>`;
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
+                resultDiv.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.message)}</div>`;
             } finally {
                 button.innerHTML = originalText;
                 button.disabled = false;
@@ -2144,7 +2148,22 @@
                     // Refresh the schedule data
                     await loadScheduleData();
                 } else {
-                    alert(`❌ Error: ${result.detail || result.message || 'Failed to rotate schedule'}`);
+                    // A partial rotation answers 502 with a structured detail, so
+                    // spell out which sheets were skipped instead of alerting
+                    // "[object Object]" - and still refresh, because the sheets
+                    // that did reconcile have changed.
+                    const detail = result.detail;
+                    let message = typeof detail === 'string'
+                        ? detail
+                        : (detail?.message || result.message || 'Failed to rotate schedule');
+                    const failures = detail?.details?.sheets_failed || [];
+                    if (failures.length > 0) {
+                        message += `\n\n` + failures
+                            .map(f => `• ${f.title} (${f.action}): ${f.error}`)
+                            .join('\n');
+                    }
+                    alert(`❌ Error: ${message}`);
+                    await loadScheduleData();
                 }
             } catch (error) {
                 console.error('Error rotating schedule:', error);

@@ -24,8 +24,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 
 # Cloud Scheduler Configuration
 # Used to address the cron jobs whose cadence is owned by the CRON_* settings.
-# Must match SCHEDULER_REGION in scripts/deploy.config, which is where the jobs
-# are actually created.
+# CLOUD_SCHEDULER_LOCATION must match SCHEDULER_REGION in scripts/deploy.config,
+# which is where the jobs are actually created.
+# GCP_PROJECT_ID is an override: left empty, the project attached to Application
+# Default Credentials is used (see cron_sync_service.resolve_project_id), which
+# on Cloud Run is already the right one.
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
 CLOUD_SCHEDULER_LOCATION = os.getenv("CLOUD_SCHEDULER_LOCATION", "asia-southeast1")
 

@@ -48,6 +48,13 @@ FAILED_JOBS=()
 # Passing --headers to the update path makes gcloud reject the whole command,
 # which is what silently froze the apikey header on rotate-schedule and
 # send-weekly-reminders at a pre-migration Supabase key.
+#
+# The `$schedule` and `$TIMEZONE` arguments are bootstrap defaults and are
+# therefore only sent on the CREATE path. Cadence belongs to the CRON_*
+# settings, applied by POST /admin/sync-cron-schedules; sending it on UPDATE
+# too would mean every credential rotation silently stamped these hardcoded
+# values back over whatever an admin had configured - putting the dashboard
+# back to lying about cadence, which is the failure this repair exists to end.
 create_or_update_job() {
     local job_name=$1
     local schedule=$2
@@ -58,13 +65,11 @@ create_or_update_job() {
 
     # Check if job exists
     if gcloud scheduler jobs describe "$job_name" --location="$REGION" >/dev/null 2>&1; then
-        echo "Job $job_name already exists. Updating..."
+        echo "Job $job_name already exists. Updating credentials and target (cadence left as configured)..."
         if gcloud scheduler jobs update http "$job_name" \
-            --schedule="$schedule" \
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
             --update-headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
-            --time-zone="$TIMEZONE" \
             --location="$REGION" \
             --description="$description"; then
             echo -e "${GREEN}✓ Updated job: ${job_name}${NC}"

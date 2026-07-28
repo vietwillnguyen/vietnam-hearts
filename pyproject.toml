@@ -28,6 +28,11 @@ dependencies = [
     "google-genai>=2.0.0,<3",
     "sentry-sdk[fastapi]>=2.19.0,<3",
     "alembic>=1.18.5,<2",
+    # Ships the IANA zone database inside the venv so zoneinfo lookups
+    # (SCHEDULE_TIMEZONE, see app/utils/schedule_dates.py) never depend on
+    # the base image carrying /usr/share/zoneinfo. No upper bound: tzdata is
+    # calendar-versioned data, so any ceiling would expire on its own.
+    "tzdata>=2024.1",
 ]
 
 [dependency-groups]
