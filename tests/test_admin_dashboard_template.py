@@ -45,13 +45,13 @@ def admin_client(client):
 
 def find_input(html: str, key: str) -> str:
     """The rendered <input> tag for a settings key."""
-    match = re.search(r"<input\b[^>]*\bid=\"%s\"[^>]*>" % re.escape(key), html)
+    match = re.search(rf'<input\b[^>]*\bid="{re.escape(key)}"[^>]*>', html)
     assert match, f"no <input> rendered for {key}"
     return match.group(0)
 
 
 def attr(tag: str, name: str) -> str | None:
-    match = re.search(r'\b%s="([^"]*)"' % re.escape(name), tag)
+    match = re.search(rf'\b{re.escape(name)}="([^"]*)"', tag)
     return match.group(1) if match else None
 
 
@@ -80,7 +80,9 @@ class TestCronFieldsRenderStoredValues:
         assert response.status_code == 200
 
         reloaded = admin_client.get("/admin/dashboard")
-        assert attr(find_input(reloaded.text, "CRON_ROTATE_SCHEDULE"), "value") == edited
+        assert (
+            attr(find_input(reloaded.text, "CRON_ROTATE_SCHEDULE"), "value") == edited
+        )
 
     def test_save_all_settings_does_not_wipe_the_cadence(self, admin_client, test_db):
         """The reported failure, end to end.

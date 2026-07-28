@@ -132,7 +132,9 @@ class TestBlankCronValuesAreRejected:
         """Only the cadence keys are protected; this is not a global rule."""
         initialize_default_settings(db)
 
-        response = admin_client.put("/settings/SCHEDULE_SIGNUP_LINK", json={"value": ""})
+        response = admin_client.put(
+            "/settings/SCHEDULE_SIGNUP_LINK", json={"value": ""}
+        )
 
         assert response.status_code == 200
         assert get_setting(db, "SCHEDULE_SIGNUP_LINK") == ""

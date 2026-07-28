@@ -183,7 +183,7 @@ CLOUD_RUN_SERVICE     # Cloud Run service identifier
 CLOUD_RUN_REGION      # Cloud Run region (northamerica-northeast1)
 BASE_URL              # Public service URL
 SCHEDULER_REGION      # Cloud Scheduler region
-SCHEDULER_TIMEZONE    # Cron job timezone
+SCHEDULER_TIMEZONE    # Cron job timezone at creation (live value: SCHEDULE_TIMEZONE setting)
 ```
 
 To change the deployment target (e.g. bump version or change region), edit `scripts/deploy.config`.
