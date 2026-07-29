@@ -174,9 +174,11 @@ The two surfaces overlap by roughly 90 percent.
 A class per channel would be duplication presented as abstraction.
 The adapter seam exists so that genuinely different channels, email now and Zalo later, can be separate files.
 
-**D3. Defer Zalo until a verified Official Account exists.**
-Not deferred for engineering reasons but because the account cannot be created without a Vietnamese legal entity.
-No Zalo adapter stub will be written, since it could not be tested end to end.
+**D3. Zalo is out of scope, not merely sequenced later.**
+Confirmed during review that Vietnam Hearts holds no Vietnamese legal entity and does not expect one soon.
+A verified Official Account cannot be created without one, and only Official Accounts are programmable.
+This is a legal-status blocker rather than an engineering one, so no Zalo adapter and no adapter stub will be written, since neither could be tested end to end.
+Revisit only if an entity is established.
 
 **D4. Approach B, normalise and harden, rather than minimal wiring.**
 Channel adapters normalise inbound events into a single `IncomingMessage`.
@@ -193,8 +195,16 @@ Under confidence-first ordering, the highest-stakes questions are exactly the on
 **D6. Inbound email over IMAP using the existing app password.**
 `app/services/email_service.py` lines 35-39 already authenticate to Gmail SMTP with `GMAIL_APP_PASSWORD`.
 The same credential unlocks IMAP, so inbound email needs no new credentials and no Google Cloud setup.
-mailhub ADR-0002 already reached this conclusion for the same tradeoff, noting that external OAuth applications in Testing status receive refresh tokens expiring every 7 days, and that escaping this requires Google's paid CASA Tier 2 verification.
 Polling runs on the existing Cloud Scheduler cron.
+
+Confirmed during review that the mailbox is `vietnam.hearts.volunteering@gmail.com`, a plain consumer Gmail account rather than a Google Workspace domain.
+That makes IMAP the only practical option rather than merely the preferred one.
+Service-account domain-wide delegation requires a Workspace domain and is therefore unavailable.
+mailhub ADR-0002 reached this conclusion against the identical constraint: the `gmail.readonly` and `gmail.send` scopes are restricted, an external OAuth app in Testing status receives refresh tokens that expire every 7 days, escaping that requires Google's paid multi-week CASA Tier 2 verification, and a consumer account cannot use the "Internal app" escape hatch available to Workspace domains because there is no organisation to scope the app to.
+
+This mailbox is the organisation's root account, so the app password grants broad read and send access to it.
+The credential must live only in Secret Manager, never in the repository, and is revocable at <https://myaccount.google.com/apppasswords>.
+This is an accepted cost of the constraint above rather than a preference.
 
 **D7. Route the triage classifier through LiteLLM with JSON-schema structured output.**
 Consistent with mailhub ADR-0003.
@@ -216,6 +226,15 @@ ManyChat keeps running untouched until the evaluation passes and App Review is a
 **D11. Copy and adapt mailhub's email code rather than sharing a package.**
 Roughly 250 lines across two repositories with different deployment targets.
 Coupling a volunteer organisation's service to a personal inbox tool buys nothing.
+
+**D12. Escalation notifications go to email plus one real-time channel.**
+Email alone was rejected during review because an executive escalation that sits unread in an inbox defeats the purpose of pausing the thread.
+The `EmailService` path is reused for the durable record, and a second channel carries the interrupt.
+
+Zalo was the reviewer's first instinct for that second channel, but it cannot work, for exactly the reason recorded in D3.
+Sending a Zalo message programmatically requires an Official Account, the same Official Account that no legal entity exists to register.
+The notifier is therefore designed against a small `Notifier` interface with an email implementation plus one webhook implementation, and the specific webhook provider is the subject of Open Question 2.
+Whichever is chosen, the integration is a single outbound POST with no inbound surface, so it carries none of the platform review burden the messaging channels do.
 
 ## Architecture
 
@@ -403,17 +422,19 @@ These do not block starting phase 0.
    If in-house RAG quality proved unmanageable without systematic evaluation, that reinforces the evaluation gate in phase 4.
    If customers simply wanted to bring their own vector store, it says nothing about this project.
 
-2. **Is `EMAIL_SENDER` a Google Workspace account or a plain `@gmail.com` account?**
-   It does not affect D6, but it determines whether service-account domain-wide delegation is available as a future option.
+2. **Which real-time channel carries the executive escalation interrupt?**
+   Zalo was the first instinct but is unavailable for the reason recorded in D3 and D12.
+   Telegram, Discord, and Slack are all a single outbound webhook POST and all work from Vietnam.
+   Discord has a specific advantage: mailhub's `src/core/discord_client.py` is 49 lines and adapts directly, matching D11.
 
-3. **Does Vietnam Hearts have, or could it obtain, a Vietnamese legal entity able to hold a verified Zalo Official Account?**
-   This is the only thing standing between the current design and Zalo support.
-
-4. **Should executive notifications go to email only, or also to another channel?**
-   The design currently reuses `EmailService`, since it already exists and is tested.
-
-5. **What is the exact wording of the holding message, in Vietnamese and English?**
+3. **What is the exact wording of the holding message, in Vietnamese and English?**
    It is the only bot-authored text a user sees when escalation happens, so it should be written by a human rather than generated.
+
+### Resolved during review
+
+- **Mailbox type.** `vietnam.hearts.volunteering@gmail.com`, a plain consumer Gmail account, not a Workspace domain. Folded into D6, where it upgrades IMAP from preferred to only viable.
+- **Zalo legal entity.** None exists and none is expected soon. Folded into D3, which now places Zalo out of scope rather than later in the queue.
+- **Escalation reach.** Email alone is insufficient. Folded into D12.
 
 ## References
 
