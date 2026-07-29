@@ -233,8 +233,12 @@ The `EmailService` path is reused for the durable record, and a second channel c
 
 Zalo was the reviewer's first instinct for that second channel, but it cannot work, for exactly the reason recorded in D3.
 Sending a Zalo message programmatically requires an Official Account, the same Official Account that no legal entity exists to register.
-The notifier is therefore designed against a small `Notifier` interface with an email implementation plus one webhook implementation, and the specific webhook provider is the subject of Open Question 2.
-Whichever is chosen, the integration is a single outbound POST with no inbound surface, so it carries none of the platform review burden the messaging channels do.
+The notifier is therefore designed against a small `Notifier` interface with an email implementation plus one webhook implementation.
+
+The provisional webhook provider is **Discord**, chosen because mailhub's `src/core/discord_client.py` is 49 lines and adapts directly, which is consistent with D11.
+This is a default rather than a settled decision, and Open Question 2 remains open pending confirmation.
+Telegram and Slack are equivalent in effort and all three work from Vietnam.
+Because every candidate is a single outbound POST behind the same interface, swapping providers is one small file and no change anywhere else, so this does not gate any phase.
 
 ## Architecture
 
@@ -425,7 +429,8 @@ These do not block starting phase 0.
 2. **Which real-time channel carries the executive escalation interrupt?**
    Zalo was the first instinct but is unavailable for the reason recorded in D3 and D12.
    Telegram, Discord, and Slack are all a single outbound webhook POST and all work from Vietnam.
-   Discord has a specific advantage: mailhub's `src/core/discord_client.py` is 49 lines and adapts directly, matching D11.
+   Proceeding on Discord as a provisional default, since mailhub's `src/core/discord_client.py` adapts directly, matching D11.
+   Confirming or changing this is one small file behind the `Notifier` interface and gates nothing.
 
 3. **What is the exact wording of the holding message, in Vietnamese and English?**
    It is the only bot-authored text a user sees when escalation happens, so it should be written by a human rather than generated.
