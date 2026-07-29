@@ -151,11 +151,8 @@ The code does not transfer.
 `backend/app/connectors/catalog/display_only/instagram/provider.yaml` is `auth_mode: DISPLAY_ONLY`, a user-interface placeholder with no implementation.
 firedesk is per-organisation Cloud Run agents, GCS FUSE workspaces, Redis Streams, Langfuse, and Grafana, which is the wrong weight class for a volunteer organisation's FAQ bot.
 
-One finding is worth following up.
-Migration `backend/alembic/versions/024_drop_knowledge.py`, dated 2026-03-30, drops the `knowledgedocument` table with the comment that recreating it is intentionally omitted because the feature is removed, and provides no downgrade path.
-firedesk now lists `ragieai` as a display-only connector instead.
-A commercial product in the same organisation built in-house document knowledge and then deliberately exited it, while this project is about to invest further in in-house RAG.
-See Open Questions.
+firedesk is a separate product and is explicitly not a dependency, a constraint, or a source of requirements for this project.
+It is recorded here only to document that its code was evaluated for reuse and found not to transfer.
 
 ### DataFabric (`/home/viet/git/magnitude-minds/fabrion/DataFabric`)
 
@@ -235,10 +232,9 @@ Zalo was the reviewer's first instinct for that second channel, but it cannot wo
 Sending a Zalo message programmatically requires an Official Account, the same Official Account that no legal entity exists to register.
 The notifier is therefore designed against a small `Notifier` interface with an email implementation plus one webhook implementation.
 
-The provisional webhook provider is **Discord**, chosen because mailhub's `src/core/discord_client.py` is 49 lines and adapts directly, which is consistent with D11.
-This is a default rather than a settled decision, and Open Question 2 remains open pending confirmation.
-Telegram and Slack are equivalent in effort and all three work from Vietnam.
-Because every candidate is a single outbound POST behind the same interface, swapping providers is one small file and no change anywhere else, so this does not gate any phase.
+The webhook provider is **Discord**, confirmed during review.
+mailhub's `src/core/discord_client.py` is 49 lines and adapts directly, which is consistent with D11.
+The integration is a single outbound POST with no inbound surface, so it carries none of the platform review burden the messaging channels do.
 
 ## Architecture
 
@@ -420,26 +416,49 @@ That delivers a working channel while Meta's review sits in the wait state.
 
 ## Open questions
 
-These do not block starting phase 0.
+This does not block starting phase 0.
 
-1. **Why was firedesk's `knowledgedocument` table dropped in migration 024?**
-   If in-house RAG quality proved unmanageable without systematic evaluation, that reinforces the evaluation gate in phase 4.
-   If customers simply wanted to bring their own vector store, it says nothing about this project.
-
-2. **Which real-time channel carries the executive escalation interrupt?**
-   Zalo was the first instinct but is unavailable for the reason recorded in D3 and D12.
-   Telegram, Discord, and Slack are all a single outbound webhook POST and all work from Vietnam.
-   Proceeding on Discord as a provisional default, since mailhub's `src/core/discord_client.py` adapts directly, matching D11.
-   Confirming or changing this is one small file behind the `Notifier` interface and gates nothing.
-
-3. **What is the exact wording of the holding message, in Vietnamese and English?**
-   It is the only bot-authored text a user sees when escalation happens, so it should be written by a human rather than generated.
+1. **The exact wording of the holding message, in Vietnamese and English.**
+   See the Holding Message section below for the proposed copy awaiting sign-off.
+   It is the only bot-authored text a person reads when the bot decides not to answer, so a human signs it off rather than a model generating it per conversation.
 
 ### Resolved during review
 
 - **Mailbox type.** `vietnam.hearts.volunteering@gmail.com`, a plain consumer Gmail account, not a Workspace domain. Folded into D6, where it upgrades IMAP from preferred to only viable.
 - **Zalo legal entity.** None exists and none is expected soon. Folded into D3, which now places Zalo out of scope rather than later in the queue.
 - **Escalation reach.** Email alone is insufficient. Folded into D12.
+- **Escalation channel.** Discord. Folded into D12.
+- **firedesk.** Out of scope. It is a separate product and not a source of requirements, constraints, or follow-up questions for this project.
+
+## Holding message
+
+Sent verbatim whenever the pipeline reaches `needs_admin` or `needs_executive`.
+The same text covers both tiers, because the person does not need to know which one they triggered, and telling them would leak the executive category list.
+
+It is a fixed string rather than a generated one for three reasons.
+A model asked to write an apology while it is failing is the least reliable moment to trust it.
+The copy is the organisation's voice at the exact moment it is asking for patience, so it should read the same every time.
+And a fixed string is testable, which a generated one is not.
+
+Rules the copy must satisfy:
+
+1. **Disclose that it is automated.** The person is being told a human will follow up, which only means something if they know they were not already talking to one.
+2. **Promise no timeframe.** Vietnam Hearts is volunteer-run and cannot commit to a response window.
+3. **Never imply the question was wrong or unwelcome.** Escalation is the system working, not the person erring.
+4. **Reply in the language the person wrote in.** Detection reuses the same language signal as the answer path.
+
+Proposed copy, pending sign-off:
+
+**English**
+
+> Thanks for your message! I'm an automated assistant, and this one is better answered by a person. I've passed it to the Vietnam Hearts team and someone will follow up with you here.
+
+**Vietnamese**
+
+> Cảm ơn bạn đã nhắn tin! Mình là trợ lý tự động, và câu hỏi này nên được một thành viên trả lời trực tiếp. Mình đã chuyển cho đội ngũ Vietnam Hearts và sẽ có người phản hồi bạn tại đây.
+
+The Vietnamese is a fresh rendering rather than a literal translation, so both read naturally.
+A native Vietnamese speaker on the team should confirm the register before phase 1 ships, since `mình` is deliberately warm and informal and may not suit every audience.
 
 ## References
 
