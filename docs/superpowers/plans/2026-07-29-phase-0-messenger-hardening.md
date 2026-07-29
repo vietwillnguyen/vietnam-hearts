@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Python `>=3.12`. Dependencies are pinned in `pyproject.toml`; this phase adds none.
+- Python `>=3.12`. This phase adds **no runtime dependencies**. The single permitted dependency change is `pytest-asyncio` in the dev group, added by Task 4; any other dependency addition is out of scope.
 - Run everything through uv: `uv run pytest`, `uv run ruff check .`, `uv run ruff format .`.
 - Never add a co-author or attribution trailer to a commit, and never reference the tool that produced a change.
 - Commit messages follow `<type>: <description>`, imperative, lowercase, no trailing period.
