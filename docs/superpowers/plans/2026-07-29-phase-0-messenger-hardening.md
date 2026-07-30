@@ -325,8 +325,10 @@ git commit -m "test: add meta webhook payload fixtures from the published contra
 - Test: `tests/test_service_dependencies.py`
 
 **Interfaces:**
-- Consumes: `BotService` from `app.services.bot_service`.
-- Produces: `get_bot_service() -> BotService`, cached for the process lifetime, and `reset_bot_service() -> None` for tests.
+- Consumes: `BotService` from `app.services.bot_service`; `SUPABASE_URL` and `SUPABASE_SECRET_KEY` from `app.config`.
+- Produces: `get_bot_service() -> BotService`, cached for the process lifetime; `_build_supabase_client()` returning a Supabase client or `None`; and `reset_bot_service() -> None` for tests.
+
+**The Supabase client is load-bearing, not optional.** `BotService(None)` gives `KnowledgeService.supabase = None`, and Task 4's fail-closed `similarity_search` raises immediately on that. A provider that passes `None` therefore produces a bot that escalates every single question. `app/routers/bot.py:62` already builds the client correctly; this provider must do the same, and Task 5 deletes that duplicate.
 
 `KnowledgeService._get_embedding_model` issues a live `embed_content` call on construction (`app/services/knowledge_service.py:86`). `app/routers/messenger.py:112` constructs `BotService()` per inbound message, so every message burned one embedding call against a 15 RPM free tier before doing any work.
 
@@ -339,7 +341,11 @@ Create `tests/test_service_dependencies.py`:
 
 from unittest.mock import MagicMock, patch
 
-from app.dependencies.services import get_bot_service, reset_bot_service
+from app.dependencies.services import (
+    _build_supabase_client,
+    get_bot_service,
+    reset_bot_service,
+)
 
 
 class TestGetBotService:
@@ -366,6 +372,41 @@ class TestGetBotService:
             second = get_bot_service()
             assert mock_cls.call_count == 2
             assert first is not second
+
+    def test_passes_the_supabase_client_through_to_the_bot_service(self):
+        # A BotService built with None has no vector store, so Task 4's
+        # fail-closed retrieval raises on every question. This is the
+        # regression test for that.
+        fake_client = object()
+        with (
+            patch("app.dependencies.services.BotService") as mock_cls,
+            patch(
+                "app.dependencies.services._build_supabase_client",
+                return_value=fake_client,
+            ),
+        ):
+            get_bot_service()
+            mock_cls.assert_called_once_with(fake_client)
+
+
+class TestBuildSupabaseClient:
+    def test_returns_none_when_credentials_are_absent(self):
+        with (
+            patch("app.dependencies.services.SUPABASE_URL", ""),
+            patch("app.dependencies.services.SUPABASE_SECRET_KEY", ""),
+        ):
+            assert _build_supabase_client() is None
+
+    def test_returns_none_when_client_construction_raises(self):
+        with (
+            patch("app.dependencies.services.SUPABASE_URL", "https://example.supabase.co"),
+            patch("app.dependencies.services.SUPABASE_SECRET_KEY", "secret"),
+            patch(
+                "supabase.create_client",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            assert _build_supabase_client() is None
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -387,13 +428,39 @@ message. lru_cache makes construction happen once.
 
 from functools import lru_cache
 
+from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
 from app.services.bot_service import BotService
+from app.utils.logging_config import get_api_logger
+
+logger = get_api_logger()
+
+
+def _build_supabase_client():
+    """Return a Supabase client, or None when one cannot be built.
+
+    Without this client KnowledgeService has no vector store, so fail-closed
+    retrieval raises on every question and the bot escalates everything.
+    Passing None here silently disables the knowledge base, so the None paths
+    below log loudly.
+    """
+    if not (SUPABASE_URL and SUPABASE_SECRET_KEY):
+        logger.warning("Supabase credentials missing; knowledge base unavailable")
+        return None
+    try:
+        from supabase import create_client
+
+        client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
+        logger.info("Bot service initialized with Supabase client")
+        return client
+    except Exception as exc:
+        logger.error(f"Supabase client init failed; knowledge base unavailable: {exc}")
+        return None
 
 
 @lru_cache(maxsize=1)
 def get_bot_service() -> BotService:
     """Return the shared BotService, constructing it on first use."""
-    return BotService()
+    return BotService(_build_supabase_client())
 
 
 def reset_bot_service() -> None:
@@ -401,10 +468,12 @@ def reset_bot_service() -> None:
     get_bot_service.cache_clear()
 ```
 
+The config constants are imported at module level rather than inside the function, unlike `app/routers/bot.py:62`, so tests can patch them.
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `uv run pytest tests/test_service_dependencies.py -v`
-Expected: PASS, 2 passed
+Expected: PASS, 4 passed
 
 - [ ] **Step 5: Lint and commit**
 
@@ -619,6 +688,8 @@ is recoverable; a confident wrong answer to a prospective volunteer is not."
 - Create: `app/routers/webhooks.py`
 - Create: `tests/test_webhooks.py`
 - Modify: `app/main.py:31-32` and `app/main.py:131-137`
+- Modify: `app/routers/bot.py:60-76` (delete its duplicate `get_bot_service`, import the shared one)
+- Modify: `app/routers/public.py:304` (import the shared provider)
 - Delete: `app/routers/messenger.py`, `tests/test_messenger.py`
 
 **Interfaces:**
@@ -910,6 +981,33 @@ Leave `public_bot_router` and `bot_admin_router` commented out. They expose admi
 
 Run: `uv run pytest tests/test_webhooks.py -v`
 Expected: PASS, 10 passed
+
+- [ ] **Step 4b: Collapse the duplicate bot service provider**
+
+`app/routers/bot.py:60-76` defines its own `@lru_cache`-wrapped `get_bot_service`, and `app/routers/public.py:304` imports it inside the health-check endpoint. Two providers means two `BotService` singletons and two cold-start Gemini verification calls. Delete the one in `bot.py`.
+
+In `app/routers/bot.py`, delete the entire `get_bot_service` function (the `@lru_cache` decorator through `return BotService(None)`) and add to the imports:
+
+```python
+from app.dependencies.services import get_bot_service
+```
+
+Remove the now-unused `from functools import lru_cache` import if nothing else in the file uses it.
+
+In `app/routers/public.py`, change line 304 from:
+
+```python
+            from app.routers.bot import get_bot_service
+```
+
+to:
+
+```python
+            from app.dependencies.services import get_bot_service
+```
+
+Run: `uv run pytest -v`
+Expected: PASS. The health-check endpoint in `public.py` still resolves a bot service, now the shared one.
 
 - [ ] **Step 5: Delete the superseded module and its tests**
 
