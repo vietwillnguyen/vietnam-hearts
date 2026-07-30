@@ -39,8 +39,9 @@ These are stated here because they shape the design rather than merely needing a
 
 2. **The tests encode the wrong contract.**
    `tests/test_messenger.py` line 29 asserts against `"challenge"` rather than `"hub.challenge"`.
-   The suite is green over a handshake that cannot work against the real platform.
-   Green tests over a fabricated contract are worse than no tests because they suppress the signal.
+   Those tests never ran: `tests/test_messenger.py` line 15 carried `pytestmark = pytest.mark.skip(reason="Messenger integration disabled - not functional")`, so all 8 were disabled wholesale.
+   The wrong contract was therefore never exercised, and the file read as coverage while providing none.
+   Disabling a test file is a decision that expires silently, because nothing ever fails to remind you it happened.
 
 3. **No webhook signature verification exists anywhere.**
    `FACEBOOK_APP_SECRET` is read at `app/config.py` line 75 and never used.
