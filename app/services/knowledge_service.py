@@ -22,8 +22,8 @@ CHAT_MODEL = "gemini-3.5-flash"
 EMBEDDING_MODEL = "gemini-embedding-001"
 # gemini-embedding-001 defaults to 3072-d output. Pin it down via Matryoshka
 # Representation Learning to 768-d to match the existing document_chunks
-# pgvector column (sized for the old text-embedding-001 model) and the
-# fallback hash-based embeddings below, so no DB migration is needed.
+# pgvector column, which was sized for the old text-embedding-001 model, so
+# no DB migration is needed.
 EMBEDDING_DIMENSIONS = 768
 
 
@@ -72,9 +72,7 @@ class KnowledgeService:
         try:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
-                logger.warning(
-                    "GEMINI_API_KEY not set - chat responses will use fallback"
-                )
+                logger.warning("GEMINI_API_KEY not set - chat responses unavailable")
                 return None
 
             client = genai.Client(api_key=api_key)
@@ -88,7 +86,9 @@ class KnowledgeService:
     def _get_embedding_model(self) -> Any | None:
         """Get Gemini embedding capability for free embeddings"""
         if not self.gemini_client:
-            logger.warning("Gemini client not available - embeddings will use fallback")
+            logger.warning(
+                "Gemini client not available - retrieval will refuse to answer"
+            )
             return None
 
         try:
@@ -121,7 +121,9 @@ class KnowledgeService:
         except Exception as e:
             logger.debug(f"Chat model test failed: {e}")
 
-        logger.warning("No Gemini embedding models available - using fallback")
+        logger.warning(
+            "No Gemini embedding models available - retrieval will refuse to answer"
+        )
         return None
 
     async def create_embeddings(self, texts: list[str]) -> list[list[float]]:
@@ -366,6 +368,10 @@ class KnowledgeService:
         Check if knowledge service is fully available
 
         Returns:
-            True if both Gemini embedding capability and Supabase are available
+            True if a real Gemini embedding model and Supabase are both available
         """
-        return self.embedding_model is not None and self.supabase is not None
+        return (
+            self.embedding_model is not None
+            and self.embedding_model != "chat_model"
+            and self.supabase is not None
+        )
