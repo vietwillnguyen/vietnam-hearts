@@ -47,6 +47,7 @@ dev = [
     # change could have broken a documented command. Dev group, not runtime:
     # the Dockerfile builds with `uv sync --no-dev` and never copies tools/.
     "requests>=2.31.0,<3",
+    "pytest-asyncio>=0.24,<0.26",
 ]
 
 [build-system]
