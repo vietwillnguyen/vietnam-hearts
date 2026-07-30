@@ -301,7 +301,7 @@ def get_health(db: Session = Depends(get_db)):
         bot_status = "unknown"
         bot_error = None
         try:
-            from app.routers.bot import get_bot_service
+            from app.dependencies.services import get_bot_service
 
             bot_service = get_bot_service()
             if hasattr(bot_service, "health_check"):
