@@ -66,19 +66,27 @@ async def handle_webhook(request: Request) -> Response:
         logger.warning("Rejected webhook with an unparseable body")
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
-    if body.get("object") != "page":
-        logger.info(f"Ignoring webhook object: {body.get('object')}")
-        return PlainTextResponse("EVENT_RECEIVED", status_code=200)
+    try:
+        if not isinstance(body, dict) or body.get("object") != "page":
+            logger.info("Ignoring webhook with an unexpected object type")
+            return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
-    bot_service = get_bot_service()
-    for entry in body.get("entry", []):
-        for event in entry.get("messaging", []):
-            await _process_event(event, bot_service)
+        entries = body.get("entry")
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            events = entry.get("messaging")
+            for event in events if isinstance(events, list) else []:
+                if isinstance(event, dict):
+                    await _process_event(event)
+    except Exception as exc:
+        # Never propagate: a non-200 here gets the subscription disabled.
+        logger.error(f"Webhook processing failed: {exc}", exc_info=True)
 
     return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
 
-async def _process_event(event: dict, bot_service) -> None:
+async def _process_event(event: dict) -> None:
     """Route a single messaging event. Never raises."""
     try:
         sender_id = event.get("sender", {}).get("id")
@@ -86,14 +94,14 @@ async def _process_event(event: dict, bot_service) -> None:
             return
 
         if "message" in event:
-            await _handle_message(sender_id, event["message"], bot_service)
+            await _handle_message(sender_id, event["message"])
         elif "postback" in event:
             _handle_postback(sender_id, event["postback"])
     except Exception as exc:
         logger.error(f"Error processing messaging event: {exc}", exc_info=True)
 
 
-async def _handle_message(sender_id: str, message: dict, bot_service) -> None:
+async def _handle_message(sender_id: str, message: dict) -> None:
     """Answer an inbound text message.
 
     Phase 1 replaces this with the triage pipeline, which turns the silent
@@ -107,7 +115,10 @@ async def _handle_message(sender_id: str, message: dict, bot_service) -> None:
         return
 
     try:
-        result = await bot_service.chat(text)
+        # Resolved here rather than per-delivery: constructing the bot service
+        # issues a live Gemini call, and echo or postback deliveries never
+        # need it.
+        result = await get_bot_service().chat(text)
     except Exception as exc:
         logger.error(f"Bot service failed for {sender_id}: {exc}", exc_info=True)
         return

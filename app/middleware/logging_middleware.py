@@ -18,6 +18,14 @@ from app.utils.request_helpers import get_client_ip
 
 logger = get_logger("logging_middleware")
 
+_SENSITIVE_PARAM_MARKERS = ("token", "secret", "password", "signature", "api_key")
+
+
+def _is_sensitive_param(name: str) -> bool:
+    """True when a query parameter name looks like it carries a credential."""
+    lowered = name.lower()
+    return any(marker in lowered for marker in _SENSITIVE_PARAM_MARKERS)
+
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """
@@ -88,6 +96,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         method = request.method
         path = request.url.path
         query_params = dict(request.query_params)
+        # Never log secrets that arrive as query parameters. Meta's webhook
+        # handshake carries hub.verify_token this way.
+        query_params = {
+            key: ("[REDACTED]" if _is_sensitive_param(key) else value)
+            for key, value in query_params.items()
+        }
         headers = dict(request.headers)
 
         # Remove sensitive headers

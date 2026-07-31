@@ -23,6 +23,7 @@ from .config import (
     APPLICATION_VERSION,
     DATABASE_URL,
     ENVIRONMENT,
+    FACEBOOK_APP_SECRET,
 )
 from .database import get_db, init_db
 from .middleware import setup_middleware
@@ -71,6 +72,12 @@ async def lifespan(app: FastAPI):
 
         validate_config()
         logger.info("Configuration validated successfully")
+
+        if not FACEBOOK_APP_SECRET:
+            logger.warning(
+                "FACEBOOK_APP_SECRET is not set - every Meta webhook delivery will "
+                "be rejected with 403 and Meta will disable the subscription"
+            )
 
         # Initialize database
         init_db()

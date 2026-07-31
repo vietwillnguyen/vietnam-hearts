@@ -19,7 +19,7 @@ APP_SECRET = "test_app_secret"
 VERIFY_TOKEN = "test_verify_token"
 
 
-def _signed(payload: dict) -> tuple[bytes, dict[str, str]]:
+def _signed(payload) -> tuple[bytes, dict[str, str]]:
     body = json.dumps(payload).encode()
     digest = hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
     return body, {
@@ -94,6 +94,22 @@ class TestSignature:
         assert response.status_code == 403
         sender.send_text_message.assert_not_called()
 
+    def test_verifies_over_raw_bytes_not_reserialized_json(
+        self, client: TestClient, meta_config, sender, bot
+    ):
+        # Signed over pretty-printed bytes. An implementation that hashed
+        # json.dumps(await request.json()) would compute a different digest
+        # and reject this, so this test pins the raw-bytes requirement.
+        body = json.dumps(page_text_message(), indent=2).encode()
+        digest = hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
+        headers = {
+            "X-Hub-Signature-256": f"sha256={digest}",
+            "Content-Type": "application/json",
+        }
+        response = client.post("/webhook/meta", content=body, headers=headers)
+        assert response.status_code == 200
+        sender.send_text_message.assert_called_once()
+
 
 class TestDispatch:
     def test_answers_a_text_message(self, client: TestClient, meta_config, sender, bot):
@@ -117,6 +133,7 @@ class TestDispatch:
         response = client.post("/webhook/meta", content=body, headers=headers)
         assert response.status_code == 200
         bot.chat.assert_not_called()
+        sender.send_text_message.assert_not_called()
 
     def test_returns_200_for_an_unknown_object_type(
         self, client: TestClient, meta_config, sender, bot
@@ -137,4 +154,36 @@ class TestDispatch:
         response = client.post("/webhook/meta", content=body, headers=headers)
         assert response.status_code == 200
         # Phase 1 replaces silence with a holding message plus an escalation.
+        sender.send_text_message.assert_not_called()
+
+    def test_returns_200_for_an_unparseable_body(
+        self, client: TestClient, meta_config, sender, bot
+    ):
+        body = b"{not json at all"
+        digest = hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
+        response = client.post(
+            "/webhook/meta",
+            content=body,
+            headers={"X-Hub-Signature-256": f"sha256={digest}"},
+        )
+        assert response.status_code == 200
+        sender.send_text_message.assert_not_called()
+
+    def test_returns_200_for_structurally_broken_payloads(
+        self, client: TestClient, meta_config, sender, bot
+    ):
+        # Meta disables a subscription after repeated non-200s, so even
+        # nonsense that clears the signature check must not 4xx or 5xx.
+        for payload in (
+            [1, 2, 3],
+            "a string",
+            5,
+            None,
+            {"object": "page", "entry": 5},
+            {"object": "page", "entry": ["x"]},
+            {"object": "page", "entry": [{"messaging": 7}]},
+        ):
+            body, headers = _signed(payload)
+            response = client.post("/webhook/meta", content=body, headers=headers)
+            assert response.status_code == 200, f"non-200 for {payload!r}"
         sender.send_text_message.assert_not_called()
