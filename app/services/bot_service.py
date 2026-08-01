@@ -9,7 +9,7 @@ from typing import Any
 from app.utils.logging_config import get_api_logger
 
 from .document_service import DocumentService
-from .knowledge_service import CHAT_MODEL, EmbeddingsUnavailable, KnowledgeService
+from .knowledge_service import CHAT_MODEL, KnowledgeService
 
 logger = get_api_logger()
 
@@ -21,6 +21,19 @@ class NoRelevantContext(RuntimeError):
     broken. Phase 1 maps both to a holding message plus an escalation; in
     phase 0 both simply mean the bot does not answer, because answering
     without grounding is the failure mode this design exists to prevent.
+    """
+
+
+class GenerationUnavailable(RuntimeError):
+    """Raised when retrieval succeeded but the model could not answer.
+
+    Distinct from both EmbeddingsUnavailable, which means retrieval itself is
+    broken, and NoRelevantContext, which means retrieval worked and the
+    knowledge base simply does not cover the question. Here the grounding
+    exists and only generation failed, so the fix is a model or quota problem
+    rather than a knowledge base gap. Phase 1 treats it as needs_admin like
+    the others while keeping the cause distinguishable in logs and in the
+    escalation it raises.
     """
 
 
@@ -144,10 +157,12 @@ class BotService:
     ) -> dict[str, Any]:
         """Answer a question from the knowledge base, or raise.
 
-        Raises EmbeddingsUnavailable when retrieval is broken and
-        NoRelevantContext when it returned nothing usable. Callers must not
-        turn either into a guess: an ungrounded answer to a prospective
-        volunteer is the harm this whole path is built to avoid.
+        Raises EmbeddingsUnavailable when retrieval is broken,
+        NoRelevantContext when it returned nothing usable, and
+        GenerationUnavailable when grounding was found but the model could
+        not turn it into an answer. Callers must not turn any of them into a
+        guess: an ungrounded answer to a prospective volunteer is the harm
+        this whole path is built to avoid.
         """
         logger.info(f"Processing chat message: {message[:100]}...")
 
@@ -205,7 +220,7 @@ class BotService:
     ) -> str:
         """Generate a grounded response, or raise if generation is unavailable."""
         if not self.knowledge_service.gemini_client:
-            raise EmbeddingsUnavailable(
+            raise GenerationUnavailable(
                 "Gemini client unavailable; refusing to answer ungrounded"
             )
 
@@ -215,11 +230,11 @@ class BotService:
                 model=CHAT_MODEL, contents=prompt
             )
         except Exception as exc:
-            raise EmbeddingsUnavailable(f"Gemini generation failed: {exc}") from exc
+            raise GenerationUnavailable(f"Gemini generation failed: {exc}") from exc
 
         text = (response.text or "").strip()
         if not text:
-            raise EmbeddingsUnavailable("Gemini returned an empty response")
+            raise GenerationUnavailable("Gemini returned an empty response")
 
         logger.info(f"Generated Gemini response: {text[:100]}...")
         return text
