@@ -105,7 +105,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         headers = dict(request.headers)
 
         # Remove sensitive headers
-        sensitive_headers = ["authorization", "cookie", "x-auth-token"]
+        sensitive_headers = [
+            "authorization",
+            "cookie",
+            "x-auth-token",
+            "x-hub-signature-256",
+        ]
         for header in sensitive_headers:
             headers.pop(header.lower(), None)
 

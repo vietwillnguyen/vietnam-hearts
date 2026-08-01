@@ -109,7 +109,19 @@ async def test_bot(
 ):
     logger.info("Public test chat request")
 
-    result = await bot_service.chat(request.message, request.user_context)
+    # chat() now raises when it cannot answer from the knowledge base, so this
+    # call site has to handle that rather than let it become a bare 500.
+    try:
+        result = await bot_service.chat(request.message, request.user_context)
+    except Exception as e:
+        logger.error(f"Public test chat error: {e}")
+        return {
+            "status": "error",
+            "test_message": request.message,
+            "error": "Chat processing failed",
+            "timestamp": asyncio.get_event_loop().time(),
+        }
+
     return {
         "status": "success",
         "test_message": request.message,

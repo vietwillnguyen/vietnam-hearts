@@ -80,8 +80,9 @@ ignore = [
 known-first-party = ["app"]
 
 [tool.ruff.lint.per-file-ignores]
-# Disabled/WIP feature (messenger bot router not mounted in app/main.py); the
-# star import predates this ruff config and isn't part of the active app.
+# app/routers/bot.py holds the bot chat/admin routers, which app/main.py leaves
+# commented out, so none of it is mounted. Its `from app.config import *` star
+# import predates this ruff config and isn't part of the active app.
 "app/routers/bot.py" = ["F403"]
 
 [tool.ruff.lint.flake8-bugbear]

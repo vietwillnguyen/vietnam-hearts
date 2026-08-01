@@ -24,7 +24,12 @@ def verify_signature(
 
     received = header[len(SIGNATURE_PREFIX) :]
     expected = hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, received)
+    # compare_digest raises TypeError on non-ASCII str, and both operands here
+    # are attacker-controlled, so compare bytes. Starlette latin-1-decodes
+    # headers, so latin-1 round-trips whatever arrived.
+    return hmac.compare_digest(
+        expected.encode("ascii"), received.encode("latin-1", "replace")
+    )
 
 
 def resolve_challenge(
@@ -42,6 +47,8 @@ def resolve_challenge(
         return None
     if mode != "subscribe":
         return None
-    if not hmac.compare_digest(expected_token, verify_token or ""):
+    if not hmac.compare_digest(
+        expected_token.encode("utf-8"), (verify_token or "").encode("utf-8")
+    ):
         return None
     return challenge

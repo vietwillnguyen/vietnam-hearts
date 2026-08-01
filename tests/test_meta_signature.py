@@ -40,6 +40,9 @@ class TestVerifySignature:
         assert verify_signature(None, BODY, _sign(APP_SECRET, BODY)) is False
         assert verify_signature("", BODY, _sign(APP_SECRET, BODY)) is False
 
+    def test_rejects_a_non_ascii_header_without_raising(self):
+        assert verify_signature(APP_SECRET, BODY, "sha256=café") is False
+
 
 class TestResolveChallenge:
     def test_returns_the_challenge_when_mode_and_token_match(self):
@@ -61,3 +64,10 @@ class TestResolveChallenge:
 
     def test_refuses_a_missing_challenge(self):
         assert resolve_challenge("tok", "subscribe", "tok", None) is None
+
+    def test_rejects_a_non_ascii_verify_token_without_raising(self):
+        assert resolve_challenge("tok", "subscribe", "café", "abc123") is None
+
+    def test_handles_a_non_ascii_configured_token(self):
+        assert resolve_challenge("tök", "subscribe", "tok", "abc123") is None
+        assert resolve_challenge("tök", "subscribe", "tök", "abc123") == "abc123"

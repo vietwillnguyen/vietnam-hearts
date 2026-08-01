@@ -9,9 +9,19 @@ from typing import Any
 from app.utils.logging_config import get_api_logger
 
 from .document_service import DocumentService
-from .knowledge_service import CHAT_MODEL, KnowledgeService
+from .knowledge_service import CHAT_MODEL, EmbeddingsUnavailable, KnowledgeService
 
 logger = get_api_logger()
+
+
+class NoRelevantContext(RuntimeError):
+    """Raised when retrieval succeeded but surfaced nothing relevant.
+
+    Distinct from EmbeddingsUnavailable, which means retrieval itself is
+    broken. Phase 1 maps both to a holding message plus an escalation; in
+    phase 0 both simply mean the bot does not answer, because answering
+    without grounding is the failure mode this design exists to prevent.
+    """
 
 
 class BotService:
@@ -132,51 +142,39 @@ class BotService:
     async def chat(
         self, message: str, user_context: dict | None = None
     ) -> dict[str, Any]:
+        """Answer a question from the knowledge base, or raise.
+
+        Raises EmbeddingsUnavailable when retrieval is broken and
+        NoRelevantContext when it returned nothing usable. Callers must not
+        turn either into a guess: an ungrounded answer to a prospective
+        volunteer is the harm this whole path is built to avoid.
         """
-        Process chat message and return intelligent response
+        logger.info(f"Processing chat message: {message[:100]}...")
 
-        Args:
-            message: User's message
-            user_context: Optional user context (role, experience, etc.)
-
-        Returns:
-            Chat response with answer and metadata
-        """
-        try:
-            logger.info(f"Processing chat message: {message[:100]}...")
-
-            # Find relevant context from knowledge base
-            relevant_chunks = await self.knowledge_service.similarity_search(
-                message, limit=3
+        relevant_chunks = await self.knowledge_service.similarity_search(
+            message, limit=3
+        )
+        if not relevant_chunks:
+            raise NoRelevantContext(
+                "No relevant knowledge base content for this question"
             )
 
-            if not relevant_chunks:
-                logger.info("No relevant context found, using fallback response")
-                return await self._generate_fallback_response(message, user_context)
+        context = self._build_context(relevant_chunks)
+        logger.info(f"Found {len(relevant_chunks)} relevant chunks")
 
-            # Build context from relevant chunks
-            context = self._build_context(relevant_chunks)
-            logger.info(f"Found {len(relevant_chunks)} relevant chunks")
+        response = await self._generate_contextual_response(
+            message, context, user_context
+        )
 
-            # Generate response using context
-            response = await self._generate_contextual_response(
-                message, context, user_context
-            )
-
-            return {
-                "response": response,
-                "context_used": len(relevant_chunks),
-                "confidence": 0.9 if relevant_chunks else 0.3,
-                "sources": [
-                    chunk.get("source_document_id") for chunk in relevant_chunks
-                ],
-            }
-
-        except Exception as e:
-            logger.error(f"Chat processing failed: {e}")
-            return await self._generate_fallback_response(
-                message, user_context, error=str(e)
-            )
+        top_similarity = max(
+            (chunk.get("similarity") or 0.0) for chunk in relevant_chunks
+        )
+        return {
+            "response": response,
+            "context_used": len(relevant_chunks),
+            "confidence": top_similarity,
+            "sources": [chunk.get("source_document_id") for chunk in relevant_chunks],
+        }
 
     def _build_context(self, chunks: list[dict[str, Any]]) -> str:
         """
@@ -205,38 +203,26 @@ class BotService:
     async def _generate_contextual_response(
         self, message: str, context: str, user_context: dict | None = None
     ) -> str:
-        """
-        Generate response using context and Gemini
+        """Generate a grounded response, or raise if generation is unavailable."""
+        if not self.knowledge_service.gemini_client:
+            raise EmbeddingsUnavailable(
+                "Gemini client unavailable; refusing to answer ungrounded"
+            )
 
-        Args:
-            message: User's message
-            context: Relevant context from knowledge base
-            user_context: Optional user context
-
-        Returns:
-            Generated response
-        """
+        prompt = self._build_prompt(message, context, user_context)
         try:
-            if not self.knowledge_service.gemini_client:
-                # Fallback to simple response without AI
-                return self._generate_simple_response(message, context)
-
-            # Build prompt with context
-            prompt = self._build_prompt(message, context, user_context)
-
-            # Generate response using Gemini
             response = self.knowledge_service.gemini_client.models.generate_content(
                 model=CHAT_MODEL, contents=prompt
             )
+        except Exception as exc:
+            raise EmbeddingsUnavailable(f"Gemini generation failed: {exc}") from exc
 
-            ai_response = response.text.strip()
-            logger.info(f"Generated Gemini response: {ai_response[:100]}...")
+        text = (response.text or "").strip()
+        if not text:
+            raise EmbeddingsUnavailable("Gemini returned an empty response")
 
-            return ai_response
-
-        except Exception as e:
-            logger.error(f"Gemini response generation failed: {e}")
-            return self._generate_simple_response(message, context)
+        logger.info(f"Generated Gemini response: {text[:100]}...")
+        return text
 
     def _build_prompt(
         self, message: str, context: str, user_context: dict | None = None
@@ -269,63 +255,6 @@ class BotService:
             prompt_parts.insert(2, f"User context: {user_context}")
 
         return "\n".join(prompt_parts)
-
-    def _generate_simple_response(self, message: str, context: str) -> str:
-        """
-        Generate simple response without AI
-
-        Args:
-            message: User's message
-            context: Available context
-
-        Returns:
-            Simple response
-        """
-        # Simple keyword-based responses
-        message_lower = message.lower()
-
-        if any(word in message_lower for word in ["volunteer", "help", "teach"]):
-            return "Thank you for your interest in volunteering with Vietnam Hearts! We're always looking for dedicated people to help teach English to children in Ho Chi Minh City. Based on our information, you don't need a formal teaching certificate - just enthusiasm and a desire to help!"
-
-        if any(word in message_lower for word in ["location", "where", "address"]):
-            return "Our classes are held in Binh Thanh, Ho Chi Minh City. We can provide more specific location details once you're registered as a volunteer."
-
-        if any(
-            word in message_lower
-            for word in ["experience", "qualification", "certificate"]
-        ):
-            return "No formal teaching experience is required! We welcome volunteers of all backgrounds. What matters most is your enthusiasm and commitment to helping children learn English."
-
-        if any(word in message_lower for word in ["time", "schedule", "when"]):
-            return "We have classes throughout the week. The exact schedule varies, but we're flexible and can work with your availability. Most volunteers commit to 1-2 sessions per week."
-
-        # Default response
-        return "Thank you for your question! I'd be happy to help you learn more about volunteering with Vietnam Hearts. Could you please provide more specific details about what you'd like to know?"
-
-    async def _generate_fallback_response(
-        self, message: str, user_context: dict | None = None, error: str | None = None
-    ) -> dict[str, Any]:
-        """
-        Generate fallback response when knowledge base is unavailable
-
-        Args:
-            message: User's message
-            user_context: Optional user context
-            error: Optional error message
-
-        Returns:
-            Fallback response
-        """
-        fallback_response = self._generate_simple_response(message, "")
-
-        return {
-            "response": fallback_response,
-            "context_used": 0,
-            "confidence": 0.1,
-            "sources": [],
-            "note": "Using fallback response - knowledge base unavailable"
-            + (f" (Error: {error})" if error else ""),
-        }
 
     async def get_knowledge_status(self) -> dict[str, Any]:
         """

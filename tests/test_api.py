@@ -126,17 +126,6 @@ class TestPublicEndpoints:
         # Should return HTML error page
         assert "text/html" in response.headers.get("content-type", "")
 
-    @pytest.mark.skip(reason="Messenger integration disabled — not functional")
-    def test_webhook_messenger_endpoint(self, client):
-        """Test Facebook webhook endpoint"""
-        # Test webhook verification
-        response = client.get(
-            "/webhook/messenger?mode=subscribe&verify_token=test&challenge=test123"
-        )
-
-        # Should handle webhook verification
-        assert response.status_code in [200, 400, 500]  # Various possible responses
-
 
 class TestAuthEndpoints:
     """Test authentication endpoints"""

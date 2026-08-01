@@ -1,9 +1,11 @@
 """Meta webhook payloads matching the published Messenger Platform contract.
 
-Hand-written dictionaries are what let the hub.* binding defect ship green, so
-these live in one place and every webhook test builds from them. During phase 3
-App Review testing, capture a real delivery and diff it against these shapes
-before trusting any new field.
+The previous hand-written payload dictionaries in this repo encoded a contract
+Meta does not use, and the file that held them was disabled wholesale with a
+module-level pytestmark skip, so nothing ever exercised the mismatch. These
+live in one place so every webhook test builds from the same shapes. During
+phase 3 App Review testing, capture a real delivery and diff it against these
+shapes before trusting any new field.
 
 Reference: https://developers.facebook.com/documentation/business-messaging/messenger-platform/overview
 """

@@ -73,6 +73,13 @@ class TestVerification:
         query = {**VERIFY_QUERY, "hub.verify_token": "wrong"}
         assert client.get("/webhook/meta", params=query).status_code == 403
 
+    def test_refuses_a_non_ascii_token_with_403_not_500(
+        self, client: TestClient, meta_config
+    ):
+        query = {**VERIFY_QUERY, "hub.verify_token": "café"}
+        response = client.get("/webhook/meta", params=query)
+        assert response.status_code == 403
+
 
 class TestSignature:
     def test_rejects_an_unsigned_post(

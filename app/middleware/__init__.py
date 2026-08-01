@@ -23,22 +23,30 @@ def setup_middleware(app: FastAPI) -> None:
     Note: Authentication is handled by FastAPI dependencies, not middleware
     to avoid conflicts with the dependency injection system.
 
-    Order matters - middleware is executed in the order it's added:
-    1. Error handling (outermost)
+    Order matters. Starlette's add_middleware inserts at index 0, so the last
+    one added ends up outermost. The real request-time order is:
+    1. Logging (outermost)
     2. Rate limiting
-    3. Logging
+    3. Error handling
     4. CORS (innermost)
+
+    Because ErrorHandlingMiddleware sits inside the other two, anything raised
+    inside LoggingMiddleware or RateLimitMiddleware bypasses it entirely and
+    surfaces to the client as a bare 500.
     """
 
     # Setup CORS first (FastAPI built-in middleware) - should be early to handle preflight requests
     setup_cors(app)
 
     # Add custom middleware classes (excluding auth to avoid conflicts)
-    # Order matters - middleware is executed in the order it's added:
-    # 1. Error handling (outermost)
+    # add_middleware inserts at index 0, so the last added is outermost. The
+    # real request-time order is:
+    # 1. Logging (outermost)
     # 2. Rate limiting
-    # 3. Logging
-    # 4. CORS (already added above)
+    # 3. Error handling
+    # 4. CORS (already added above, innermost)
+    # Anything raised inside LoggingMiddleware or RateLimitMiddleware bypasses
+    # ErrorHandlingMiddleware and surfaces as a bare 500.
     app.add_middleware(ErrorHandlingMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(LoggingMiddleware)
