@@ -83,7 +83,7 @@ class KnowledgeService:
             logger.error(f"Failed to initialize Gemini client: {e}")
             return None
 
-    def _get_embedding_model(self) -> Any | None:
+    def _get_embedding_model(self) -> str | None:
         """Get Gemini embedding capability for free embeddings"""
         if not self.gemini_client:
             logger.warning(
@@ -109,18 +109,6 @@ class KnowledgeService:
         except Exception as e:
             logger.debug(f"Model {EMBEDDING_MODEL} not available: {e}")
 
-        # If the embedding model doesn't work, try using the chat model for
-        # simple text processing.
-        try:
-            test_response = self.gemini_client.models.generate_content(
-                model=CHAT_MODEL, contents="test"
-            )
-            if test_response.text:
-                logger.info("Gemini chat model available - using for text processing")
-                return "chat_model"  # Special indicator for chat-based approach
-        except Exception as e:
-            logger.debug(f"Chat model test failed: {e}")
-
         logger.warning(
             "No Gemini embedding models available - retrieval will refuse to answer"
         )
@@ -128,7 +116,7 @@ class KnowledgeService:
 
     async def create_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Create 768-dimensional embeddings, or raise if that is impossible."""
-        if not self.embedding_model or self.embedding_model == "chat_model":
+        if not self.embedding_model:
             raise EmbeddingsUnavailable(
                 "Gemini embedding model is not available; refusing to answer"
             )
@@ -259,7 +247,7 @@ class KnowledgeService:
             raise EmbeddingsUnavailable(
                 "Supabase is not configured; refusing to answer"
             )
-        if not self.embedding_model or self.embedding_model == "chat_model":
+        if not self.embedding_model:
             raise EmbeddingsUnavailable(
                 "Gemini embedding model is not available; refusing to answer"
             )
@@ -370,8 +358,4 @@ class KnowledgeService:
         Returns:
             True if a real Gemini embedding model and Supabase are both available
         """
-        return (
-            self.embedding_model is not None
-            and self.embedding_model != "chat_model"
-            and self.supabase is not None
-        )
+        return self.embedding_model is not None and self.supabase is not None
