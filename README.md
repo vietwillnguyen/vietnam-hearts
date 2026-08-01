@@ -167,6 +167,7 @@ Once running, the API will be available at:
 - **API Documentation**: `http://localhost:8080/docs`
 - **Health Check**: `http://localhost:8080/health` (public)
 - **Admin Endpoints**: `http://localhost:8080/admin/*` (admin auth required; Cloud Scheduler calls these in production - see [`tests/README.md`](tests/README.md) for the endpoint list and how to call them by hand)
+- **Meta Webhook**: `http://localhost:8080/webhook/meta` (public, called by Meta; `GET` answers the subscription handshake, `POST` receives Facebook Messenger events). Requires `FACEBOOK_APP_SECRET` and `FACEBOOK_VERIFY_TOKEN` - see `env.template`. Without them the handshake and every delivery are refused with `403`, and Meta disables the subscription.
 
 ## Deploy Configuration
 
