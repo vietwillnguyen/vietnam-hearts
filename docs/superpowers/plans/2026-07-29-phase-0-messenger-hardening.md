@@ -1078,6 +1078,14 @@ Found by the whole-branch review after phase 0's fix wave, and deliberately not 
    Impact on the webhook is negligible because HMAC rejects forgeries first, but it makes the `/auth` limit of 10 attempts per hour bypassable by rotating the header, and lets an attacker grow `request_counts` on keys of their choosing.
    Pre-existing and untouched by this branch; deserves its own ticket.
 
+5. **`/health` cannot see a broken chat model.**
+   `KnowledgeService.is_available()` is true when the embedding model and the Supabase client both exist, and `GET /health` derives its `bot_service` entry from exactly that.
+   `CHAT_MODEL` is never probed there or anywhere else in the codebase, so an instance whose `generate_content` call fails on every request still reports the bot healthy while it answers nobody.
+   Accepted for phase 0 for two reasons.
+   A second construction-time probe would deepen the sticky degradation already recorded as item 3, since it would pin a second capability off for the process lifetime on one transient failure.
+   It would also spend a second live Gemini call against a 15 requests-per-minute free tier at every construction, which is the same per-construction cost the shared `BotService` provider exists to cut down.
+   Phase 1 fix: surface a non-generating bot through the escalation path, where `GenerationUnavailable` already lands, rather than through a health flag.
+
 ## Remaining plan sequence
 
 Each of these gets its own plan document and produces working software on its own.

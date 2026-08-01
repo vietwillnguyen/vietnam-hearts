@@ -2,7 +2,8 @@
 
 - **Status:** Approved
 - **Date:** 2026-07-28
-- **Supersedes:** the disabled bot and messenger routers currently commented out in `app/main.py`
+- **Supersedes:** the disabled bot and messenger routers that were commented out in `app/main.py` when this spec was written.
+  Phase 0 has since deleted the messenger router and wired its replacement, `app/routers/webhooks.py`; the bot routers in `app/routers/bot.py` are still commented out pending the phase 1 restructure.
 
 ## Context
 
@@ -14,51 +15,66 @@ The goal is to centralise inbound question answering into the existing `vietnam-
 
 ### What already exists
 
-A substantial RAG bot was built in this repository and then disabled.
-`app/main.py` lines 31-32 and 131-137 have the imports and `include_router` calls commented out.
+A substantial RAG bot was built in this repository and then disabled, with its imports and `include_router` calls commented out in `app/main.py`.
+Phase 0 revived the Meta half of it.
+The table below reflects the code as it now stands, after phase 0.
 
 | Component | File | State |
 |---|---|---|
-| Facebook Messenger webhook and verification | `app/routers/messenger.py` | Complete, unwired, and broken (see D1) |
+| Meta webhook, handshake, and HMAC verification | `app/routers/webhooks.py` | Delivered in phase 0 at `/webhook/meta`, wired into `app/main.py`. Replaces the deleted `app/routers/messenger.py` (see D1, D2) |
+| Pure signature and handshake helpers | `app/services/channels/meta_signature.py` | Delivered in phase 0, free of FastAPI and I/O so the security-critical logic is directly testable |
+| Meta webhook tests and payload fixtures | `tests/test_webhooks.py`, `tests/fixtures/meta_payloads.py` | Delivered in phase 0. Replace the deleted, wholly skipped `tests/test_messenger.py` |
+| Shared `BotService` provider | `app/dependencies/services.py` | Delivered in phase 0. The single provider, `lru_cache`d for the process lifetime |
 | Messenger Send API client and mock | `app/services/messenger/message_sender.py` | Complete |
-| RAG orchestration | `app/services/bot_service.py` | Complete |
-| Gemini embeddings and pgvector similarity search | `app/services/knowledge_service.py` | Complete |
+| RAG orchestration | `app/services/bot_service.py` | Complete, and now fails closed rather than emitting canned answers (D9) |
+| Gemini embeddings and pgvector similarity search | `app/services/knowledge_service.py` | Complete, and now fails closed rather than hashing (D9) |
 | Google Docs and Drive ingestion | `app/services/document_service.py` | Complete |
-| Chat and knowledge-base admin endpoints | `app/routers/bot.py` | Complete, unwired |
+| Chat and knowledge-base admin endpoints | `app/routers/bot.py` | Complete, still unwired. Phase 1 restructures it |
 
 This project is therefore a revive, harden, and extend effort rather than a greenfield build.
 
 ### Defects found in the existing code
 
 These are stated here because they shape the design rather than merely needing a patch.
+Each carries the resolution that phase 0 shipped, so the reasoning behind the decisions below stays legible to phases 1 through 5.
 
-1. **Webhook verification cannot succeed.**
-   `app/routers/messenger.py` lines 41-44 declare query parameters named `mode`, `verify_token`, and `challenge`.
+1. **Webhook verification could not succeed.**
+   `app/routers/messenger.py` declared query parameters named `mode`, `verify_token`, and `challenge`.
    Meta sends `hub.mode`, `hub.verify_token`, and `hub.challenge`.
-   Those never bind, so the `mode == "subscribe"` check is always false and verification always fails.
+   Those never bound, so the `mode == "subscribe"` check was always false and verification always failed.
+   The handler also called `int()` on `hub.challenge`, which is an opaque random string rather than a number.
+   Resolved in phase 0 by binding `hub.mode`, `hub.verify_token`, and `hub.challenge` with explicit `Query` aliases in `app/routers/webhooks.py`, and echoing the challenge verbatim from `resolve_challenge`.
 
-2. **The tests encode the wrong contract.**
-   `tests/test_messenger.py` line 29 asserts against `"challenge"` rather than `"hub.challenge"`.
-   Those tests never ran: `tests/test_messenger.py` line 15 carried `pytestmark = pytest.mark.skip(reason="Messenger integration disabled - not functional")`, so all 8 were disabled wholesale.
+2. **The tests encoded the wrong contract.**
+   `tests/test_messenger.py` asserted against `"challenge"` rather than `"hub.challenge"`.
+   Those tests never ran: the file carried `pytestmark = pytest.mark.skip(reason="Messenger integration disabled - not functional")`, so all 8 were disabled wholesale.
    The wrong contract was therefore never exercised, and the file read as coverage while providing none.
    Disabling a test file is a decision that expires silently, because nothing ever fails to remind you it happened.
+   Resolved in phase 0 by deleting the file and writing `tests/test_webhooks.py` against the real `hub.*` names, building every payload from `tests/fixtures/meta_payloads.py`, which is shaped to Meta's published contract per D1.
 
-3. **No webhook signature verification exists anywhere.**
-   `FACEBOOK_APP_SECRET` is read at `app/config.py` line 75 and never used.
-   No `X-Hub-Signature-256` handling exists in the codebase.
-   The webhook endpoint is public and unauthenticated, so anyone can forge events and consume the Gemini quota.
+3. **No webhook signature verification existed anywhere.**
+   `FACEBOOK_APP_SECRET` was read in `app/config.py` and never used.
+   No `X-Hub-Signature-256` handling existed in the codebase.
+   The webhook endpoint was public and unauthenticated, so anyone could forge events and consume the Gemini quota.
+   Resolved in phase 0 by `app/services/channels/meta_signature.py`, which recomputes the HMAC over the exact received bytes and compares in constant time, with a mismatch or a missing secret refused as `403` before any work happens.
 
 4. **Silent degradation to meaningless embeddings.**
-   `app/services/knowledge_service.py` line 199 falls back to MD5-hash pseudo-embeddings when Gemini is unavailable.
-   This does not degrade to "no answer", it degrades to "confident answers retrieved from effectively random chunks".
+   `app/services/knowledge_service.py` fell back to MD5-hash pseudo-embeddings when Gemini was unavailable.
+   This did not degrade to "no answer", it degraded to "confident answers retrieved from effectively random chunks".
    For a bot facing prospective volunteers this is worse than an outage.
+   Resolved in phase 0 by deleting `_create_fallback_embeddings` and raising `EmbeddingsUnavailable` instead, per D9.
+   The same decision one layer up deleted `_generate_simple_response` and `_generate_fallback_response` from `app/services/bot_service.py`, which were keyword-matched canned answers that fired precisely when the bot had no grounding.
+   See the "Carried into phase 1" section of `docs/superpowers/plans/2026-07-29-phase-0-messenger-hardening.md` for the one path where D9 does not yet hold end to end.
 
 5. **A wasted embedding call on every inbound message.**
-   `app/routers/messenger.py` line 112 constructs `BotService()` per message, and `KnowledgeService._get_embedding_model` fires a live `embed_content` call on construction.
-   That burns one call per message against a 15 requests-per-minute free tier before any real work happens.
+   `app/routers/messenger.py` constructed `BotService()` per message, and `KnowledgeService._get_embedding_model` fires a live `embed_content` call on construction.
+   That burned one call per message against a 15 requests-per-minute free tier before any real work happened.
+   Resolved in phase 0 by `app/dependencies/services.py`, whose `lru_cache`d `get_bot_service` constructs the service once per process.
+   The cost of that fix is recorded as sticky degradation in `docs/superpowers/plans/2026-07-29-phase-0-messenger-hardening.md`.
 
 6. **An entire test file is skipped.**
-   `tests/test_faq_handling.py` line 17 calls `pytest.skip(..., allow_module_level=True)`.
+   `tests/test_faq_handling.py` calls `pytest.skip(..., allow_module_level=True)`.
+   Still open by design: phase 1 rewrites this file against the new pipeline and un-skips it, as recorded under Testing strategy.
 
 ## Goals
 
@@ -405,8 +421,8 @@ The harness runs on demand rather than in blocking CI, because it consumes API c
 
 | Phase | Content | Gated on |
 |---|---|---|
-| 0 | Fix Messenger: `hub.*` binding, HMAC verification, `BotService` singleton, deduplication, wire the routers | nothing |
-| 1 | Conversation store, triage classifier, three-tier handoff, admin view | 0 |
+| 0 | Fix Messenger: `hub.*` binding, HMAC verification, `BotService` singleton, wire the routers | nothing |
+| 1 | Conversation store, deduplication, triage classifier, three-tier handoff, admin view | 0 |
 | 2 | Email adapter, adapted from mailhub | 1 |
 | 3 | Instagram adapter and Meta App Review submission | 1 |
 | 4 | Evaluation harness, golden set, threshold calibration | 1 |
@@ -414,6 +430,9 @@ The harness runs on demand rather than in blocking CI, because it consumes API c
 
 Email sits at phase 2, ahead of Instagram, precisely because it has no review queue.
 That delivers a working channel while Meta's review sits in the wait state.
+
+Deduplication was originally listed under phase 0 and moved to phase 1, because it needs the `messages` table and its unique index that phase 1 creates.
+The reasoning and the risk that carries in the meantime are recorded in `docs/superpowers/plans/2026-07-29-phase-0-messenger-hardening.md`.
 
 ## Open questions
 
