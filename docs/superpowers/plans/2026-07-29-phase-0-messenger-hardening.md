@@ -1048,6 +1048,36 @@ opaque text rather than coercing it to an int, and ignores is_echo events."
 
 ---
 
+## Carried into phase 1
+
+Found by the whole-branch review after phase 0's fix wave, and deliberately not fixed here.
+
+1. **`_build_context` can still yield an ungrounded answer.**
+   `app/services/bot_service.py` `_build_context` swallows exceptions and returns `""`, and it also returns `""` with no exception at all when every retrieved chunk has blank or missing `content`.
+   `chat()` then sends Gemini an empty context block and returns a dict carrying the real, high top-similarity score, which is exactly the ungrounded confident answer D9 exists to prevent.
+   Normal ingestion strips blank chunks in `document_service.split_into_chunks`, so it is not reachable today through the supported path.
+   It matters because `match_documents` is a Supabase-side RPC with no definition in this repository, so its returned column names are an untracked external contract: if it ever returns the text under a key other than `content`, every answer silently becomes ungrounded with no log line.
+   Phase 1 fix: raise rather than returning `""`, and treat an empty assembled context as `NoRelevantContext`.
+
+   Phase 0 therefore satisfies D9 on the retrieval-unavailable and generation-unavailable paths, not yet on the empty-context path.
+   Any claim that D9 holds end to end is premature until the above is done.
+
+2. **Blocking I/O on the event loop.**
+   `Dockerfile` runs uvicorn with no `--workers`, so there is one process and one event loop, and `handle_webhook` awaits work that is synchronous underneath: the Gemini SDK's `generate_content`, the Supabase `rpc().execute()`, and `requests.post` in `MessageSender`.
+   One inbound message blocks the whole instance for the full round trip, and the endpoint only acknowledges after processing every event in a delivery.
+   Meta's webhook timeout is roughly 20 seconds and a timeout counts as a failure, which is the outcome this design exists to avoid.
+   This is safe only while no Page is subscribed.
+   **Treat it as a prerequisite before subscribing a live Page**, not as an optimisation.
+
+3. **Degradation is sticky.**
+   `KnowledgeService.__init__` probes Gemini exactly once, and `get_bot_service` is `lru_cache`d for the process lifetime, so a transient Gemini outage at construction pins `embedding_model = None` until the instance restarts.
+   The post-deploy smoke check against `/health` is what triggers construction, so one Gemini call at deploy time decides the instance's fate.
+
+4. **`get_client_ip` trusts the caller.**
+   `app/utils/request_helpers.py` takes the first `X-Forwarded-For` entry verbatim, which on Cloud Run is caller-supplied.
+   Impact on the webhook is negligible because HMAC rejects forgeries first, but it makes the `/auth` limit of 10 attempts per hour bypassable by rotating the header, and lets an attacker grow `request_counts` on keys of their choosing.
+   Pre-existing and untouched by this branch; deserves its own ticket.
+
 ## Remaining plan sequence
 
 Each of these gets its own plan document and produces working software on its own.
