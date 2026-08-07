@@ -140,6 +140,131 @@ class TestTrustedProxyHops:
         assert warn.call_count == 1
 
 
+class TestBucketCollapseDetection:
+    """
+    The silent direction of a wrong hop count.
+
+    Too high is loud already: the header is shorter than configured, so
+    get_client_ip clamps and warns from that one request. Too low produces a
+    perfectly well-formed answer - a shared infrastructure address - and nothing
+    in any single request contradicts it. Left undetected it puts every caller
+    in one rate limit bucket, so one attacker locks everyone out of /auth.
+    """
+
+    WINDOW = request_helpers._BucketCollapseDetector.WINDOW
+
+    @pytest.fixture(autouse=True)
+    def _fresh_detector(self):
+        """The detector is process-global; don't inherit or leak a window."""
+        request_helpers._collapse_detector.reset()
+        yield
+        request_helpers._collapse_detector.reset()
+
+    @staticmethod
+    def _drive(count: int) -> None:
+        """
+        Replay `count` requests from distinct clients behind a load balancer.
+
+        The chain is "<caller-supplied>, <client>, <load-balancer>", which is
+        what a Google external Application Load Balancer produces, so 2 is the
+        correct hop count and 1 resolves everyone to the balancer.
+        """
+        for n in range(count):
+            chain = f"1.2.3.{n % 256}, 203.0.113.{n % 256}, 35.191.0.1"
+            get_client_ip(_request({"X-Forwarded-For": chain}))
+
+    def test_hop_count_too_low_is_reported(self, monkeypatch):
+        """A constant resolved address across varied callers is the signature."""
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 1)
+
+        with patch.object(request_helpers.logger, "warning") as warn:
+            self._drive(self.WINDOW)
+
+        assert warn.call_count == 1
+        message = warn.call_args.args[0] % warn.call_args.args[1:]
+        assert "35.191.0.1" in message, "the collapsed address must be named"
+        assert "TRUSTED_PROXY_HOPS=1" in message, "the configured value must be named"
+        assert "3 entries" in message, "the observed entry count must be named"
+
+    def test_correct_hop_count_is_not_reported(self, monkeypatch):
+        """Two hops resolves the varying client, so nothing collapses."""
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 2)
+
+        with patch.object(request_helpers.logger, "warning") as warn:
+            self._drive(self.WINDOW * 2)
+
+        assert warn.call_count == 0
+
+    def test_below_the_sample_floor_is_not_reported(self, monkeypatch):
+        """Low traffic from one client must not look like a collapse."""
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 1)
+
+        with patch.object(request_helpers.logger, "warning") as warn:
+            self._drive(self.WINDOW - 1)
+
+        assert warn.call_count == 0
+
+    def test_unspoofed_single_entry_traffic_is_never_reported(self, monkeypatch):
+        """
+        On Cloud Run invoked directly, an honest request carries exactly one
+        entry. Nothing sits to the left of it, so a higher hop count could not
+        have chosen differently and a constant result proves nothing.
+        """
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 1)
+
+        with patch.object(request_helpers.logger, "warning") as warn:
+            for _ in range(self.WINDOW * 3):
+                assert (
+                    get_client_ip(_request({"X-Forwarded-For": "203.0.113.9"}))
+                    == "203.0.113.9"
+                )
+
+        assert warn.call_count == 0
+
+    def test_report_is_emitted_once_per_process(self, monkeypatch):
+        """
+        The condition is a static misconfiguration, so it never self-resolves.
+        PERSIST_LOGS_TO_DB defaults on, and a repeat is a system_logs row.
+        """
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 1)
+
+        with patch.object(request_helpers.logger, "warning") as warn:
+            self._drive(self.WINDOW * 3)
+
+        assert warn.call_count == 1
+
+
+class TestForwardedForForLogging:
+    """
+    The raw header has to reach a sink an operator can read.
+
+    Pairing it with the resolved IP on one record is what settles the hop count
+    empirically: compare both against httpRequest.remoteIp in the same request's
+    Cloud Run request log.
+    """
+
+    def test_raw_chain_is_rendered_verbatim(self):
+        request = _request({"X-Forwarded-For": "1.2.3.4, 203.0.113.9"})
+        assert request_helpers.format_forwarded_for(request) == '"1.2.3.4, 203.0.113.9"'
+
+    def test_absent_header_is_marked(self):
+        assert request_helpers.format_forwarded_for(_request({})) == "-"
+
+    def test_oversized_chain_keeps_its_trustworthy_tail(self):
+        """
+        The header is caller-extendable, so the echo is bounded. What survives
+        is the right-hand end, which is the end get_client_ip counts in from.
+        """
+        padding = ", ".join(f"1.2.3.{n % 256}" for n in range(200))
+        request = _request({"X-Forwarded-For": f"{padding}, 203.0.113.9"})
+
+        rendered = request_helpers.format_forwarded_for(request)
+
+        assert len(rendered) < len(padding)
+        assert rendered.startswith('"...')
+        assert rendered.endswith('203.0.113.9"')
+
+
 class TestTrustedProxyHopsParsing:
     """
     A bad value for the knob must not abort the import of app.config.

@@ -1069,19 +1069,18 @@ Found by the whole-branch review after phase 0's fix wave, and deliberately not 
    This is safe only while no Page is subscribed.
    **Treat it as a prerequisite before subscribing a live Page**, not as an optimisation.
 
-3. **Degradation is sticky.** *(Fixed after phase 0.)*
+3. **Degradation is sticky.**
    `KnowledgeService.__init__` probes Gemini exactly once, and `get_bot_service` is `lru_cache`d for the process lifetime, so a transient Gemini outage at construction pins `embedding_model = None` until the instance restarts.
    The post-deploy smoke check against `/health` is what triggers construction, so one Gemini call at deploy time decides the instance's fate.
-   `KnowledgeService.revalidate()` now retries a failed probe, at most once per `PROBE_RETRY_INTERVAL_SECONDS`, and `BotService.health_check()` calls it on every poll, so an instance self-heals (`tests/test_bot_health.py`).
 
-4. **`get_client_ip` trusts the caller.** *(Fixed after phase 0.)*
+4. **`get_client_ip` trusts the caller.**
    `app/utils/request_helpers.py` takes the first `X-Forwarded-For` entry verbatim, which on Cloud Run is caller-supplied.
    Impact on the webhook is negligible because HMAC rejects forgeries first, but it makes the `/auth` limit of 10 attempts per hour bypassable by rotating the header, and lets an attacker grow `request_counts` on keys of their choosing.
-   It now counts `config.TRUSTED_PROXY_HOPS` entries in from the right-hand end instead, and ignores `X-Real-IP` entirely (`tests/test_request_helpers.py`).
+   Pre-existing and untouched by this branch; deserves its own ticket.
 
-5. **`/health` cannot see a broken chat model.** *(Still open; the rest of item 5 was addressed after phase 0.)*
-   `GET /health` now derives its `bot_service` entry from `BotService.health_check()`, which probes the Gemini client, the embedding model, the vector store, and whether any document is indexed.
-   `CHAT_MODEL` is still never probed there or anywhere else in the codebase, so an instance whose `generate_content` call fails on every request still reports the bot healthy while it answers nobody.
+5. **`/health` cannot see a broken chat model.**
+   `KnowledgeService.is_available()` is true when the embedding model and the Supabase client both exist, and `GET /health` derives its `bot_service` entry from exactly that.
+   `CHAT_MODEL` is never probed there or anywhere else in the codebase, so an instance whose `generate_content` call fails on every request still reports the bot healthy while it answers nobody.
    Accepted for phase 0 for two reasons.
    A second construction-time probe would deepen the sticky degradation already recorded as item 3, since it would pin a second capability off for the process lifetime on one transient failure.
    It would also spend a second live Gemini call against a 15 requests-per-minute free tier at every construction, which is the same per-construction cost the shared `BotService` provider exists to cut down.

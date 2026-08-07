@@ -5,11 +5,15 @@ Tests logging, CORS, error handling, and rate limiting middleware.
 Authentication is handled by FastAPI dependencies, not middleware.
 """
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app import config
 from app.config import API_URL
 from app.main import app
+from app.middleware import logging_middleware
 
 client = TestClient(app)
 
@@ -35,6 +39,35 @@ class TestLoggingMiddleware:
 
         # Check for logging-related headers
         assert "X-Request-ID" in response.headers
+
+    def test_request_line_carries_resolved_ip_and_raw_forwarded_for(self, monkeypatch):
+        """
+        Both values must be in the message text rather than in `extra`.
+
+        CloudRunJSONFormatter emits only severity/message/logger/time and
+        DatabaseLogHandler persists only the formatted message, so an `extra`
+        field reaches no sink an operator can read. The pair is what settles
+        TRUSTED_PROXY_HOPS: compare them against httpRequest.remoteIp in the
+        same request's Cloud Run request log.
+
+        Pinned to one hop so a developer's own .env cannot flip the assertion.
+        """
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 1)
+
+        with patch.object(logging_middleware.logger, "info") as info:
+            client.get(
+                "/auth/health",
+                headers={"X-Forwarded-For": "1.2.3.4, 203.0.113.9"},
+            )
+
+        started = [
+            call.args[0]
+            for call in info.call_args_list
+            if "Request started" in str(call.args[0])
+        ]
+        assert len(started) == 1, "the pair must not cost a second log record"
+        assert "client_ip=203.0.113.9" in started[0]
+        assert 'xff="1.2.3.4, 203.0.113.9"' in started[0]
 
 
 class TestRateLimitMiddleware:

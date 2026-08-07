@@ -24,6 +24,7 @@ Provides comprehensive request/response logging for monitoring and debugging.
 - Request/response timing
 - Performance metrics
 - Sensitive data filtering
+- The request line carries the resolved client IP and the raw `X-Forwarded-For` it was derived from, in the message text rather than a logging `extra`, because both sinks keep only the formatted message. See `TRUSTED_PROXY_HOPS` in `env.template` for what to do with the pair
 
 **Configuration:**
 ```python

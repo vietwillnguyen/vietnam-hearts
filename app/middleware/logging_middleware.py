@@ -14,7 +14,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.utils.logging_config import get_logger
-from app.utils.request_helpers import get_client_ip
+from app.utils.request_helpers import format_forwarded_for, get_client_ip
 
 logger = get_logger("logging_middleware")
 
@@ -114,16 +114,24 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         for header in sensitive_headers:
             headers.pop(header.lower(), None)
 
-        # Log basic request info
+        # Log basic request info. The resolved client IP and the X-Forwarded-For
+        # it came from are in the message text, not just in `extra`, because both
+        # sinks drop extras and an operator needs to read the pair to settle
+        # TRUSTED_PROXY_HOPS against Cloud Run's own request log. They ride on
+        # this existing record rather than a second one: PERSIST_LOGS_TO_DB
+        # defaults on, so an extra record here is an extra system_logs row per
+        # request.
+        client_ip = get_client_ip(request)
         logger.info(
-            f"📥 Request started | ID: {request_id} | {method} {path}",
+            f"📥 Request started | ID: {request_id} | {method} {path} | "
+            f"client_ip={client_ip} | xff={format_forwarded_for(request)}",
             extra={
                 "request_id": request_id,
                 "method": method,
                 "path": path,
                 "query_params": query_params,
                 "headers": headers,
-                "client_ip": get_client_ip(request),
+                "client_ip": client_ip,
             },
         )
 
