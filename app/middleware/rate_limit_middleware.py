@@ -38,6 +38,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Rate limit configurations
         self.rate_limits = {
+            # Meta delivers webhook events in bursts and disables a
+            # subscription that repeatedly returns non-200. HMAC verification
+            # in the route rejects forged requests with 403 before any real
+            # work, so this limit exists only as a runaway backstop.
+            "webhook": {
+                "requests": 10000,  # 10000 webhook deliveries
+                "window": 3600,  # per hour
+            },
             "default": {
                 "requests": 100,  # 100 requests
                 "window": 3600,  # per hour
@@ -131,7 +139,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         Returns:
             Rate limit category
         """
-        if path.startswith("/auth"):
+        if path.startswith("/webhook"):
+            return "webhook"
+        elif path.startswith("/auth"):
             return "auth"
         elif path.startswith("/admin"):
             return "admin"

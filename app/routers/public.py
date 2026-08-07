@@ -301,20 +301,14 @@ def get_health(db: Session = Depends(get_db)):
         bot_status = "unknown"
         bot_error = None
         try:
-            from app.routers.bot import get_bot_service
+            from app.dependencies.services import get_bot_service
 
             bot_service = get_bot_service()
-            if hasattr(bot_service, "health_check"):
-                bot_health = bot_service.health_check()
-                if bot_health.get("status") == "healthy":
-                    bot_status = "healthy"
-                else:
-                    bot_status = "unhealthy"
-                    bot_error = bot_health.get("error")
+            if bot_service.knowledge_service.is_available():
+                bot_status = "healthy"
             else:
-                bot_status = "healthy" if bot_service is not None else "unhealthy"
-                if bot_status == "unhealthy":
-                    bot_error = "Bot service not initialized"
+                bot_status = "unhealthy"
+                bot_error = "Knowledge base unavailable; the bot cannot answer"
         except Exception as e:
             bot_status = "unhealthy"
             bot_error = str(e)
