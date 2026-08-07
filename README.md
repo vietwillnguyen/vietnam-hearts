@@ -167,6 +167,30 @@ Once running, the API will be available at:
 - **API Documentation**: `http://localhost:8080/docs`
 - **Health Check**: `http://localhost:8080/health` (public)
 - **Admin Endpoints**: `http://localhost:8080/admin/*` (admin auth required; Cloud Scheduler calls these in production - see [`tests/README.md`](tests/README.md) for the endpoint list and how to call them by hand)
+- **Meta Webhook**: `http://localhost:8080/webhook/meta` (public, called by Meta; `GET` answers the subscription handshake, `POST` receives Facebook Messenger events). Requires `FACEBOOK_APP_SECRET` and `FACEBOOK_VERIFY_TOKEN` - see `env.template`. Without them the handshake and every delivery are refused with `403`, and Meta disables the subscription.
+
+### Health check
+
+`GET /health` always returns HTTP `200`, whatever state the components are in, so the post-deploy smoke check in `.github/workflows/deploy.yml` proves only that the service is serving requests. The component state is in the body:
+
+```json
+{
+  "status": "unhealthy",
+  "version": "3.3.0",
+  "timestamp": "2026-08-01T22:00:00",
+  "environment": "development",
+  "dry_run": false,
+  "services": {
+    "database": { "status": "healthy", "stats": { "volunteers": 0, "emails": 0 }, "type": "SQLite" },
+    "google_sheets": { "status": "healthy", "error": null },
+    "bot_service": { "status": "unhealthy", "error": "Knowledge base unavailable; the bot cannot answer" }
+  }
+}
+```
+
+The top-level `status` is `healthy` only when `database`, `google_sheets`, and `bot_service` are all healthy; any one of them unhealthy makes the aggregate unhealthy. Monitor the body rather than the status code.
+
+`bot_service` reflects `KnowledgeService.is_available()`, which requires both a live Gemini embedding model and Supabase credentials. A local development environment without `GEMINI_API_KEY` or Supabase credentials therefore returns `200` with an aggregate status of `unhealthy`. That is expected rather than a fault: the bot fails closed and declines to answer instead of guessing from an unreachable knowledge base.
 
 ## Deploy Configuration
 

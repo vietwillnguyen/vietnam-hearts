@@ -15,6 +15,7 @@ from app.routers.admin import admin_router
 from app.routers.auth import router as auth_router
 from app.routers.public import public_router
 from app.routers.settings import router as settings_router
+from app.routers.webhooks import webhooks_router
 from app.utils.config_helper import ConfigHelper
 
 from .config import (
@@ -22,14 +23,13 @@ from .config import (
     APPLICATION_VERSION,
     DATABASE_URL,
     ENVIRONMENT,
+    FACEBOOK_APP_SECRET,
+    FACEBOOK_VERIFY_TOKEN,
 )
 from .database import get_db, init_db
 from .middleware import setup_middleware
 from .utils.logging_config import get_log_file_path, get_logger, print_log_paths
 from .utils.sentry_config import init_sentry
-
-# from app.routers.messenger import messenger_router
-# from app.routers.bot import public_bot_router, admin_router as bot_admin_router
 
 # Configure logging
 logger = get_logger("main")
@@ -73,6 +73,18 @@ async def lifespan(app: FastAPI):
 
         validate_config()
         logger.info("Configuration validated successfully")
+
+        if not FACEBOOK_APP_SECRET:
+            logger.warning(
+                "FACEBOOK_APP_SECRET is not set - every Meta webhook delivery will "
+                "be rejected with 403 and Meta will disable the subscription"
+            )
+
+        if not FACEBOOK_VERIFY_TOKEN:
+            logger.warning(
+                "FACEBOOK_VERIFY_TOKEN is not set - the Meta subscription handshake "
+                "will be refused with 403 and the webhook can never be verified"
+            )
 
         # Initialize database
         init_db()
@@ -128,8 +140,7 @@ app.include_router(admin_router)
 logger.info("Admin endpoints enabled.")
 app.include_router(public_router)
 logger.info("Public endpoints enabled.")
-# app.include_router(messenger_router)
-# logger.info("Messenger endpoints enabled.")
+app.include_router(webhooks_router)
 app.include_router(settings_router)
 logger.info("Settings endpoints enabled.")
 # app.include_router(public_bot_router)

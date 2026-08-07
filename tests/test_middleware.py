@@ -64,6 +64,11 @@ class TestRateLimitMiddleware:
         response = client.get("/admin/volunteers")
         assert response.headers["X-RateLimit-Category"] == "admin"
 
+        # Test webhook endpoint. Losing this category drops Meta deliveries to
+        # the 100/hour default, and repeated 429s disable the subscription.
+        response = client.get("/webhook/meta")
+        assert response.headers["X-RateLimit-Category"] == "webhook"
+
 
 class TestCORSMiddleware:
     """Test CORS middleware functionality"""

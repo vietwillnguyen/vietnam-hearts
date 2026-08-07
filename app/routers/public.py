@@ -302,7 +302,7 @@ def get_health(db: Session = Depends(get_db)):
         bot_error = None
         bot_checks: dict[str, str] = {}
         try:
-            from app.routers.bot import get_bot_service
+            from app.dependencies.services import get_bot_service
 
             bot_health = get_bot_service().health_check()
             bot_status = bot_health.get("status", "unknown")
@@ -315,10 +315,11 @@ def get_health(db: Session = Depends(get_db)):
 
         from app.config import APPLICATION_VERSION
 
-        # "degraded" does not turn the top-level light red: it means the bot's
-        # dependencies are all up but its knowledge base is empty, which is a
-        # known open question and not a fault - and the bot routers are not
-        # mounted, so nothing is serving from it either way.
+        # "degraded" does not turn the top-level light red. It means the bot's
+        # dependencies are all up and only its knowledge base is empty, which
+        # the retrieval path already handles by design: it fails closed and
+        # declines rather than answering ungrounded. A missing or broken
+        # dependency still reports "unhealthy" and still turns this red.
         overall = (
             "healthy"
             if db_status == "healthy"

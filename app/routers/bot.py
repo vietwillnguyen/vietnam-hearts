@@ -1,6 +1,5 @@
 # routers.py
 import asyncio
-from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.config import *  # import all config variables
 from app.database import get_db
 from app.dependencies.auth import get_current_admin_user
+from app.dependencies.services import get_bot_service
 from app.services.bot_service import BotService
 from app.utils.logging_config import get_api_logger
 from app.utils.timeout import timeout_handler
@@ -53,28 +53,6 @@ class KnowledgeStatusResponse(BaseModel):
     document_service_available: bool
     documents_count: int
     documents: list[dict[str, Any]]
-
-
-# ---- Dependencies / Guards ----
-
-
-@lru_cache
-def get_bot_service() -> BotService:
-    try:
-        from supabase import create_client
-
-        from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
-
-        supabase_client = None
-        if SUPABASE_URL and SUPABASE_SECRET_KEY:
-            supabase_client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
-            logger.info("Bot service initialized with Supabase client")
-        else:
-            logger.warning("Supabase credentials missing; using memory storage")
-        return BotService(supabase_client)
-    except Exception as e:
-        logger.error(f"Supabase init failed: {e}")
-        return BotService(None)
 
 
 # ---- Routers ----
@@ -131,7 +109,19 @@ async def test_bot(
 ):
     logger.info("Public test chat request")
 
-    result = await bot_service.chat(request.message, request.user_context)
+    # chat() now raises when it cannot answer from the knowledge base, so this
+    # call site has to handle that rather than let it become a bare 500.
+    try:
+        result = await bot_service.chat(request.message, request.user_context)
+    except Exception as e:
+        logger.error(f"Public test chat error: {e}")
+        return {
+            "status": "error",
+            "test_message": request.message,
+            "error": "Chat processing failed",
+            "timestamp": asyncio.get_event_loop().time(),
+        }
+
     return {
         "status": "success",
         "test_message": request.message,

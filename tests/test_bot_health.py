@@ -173,7 +173,7 @@ class TestHealthEndpointReportsBotFailure:
     def _patched(self, health):
         stub = MagicMock()
         stub.health_check.return_value = health
-        return patch("app.routers.bot.get_bot_service", return_value=stub)
+        return patch("app.dependencies.services.get_bot_service", return_value=stub)
 
     def test_unhealthy_bot_is_reported(self, client):
         health = {
@@ -192,9 +192,9 @@ class TestHealthEndpointReportsBotFailure:
 
     def test_degraded_bot_does_not_flip_the_overall_light(self, client):
         """
-        An unindexed knowledge base is a known open question, not a broken
-        dependency, and the bot routers are not even mounted. Report it without
-        turning the top-level status red.
+        An unindexed knowledge base is handled by the retrieval path, which
+        fails closed and declines rather than answering ungrounded. Report it
+        without turning the top-level status red.
         """
         health = {
             "status": "degraded",
@@ -220,7 +220,10 @@ class TestHealthEndpointReportsBotFailure:
         assert response.json()["services"]["bot_service"]["checks"] == health["checks"]
 
     def test_a_throwing_provider_does_not_500_the_route(self, client):
-        with patch("app.routers.bot.get_bot_service", side_effect=RuntimeError("boom")):
+        with patch(
+            "app.dependencies.services.get_bot_service",
+            side_effect=RuntimeError("boom"),
+        ):
             response = client.get("/health")
 
         assert response.status_code == 200

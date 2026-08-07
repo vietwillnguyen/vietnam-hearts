@@ -86,15 +86,9 @@ Protects the API from abuse by limiting request frequency.
 - Automatic cleanup of expired entries
 
 **Rate Limits:**
-```python
-rate_limits = {
-    "default": {"requests": 100, "window": 3600},    # 100/hour
-    "auth": {"requests": 10, "window": 3600},        # 10/hour
-    "admin": {"requests": 1000, "window": 3600},     # 1000/hour
-    "public": {"requests": 500, "window": 3600},     # 500/hour
-    "bot": {"requests": 200, "window": 3600}         # 200/hour
-}
-```
+The categories, their limits, and the path prefixes that select them are defined in
+`self.rate_limits` and `_get_rate_limit_category()` in `rate_limit_middleware.py`.
+Read them there rather than from a copy here; where a limit is deliberately out of line with the others, the reason is a comment next to the value.
 
 ## Authentication Architecture
 
@@ -135,12 +129,15 @@ setup_middleware(app)  # All middleware configured automatically
 ```
 
 ### **Middleware Order**
-Middleware is executed in this order (outermost to innermost):
+`setup_middleware()` in `__init__.py` owns the registration order.
+Starlette's `add_middleware` inserts at index 0, so the *last* one added is the outermost, and request-time order is the reverse of the code:
 
-1. **Error Handling** - Catches unhandled exceptions
+1. **Logging** (outermost) - Logs request/response details
 2. **Rate Limiting** - Checks request frequency
-3. **Logging** - Logs request/response details
-4. **CORS** - Handles cross-origin requests
+3. **Error Handling** - Catches unhandled exceptions
+4. **CORS** (innermost) - Handles cross-origin requests
+
+Error handling is therefore *not* the outermost layer: an exception raised inside the logging or rate limiting middleware bypasses it and reaches the client as a bare 500.
 
 **Note**: Authentication happens at the router level, before middleware execution.
 
