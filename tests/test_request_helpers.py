@@ -5,12 +5,16 @@ The security property under test: a caller must not be able to choose which
 rate limit bucket they land in by supplying their own X-Forwarded-For header.
 """
 
+import logging
+from unittest.mock import patch
+
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app import config
 from app.middleware.rate_limit_middleware import RateLimitMiddleware
+from app.utils import request_helpers
 from app.utils.request_helpers import get_client_ip
 
 
@@ -29,8 +33,24 @@ def _request(
     return Request(scope)
 
 
+@pytest.fixture
+def one_hop(monkeypatch):
+    """
+    Pin the hop count to this deployment's value.
+
+    app/config.py calls load_dotenv() and env.template ships TRUSTED_PROXY_HOPS,
+    so a developer with a different topology in their .env would otherwise flip
+    these assertions from ambient environment alone.
+    """
+    monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 1)
+
+
 class TestGetClientIp:
     """Client IP extraction from the X-Forwarded-For header."""
+
+    @pytest.fixture(autouse=True)
+    def _pin_hops(self, one_hop):
+        pass
 
     def test_single_entry_is_the_client(self):
         """Cloud Run appends the real client to XFF; unspoofed there is one entry."""
@@ -103,9 +123,61 @@ class TestTrustedProxyHops:
         request = _request({"X-Forwarded-For": "203.0.113.9"})
         assert get_client_ip(request) == "203.0.113.9"
 
+    def test_clamp_warning_is_not_repeated_per_request(self, monkeypatch):
+        """
+        The clamp reports a static config value, so it never self-resolves.
+        Warning per request would turn one misconfiguration into a system_logs
+        row per request, since PERSIST_LOGS_TO_DB defaults on.
+        """
+        monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 3)
+        monkeypatch.setattr(request_helpers, "_clamp_warning_emitted", False)
+
+        with patch.object(request_helpers.logger, "warning") as warn:
+            for _ in range(5):
+                request = _request({"X-Forwarded-For": "203.0.113.9"})
+                assert get_client_ip(request) == "203.0.113.9"
+
+        assert warn.call_count == 1
+
+
+class TestTrustedProxyHopsParsing:
+    """
+    A bad value for the knob must not abort the import of app.config.
+
+    env.template ships TRUSTED_PROXY_HOPS, so a blank or mistyped value is a
+    realistic operator mistake, and raising here would stop the process from
+    starting at all.
+    """
+
+    @pytest.mark.parametrize("raw", ["", "   ", "two", "1.5"])
+    def test_unparseable_value_falls_back_to_one_hop(self, monkeypatch, caplog, raw):
+        monkeypatch.setenv("TRUSTED_PROXY_HOPS", raw)
+
+        with caplog.at_level(logging.WARNING):
+            assert config._trusted_proxy_hops() == 1
+
+        assert repr(raw) in caplog.text, "the bad value should be named in the warning"
+
+    @pytest.mark.parametrize("raw,expected", [("0", 1), ("-3", 1), ("2", 2)])
+    def test_numeric_values_are_clamped_to_at_least_one(
+        self, monkeypatch, raw, expected
+    ):
+        monkeypatch.setenv("TRUSTED_PROXY_HOPS", raw)
+
+        assert config._trusted_proxy_hops() == expected
+
+    def test_unset_defaults_to_one_hop(self, monkeypatch):
+        monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)
+
+        assert config._trusted_proxy_hops() == 1
+
 
 class TestRateLimitBucketing:
     """End-to-end: the /auth limit must not be escapable by rotating XFF."""
+
+    @pytest.fixture(autouse=True)
+    def _pin_hops(self, one_hop):
+        pass
 
     @pytest.fixture
     def client(self):

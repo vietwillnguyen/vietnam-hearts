@@ -7,6 +7,8 @@ and get_bot_service never returns None, so the check was structurally always
 "healthy".
 """
 
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 from app.services.bot_service import BotService
@@ -165,6 +167,116 @@ class TestStickyDegradationRecovers:
             service.revalidate()
 
             assert probe.call_count == 0
+
+
+class _YieldOnCooldownRead(KnowledgeService):
+    """
+    A KnowledgeService whose read of the cooldown timestamp yields the GIL.
+
+    A check-then-set only misbehaves when a thread is preempted between reading
+    the timestamp and writing the new one. Left to chance that window is a few
+    bytecodes wide and the interpreter usually gets through it uninterrupted,
+    so the regression test would pass against the very bug it exists to catch.
+    Forcing the yield on every read makes the interleaving happen every run.
+    """
+
+    @property
+    def _last_probe(self) -> float:
+        # Read first, then yield: the race is a thread that has already taken
+        # the old timestamp and is preempted before anyone writes a new one.
+        value = self._last_probe_value
+        time.sleep(0.005)
+        return value
+
+    @_last_probe.setter
+    def _last_probe(self, value: float) -> None:
+        self._last_probe_value = value
+
+
+class TestRevalidateUnderConcurrentPolls:
+    """
+    /health is a sync route, so FastAPI dispatches it into the anyio worker
+    threadpool, and the cached provider hands every one of those threads the
+    same KnowledgeService. The cooldown only bounds live Gemini calls if the
+    claim on the window is atomic.
+    """
+
+    @staticmethod
+    def _degraded_service(cls=KnowledgeService) -> KnowledgeService:
+        """A service whose embedding probe failed at construction."""
+        with (
+            patch.object(KnowledgeService, "_get_gemini_client", return_value="client"),
+            patch.object(KnowledgeService, "_get_embedding_model", return_value=None),
+        ):
+            service = cls(supabase_client="supabase")
+
+        service._last_probe = float("-inf")
+        return service
+
+    def test_only_one_thread_probes_per_cooldown_window(self):
+        """Concurrent polls must not each fire their own call at a 15 RPM quota."""
+        thread_count = 8
+        start = threading.Barrier(thread_count)
+        probes = []
+        counter_lock = threading.Lock()
+
+        def probe():
+            with counter_lock:
+                probes.append(1)
+            return None
+
+        service = self._degraded_service(_YieldOnCooldownRead)
+
+        def poll():
+            start.wait(timeout=5)
+            service.revalidate()
+
+        with patch.object(KnowledgeService, "_get_embedding_model", side_effect=probe):
+            workers = [threading.Thread(target=poll) for _ in range(thread_count)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=10)
+
+        assert (
+            len(probes) == 1
+        ), f"{len(probes)} of {thread_count} threads probed Gemini in one window"
+
+    def test_an_in_flight_probe_does_not_block_other_threads(self):
+        """
+        The probe is a network call. Holding the cooldown lock across it would
+        turn one hanging Gemini request into a stall of every health check.
+        """
+        probe_started = threading.Event()
+        release_probe = threading.Event()
+        second_call_returned = threading.Event()
+
+        def hanging_probe():
+            probe_started.set()
+            release_probe.wait(timeout=5)
+            return None
+
+        service = self._degraded_service()
+
+        def poll():
+            service.revalidate()
+            second_call_returned.set()
+
+        with patch.object(
+            KnowledgeService, "_get_embedding_model", side_effect=hanging_probe
+        ):
+            hanging = threading.Thread(target=service.revalidate)
+            hanging.start()
+            try:
+                assert probe_started.wait(timeout=5), "the probe never started"
+
+                threading.Thread(target=poll).start()
+                assert second_call_returned.wait(
+                    timeout=2
+                ), "revalidate blocked behind an in-flight Gemini call"
+            finally:
+                release_probe.set()
+                hanging.join(timeout=5)
 
 
 class TestHealthEndpointReportsBotFailure:

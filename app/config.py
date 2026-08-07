@@ -6,6 +6,7 @@ Static configuration (environment variables) are defined here.
 Dynamic configuration (database settings) are managed via the settings service.
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -37,6 +38,26 @@ PORT = os.getenv("PORT", "8080")
 API_URL = os.getenv("API_URL", f"http://localhost:{PORT}")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
+
+def _trusted_proxy_hops() -> int:
+    """Read TRUSTED_PROXY_HOPS, repairing a bad value rather than failing.
+
+    env.template ships this knob, so a blank (``TRUSTED_PROXY_HOPS=``) or
+    mistyped value is a realistic operator mistake. An unguarded ``int()`` here
+    raises during the import of this module, which aborts startup entirely -
+    a far worse outcome than the fallback already applied to values that parse
+    but sit below the one-hop minimum.
+    """
+    raw = os.getenv("TRUSTED_PROXY_HOPS", "1")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "Invalid TRUSTED_PROXY_HOPS=%r; falling back to 1 hop.", raw
+        )
+        return 1
+
+
 # How far from the right-hand end of X-Forwarded-For the real client IP sits.
 # X-Forwarded-For is append-only and unvalidated, so everything to the left of
 # the entries our own infrastructure appended is caller-supplied and must not be
@@ -50,7 +71,7 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 # from the right, so set this to 2. Google documents that two-address append at
 # https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
 # and explicitly does not verify anything preceding those two entries.
-TRUSTED_PROXY_HOPS = max(1, int(os.getenv("TRUSTED_PROXY_HOPS", "1")))
+TRUSTED_PROXY_HOPS = _trusted_proxy_hops()
 
 # Email Configuration
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")

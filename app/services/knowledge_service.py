@@ -7,6 +7,7 @@ Simplified approach: Single vendor, single API key, no local model dependencies.
 
 import math
 import os
+import threading
 import time
 from typing import Any
 
@@ -76,6 +77,8 @@ class KnowledgeService:
         self.embedding_model = self._get_embedding_model()
         # Construction just ran both probes; start the retry cooldown here.
         self._last_probe = time.monotonic()
+        # Guards the cooldown claim in revalidate(); see that method.
+        self._probe_lock = threading.Lock()
         logger.info("Knowledge service initialized with Gemini-only approach")
 
     def revalidate(self) -> None:
@@ -87,14 +90,26 @@ class KnowledgeService:
         instance recover on its own instead of staying wrong for the process
         lifetime. Does nothing when everything already succeeded, and at most
         once per PROBE_RETRY_INTERVAL_SECONDS otherwise.
+
+        The cooldown window is claimed under a lock. This object is shared
+        across threads - a cached provider hands the same instance to every
+        request, and /health is a sync route, so FastAPI runs it in the anyio
+        worker threadpool. An unguarded check-then-set lets every concurrent
+        poll read the same stale timestamp, pass the window together, and fire
+        its own live Gemini call, which is exactly what the cooldown exists to
+        prevent. The probes themselves run after the lock is released so a slow
+        or hanging Gemini call cannot block the other health-check threads.
         """
         if self.gemini_client is not None and self.embedding_model is not None:
             return
 
-        now = time.monotonic()
-        if now - self._last_probe < PROBE_RETRY_INTERVAL_SECONDS:
-            return
-        self._last_probe = now
+        with self._probe_lock:
+            if self.gemini_client is not None and self.embedding_model is not None:
+                return
+            now = time.monotonic()
+            if now - self._last_probe < PROBE_RETRY_INTERVAL_SECONDS:
+                return
+            self._last_probe = now
 
         if self.gemini_client is None:
             self.gemini_client = self._get_gemini_client()
