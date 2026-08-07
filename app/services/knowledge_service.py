@@ -7,6 +7,7 @@ Simplified approach: Single vendor, single API key, no local model dependencies.
 
 import math
 import os
+import time
 from typing import Any
 
 from google import genai
@@ -25,6 +26,14 @@ EMBEDDING_MODEL = "gemini-embedding-001"
 # pgvector column (sized for the old text-embedding-001 model) and the
 # fallback hash-based embeddings below, so no DB migration is needed.
 EMBEDDING_DIMENSIONS = 768
+
+# Both construction-time probes below make live Gemini calls, so a transient
+# outage at that moment leaves the service degraded for the lifetime of the
+# object - the process lifetime once a cached provider is in front of it.
+# revalidate() retries them; this is the floor between retries, which keeps a
+# frequently polled health endpoint from burning the 15 RPM free tier while an
+# outage lasts.
+PROBE_RETRY_INTERVAL_SECONDS = 60.0
 
 
 def _l2_normalize(vector: list[float]) -> list[float]:
@@ -55,7 +64,51 @@ class KnowledgeService:
         self.supabase = supabase_client
         self.gemini_client = self._get_gemini_client()
         self.embedding_model = self._get_embedding_model()
+        # Construction just ran both probes; start the retry cooldown here.
+        self._last_probe = time.monotonic()
         logger.info("Knowledge service initialized with Gemini-only approach")
+
+    def revalidate(self) -> None:
+        """
+        Retry whichever construction-time probe failed.
+
+        Both probes make live Gemini calls, so an outage while this object was
+        built pins it degraded until the object is discarded. Retrying lets an
+        instance recover on its own instead of staying wrong for the process
+        lifetime. Does nothing when everything already succeeded, and at most
+        once per PROBE_RETRY_INTERVAL_SECONDS otherwise.
+        """
+        if self.gemini_client is not None and self.embedding_model is not None:
+            return
+
+        now = time.monotonic()
+        if now - self._last_probe < PROBE_RETRY_INTERVAL_SECONDS:
+            return
+        self._last_probe = now
+
+        if self.gemini_client is None:
+            self.gemini_client = self._get_gemini_client()
+        if self.embedding_model is None:
+            self.embedding_model = self._get_embedding_model()
+
+    def has_indexed_documents(self) -> bool:
+        """
+        Report whether the knowledge base holds anything to retrieve.
+
+        Deliberately a single-row existence check rather than a count: this is
+        called from a frequently polled health endpoint, and "is there a corpus
+        at all" is the question that matters. An empty table means the bot
+        answers ungrounded.
+
+        Raises:
+            Exception: propagated to the caller so a broken vector store is
+                reported rather than mistaken for an empty one.
+        """
+        if not self.supabase:
+            return False
+
+        result = self.supabase.table("document_chunks").select("id").limit(1).execute()
+        return bool(result.data)
 
     def _get_gemini_client(self) -> genai.Client | None:
         """Get Gemini client for chat and embedding requests"""
