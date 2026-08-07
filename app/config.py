@@ -37,6 +37,21 @@ PORT = os.getenv("PORT", "8080")
 API_URL = os.getenv("API_URL", f"http://localhost:{PORT}")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
+# How far from the right-hand end of X-Forwarded-For the real client IP sits.
+# X-Forwarded-For is append-only and unvalidated, so everything to the left of
+# the entries our own infrastructure appended is caller-supplied and must not be
+# trusted (see app/utils/request_helpers.get_client_ip).
+#
+# 1 is correct for this deployment: the service is invoked directly on its
+# *.run.app URL (scripts/deploy.config BASE_URL, .github/workflows/deploy.yml),
+# where Cloud Run's front end appends the peer address it observed as the last
+# entry. Put a Google external Application Load Balancer in front and the header
+# becomes "<supplied>,<client-ip>,<load-balancer-ip>" - the client is then second
+# from the right, so set this to 2. Google documents that two-address append at
+# https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
+# and explicitly does not verify anything preceding those two entries.
+TRUSTED_PROXY_HOPS = max(1, int(os.getenv("TRUSTED_PROXY_HOPS", "1")))
+
 # Email Configuration
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
