@@ -82,7 +82,7 @@ Protects the API from abuse by limiting request frequency.
 **Features:**
 - Category-based rate limiting
 - Different limits for different endpoint types
-- Client identification (user ID or IP)
+- Client identification (user ID or IP; the IP comes from `get_client_ip` in `app/utils/request_helpers.py`, which counts `TRUSTED_PROXY_HOPS` entries in from the right-hand end of `X-Forwarded-For` so a caller cannot pick their own bucket)
 - Automatic cleanup of expired entries
 
 **Rate Limits:**
