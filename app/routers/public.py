@@ -300,15 +300,14 @@ def get_health(db: Session = Depends(get_db)):
 
         bot_status = "unknown"
         bot_error = None
+        bot_checks: dict[str, str] = {}
         try:
             from app.dependencies.services import get_bot_service
 
-            bot_service = get_bot_service()
-            if bot_service.knowledge_service.is_available():
-                bot_status = "healthy"
-            else:
-                bot_status = "unhealthy"
-                bot_error = "Knowledge base unavailable; the bot cannot answer"
+            bot_health = get_bot_service().health_check()
+            bot_status = bot_health.get("status", "unknown")
+            bot_error = bot_health.get("error")
+            bot_checks = bot_health.get("checks", {})
         except Exception as e:
             bot_status = "unhealthy"
             bot_error = str(e)
@@ -316,11 +315,16 @@ def get_health(db: Session = Depends(get_db)):
 
         from app.config import APPLICATION_VERSION
 
+        # "degraded" does not turn the top-level light red. It means the bot's
+        # dependencies are all up and only its knowledge base is empty, which
+        # the retrieval path already handles by design: it fails closed and
+        # declines rather than answering ungrounded. A missing or broken
+        # dependency still reports "unhealthy" and still turns this red.
         overall = (
             "healthy"
             if db_status == "healthy"
             and sheets_status == "healthy"
-            and bot_status == "healthy"
+            and bot_status in ("healthy", "degraded")
             else "unhealthy"
         )
         return {
@@ -338,7 +342,11 @@ def get_health(db: Session = Depends(get_db)):
                     else "PostgreSQL",
                 },
                 "google_sheets": {"status": sheets_status, "error": sheets_error},
-                "bot_service": {"status": bot_status, "error": bot_error},
+                "bot_service": {
+                    "status": bot_status,
+                    "error": bot_error,
+                    "checks": bot_checks,
+                },
             },
         }
     except Exception as e:

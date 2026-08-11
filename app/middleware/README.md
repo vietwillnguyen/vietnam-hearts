@@ -24,6 +24,7 @@ Provides comprehensive request/response logging for monitoring and debugging.
 - Request/response timing
 - Performance metrics
 - Sensitive data filtering
+- The request line carries the resolved client IP and the raw `X-Forwarded-For` it was derived from, in the message text rather than a logging `extra`, because both sinks keep only the formatted message. See `TRUSTED_PROXY_HOPS` in `env.template` for what to do with the pair
 
 **Configuration:**
 ```python
@@ -82,7 +83,7 @@ Protects the API from abuse by limiting request frequency.
 **Features:**
 - Category-based rate limiting
 - Different limits for different endpoint types
-- Client identification (user ID or IP)
+- Client identification (user ID or IP; the IP comes from `get_client_ip` in `app/utils/request_helpers.py`, which counts `TRUSTED_PROXY_HOPS` entries in from the right-hand end of `X-Forwarded-For` so a caller cannot pick their own bucket)
 - Automatic cleanup of expired entries
 
 **Rate Limits:**

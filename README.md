@@ -97,6 +97,7 @@ The application uses the following environment variables (see `env.template` for
 #### Optional
 - `PORT` - API server port (default: 8080)
 - `ENVIRONMENT` - Environment mode (development/production)
+- `TRUSTED_PROXY_HOPS` - How many `X-Forwarded-For` entries the infrastructure in front of the app appends (default: 1, correct for Cloud Run invoked directly on its `*.run.app` URL). Rate limit buckets are keyed on the client IP this yields, so see `env.template` for when to change it
 - `DRY_RUN` - Enable dry run mode for testing
 - `SENTRY_DSN` - Sentry DSN for error tracking. If unset, Sentry is disabled entirely
 - `SENTRY_TRACES_SAMPLE_RATE` - Fraction of requests to sample for Sentry performance tracing (default: 0.1)
@@ -183,14 +184,30 @@ Once running, the API will be available at:
   "services": {
     "database": { "status": "healthy", "stats": { "volunteers": 0, "emails": 0 }, "type": "SQLite" },
     "google_sheets": { "status": "healthy", "error": null },
-    "bot_service": { "status": "unhealthy", "error": "Knowledge base unavailable; the bot cannot answer" }
+    "bot_service": {
+      "status": "unhealthy",
+      "error": "Gemini client unavailable - check GEMINI_API_KEY",
+      "checks": { "gemini": "unconfigured", "embeddings": "unverified", "vector_store": "ok", "documents": "not checked" }
+    }
   }
 }
 ```
 
-The top-level `status` is `healthy` only when `database`, `google_sheets`, and `bot_service` are all healthy; any one of them unhealthy makes the aggregate unhealthy. Monitor the body rather than the status code.
+The top-level `status` is `healthy` only when `database` and `google_sheets` are healthy and `bot_service` is either `healthy` or `degraded`.
+Monitor the body rather than the status code.
 
-`bot_service` reflects `KnowledgeService.is_available()`, which requires both a live Gemini embedding model and Supabase credentials. A local development environment without `GEMINI_API_KEY` or Supabase credentials therefore returns `200` with an aggregate status of `unhealthy`. That is expected rather than a fault: the bot fails closed and declines to answer instead of guessing from an unreachable knowledge base.
+`bot_service` comes from `BotService.health_check()`, which probes the Gemini client, the verified embedding model, the Supabase vector store, and whether the knowledge base holds any indexed documents.
+`checks` reports each probe individually, and the status is one of three values:
+
+- `healthy` - every dependency is up and the knowledge base has content.
+- `degraded` - every dependency is up but nothing is indexed. This deliberately does *not* make the aggregate unhealthy: retrieval fails closed and the bot declines rather than answering ungrounded.
+- `unhealthy` - a dependency is missing or broken. This does make the aggregate unhealthy.
+
+A local development environment without `GEMINI_API_KEY` or Supabase credentials therefore returns `200` with an aggregate status of `unhealthy`. That is expected rather than a fault: the bot fails closed and declines to answer instead of guessing from an unreachable knowledge base.
+
+Two limits are deliberate.
+The chat model is never probed, because verifying it would cost a generation call on every poll, so an instance whose generation fails still reports the bot healthy.
+The embedding probes are live Gemini calls made once when the service is first built, so a transient outage at that moment would otherwise pin an instance unhealthy for the process lifetime; each poll retries a failed probe, at most once a minute.
 
 ## Deploy Configuration
 

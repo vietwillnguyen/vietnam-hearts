@@ -52,6 +52,82 @@ class BotService:
         self.supabase = supabase_client
         logger.info("Bot service initialized")
 
+    def health_check(self) -> dict[str, Any]:
+        """
+        Probe the dependencies the bot actually needs to answer a question.
+
+        Returns a dict with:
+            status: "healthy", "degraded", or "unhealthy"
+            error:  a one-line reason when not healthy, else None
+            checks: per-dependency detail
+
+        "unhealthy" means a dependency is missing or broken and the bot cannot
+        work. "degraded" is reserved for a working stack with an empty
+        knowledge base - real and worth reporting, but a known open question
+        rather than a fault.
+
+        Cheap by design: this is called on every /health poll, so it reads
+        state the service already established and makes at most one
+        single-row lookup against the vector store. The one live retry it can
+        trigger is rate limited inside KnowledgeService.revalidate.
+
+        Never raises. A health endpoint that 500s is worse than one that lies.
+        """
+        checks: dict[str, str] = {}
+        try:
+            knowledge = self.knowledge_service
+
+            # Give a probe that failed during construction a chance to recover
+            # rather than reporting a transient outage as a permanent fault.
+            knowledge.revalidate()
+
+            checks["gemini"] = "ok" if knowledge.gemini_client else "unconfigured"
+            checks["embeddings"] = (
+                knowledge.embedding_model if knowledge.embedding_model else "unverified"
+            )
+            checks["vector_store"] = "ok" if knowledge.supabase else "unconfigured"
+
+            if not knowledge.gemini_client:
+                checks["documents"] = "not checked"
+                return self._verdict(
+                    "unhealthy",
+                    "Gemini client unavailable - check GEMINI_API_KEY",
+                    checks,
+                )
+            if not knowledge.embedding_model:
+                checks["documents"] = "not checked"
+                return self._verdict(
+                    "unhealthy",
+                    "Gemini embedding model did not verify - check the model name",
+                    checks,
+                )
+            if not knowledge.supabase:
+                checks["documents"] = "not checked"
+                return self._verdict(
+                    "unhealthy", "Supabase not configured - no vector store", checks
+                )
+
+            has_documents = knowledge.has_indexed_documents()
+            checks["documents"] = "ok" if has_documents else "empty"
+            if not has_documents:
+                return self._verdict(
+                    "degraded",
+                    "Knowledge base has no indexed documents - answers would be ungrounded",
+                    checks,
+                )
+
+            return self._verdict("healthy", None, checks)
+
+        except Exception as e:
+            logger.error(f"Bot health check failed: {e}", exc_info=True)
+            return self._verdict("unhealthy", str(e), checks)
+
+    @staticmethod
+    def _verdict(
+        status: str, error: str | None, checks: dict[str, str]
+    ) -> dict[str, Any]:
+        return {"status": status, "error": error, "checks": checks}
+
     async def sync_documents(
         self, doc_id: str, metadata: dict | None = None
     ) -> dict[str, Any]:
