@@ -28,6 +28,11 @@ DEFAULT_SCHEDULE_TIMEZONE = "Asia/Ho_Chi_Minh"
 # error it exists to absorb.
 _FIXED_DEFAULT_OFFSET = timezone(timedelta(hours=7), "UTC+07:00")
 
+# Classes run Monday to Friday, so the schedule week is finished the instant
+# Friday is. datetime.weekday() numbers Monday 0 ... Sunday 6.
+_LAST_SCHEDULE_WEEKDAY = 4  # Friday
+_DAYS_IN_WEEK = 7
+
 
 def _default_timezone() -> timezone | ZoneInfo:
     """The default zone, degrading to a fixed offset if tzdata is missing."""
@@ -43,15 +48,41 @@ def _default_timezone() -> timezone | ZoneInfo:
         return _FIXED_DEFAULT_OFFSET
 
 
+def schedule_week_monday(now: datetime) -> datetime:
+    """
+    Midnight on the Monday of the schedule week ``now`` belongs to.
+
+    A schedule week runs Monday to Friday, so from Saturday 00:00 the week
+    containing ``now`` is over and the one that matters is the next: the
+    weekend rolls the anchor forward to the coming Monday. Monday through
+    Friday resolve to their own Monday, which is the same value the roll
+    forward produces, so the anchor moves exactly once a week - at Saturday
+    00:00 - and does not move again when Monday arrives.
+
+    ``now`` is read as a local wall clock; the caller owns the conversion.
+    Returned naive so it composes with the naive datetimes produced by
+    ``parse_schedule_sheet_title`` - comparing aware and naive datetimes
+    raises.
+    """
+    monday = now - timedelta(days=now.weekday())
+    if now.weekday() > _LAST_SCHEDULE_WEEKDAY:
+        monday += timedelta(days=_DAYS_IN_WEEK)
+    return monday.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+
+
 def current_week_monday(
     timezone_name: str = DEFAULT_SCHEDULE_TIMEZONE,
 ) -> datetime:
     """
-    Midnight on the Monday of the week containing "now" in ``timezone_name``.
+    Midnight on the Monday of the current schedule week in ``timezone_name``.
 
-    Returned naive so it composes with the naive datetimes produced by
-    ``parse_schedule_sheet_title`` - comparing aware and naive datetimes
-    raises. An unknown or empty timezone falls back to the default rather
+    That is the Monday of the week containing "now" from Monday to Friday,
+    and the following Monday across the weekend - see
+    ``schedule_week_monday`` for why. Evaluating "now" in the organization's
+    zone rather than the container's matters twice over: Cloud Run sets no
+    TZ, so a naive clock reads UTC, which is still on the previous day
+    between 00:00 and 07:00 Vietnam time - including across the Saturday
+    turnover. An unknown or empty timezone falls back to the default rather
     than failing rotation outright, since a bad settings value should not
     take the schedule offline.
     """
@@ -67,9 +98,7 @@ def current_week_monday(
         )
         tz = _default_timezone()
 
-    now = datetime.now(tz)
-    monday = now - timedelta(days=now.weekday())
-    return monday.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    return schedule_week_monday(datetime.now(tz))
 
 
 def format_schedule_sheet_title(date: datetime) -> str:

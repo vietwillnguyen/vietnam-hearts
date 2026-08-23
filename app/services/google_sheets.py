@@ -17,6 +17,7 @@ from app.utils.google_credentials import default_credentials, get_scoped_credent
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error, safe_api_call
 from app.utils.schedule_dates import (
+    DEFAULT_SCHEDULE_TIMEZONE,
     current_week_monday,
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
@@ -708,6 +709,28 @@ class GoogleSheetsService:
                 return sheet
         return None
 
+    def _calculated_schedule_dates(self, db: Session) -> tuple[datetime, datetime]:
+        """
+        Monday and Friday of the current schedule week, without reading a sheet.
+
+        Shares the rotation anchor so a fallback names the week the tabs
+        display - including the Saturday roll-forward past a finished week -
+        rather than the container's UTC containing-week. The timezone lookup
+        is guarded because one caller below is an except block that may have
+        been entered because the database session itself is unusable.
+        """
+        try:
+            timezone_name = ConfigHelper.get_schedule_timezone(db)
+        except Exception as e:
+            logger.warning(
+                f"Could not read the schedule timezone ({str(e)}), "
+                f"falling back to {DEFAULT_SCHEDULE_TIMEZONE}"
+            )
+            timezone_name = DEFAULT_SCHEDULE_TIMEZONE
+
+        current_monday = current_week_monday(timezone_name)
+        return current_monday, current_monday + timedelta(days=4)
+
     def get_current_schedule_dates(self, db: Session) -> tuple[datetime, datetime]:
         """
         Get the Monday and Friday dates from the current visible schedule sheet.
@@ -730,12 +753,7 @@ class GoogleSheetsService:
                 logger.warning(
                     "No visible schedule sheet found, falling back to calculated dates"
                 )
-                # Fallback to calculated dates
-                now = datetime.now()
-                days_since_monday = now.weekday()
-                current_monday = now - timedelta(days=days_since_monday)
-                current_friday = current_monday + timedelta(days=4)
-                return current_monday, current_friday
+                return self._calculated_schedule_dates(db)
 
             # Extract date from sheet title (DD/MM/YYYY, or legacy MM/DD)
             sheet_title = visible_sheet["properties"]["title"]
@@ -743,12 +761,7 @@ class GoogleSheetsService:
 
             if sheet_date is None:
                 logger.warning(f"Could not parse date from sheet title '{sheet_title}'")
-                # Fallback to calculated dates
-                now = datetime.now()
-                days_since_monday = now.weekday()
-                current_monday = now - timedelta(days=days_since_monday)
-                current_friday = current_monday + timedelta(days=4)
-                return current_monday, current_friday
+                return self._calculated_schedule_dates(db)
 
             # Calculate Monday and Friday for this week
             days_since_monday = sheet_date.weekday()
@@ -764,12 +777,7 @@ class GoogleSheetsService:
             logger.error(
                 f"Failed to get current schedule dates: {str(e)}", exc_info=True
             )
-            # Fallback to calculated dates
-            now = datetime.now()
-            days_since_monday = now.weekday()
-            current_monday = now - timedelta(days=days_since_monday)
-            current_friday = current_monday + timedelta(days=4)
-            return current_monday, current_friday
+            return self._calculated_schedule_dates(db)
 
     def set_sheet_visibility(self, sheet_id: int, hidden: bool, db: Session):
         """Set the visibility of a sheet"""
@@ -964,9 +972,9 @@ class GoogleSheetsService:
     ) -> dict[str, Any]:
         """
         Sync schedule sheets to the current date: exactly `display_weeks_count`
-        dated sheets are visible, starting from the Monday of the week
-        containing "now" and running forward in chronological order. Every
-        other dated sheet is hidden. This is idempotent reconciliation, not
+        dated sheets are visible, starting from the Monday of the current
+        schedule week and running forward in chronological order. Every other
+        dated sheet is hidden. This is idempotent reconciliation, not
         incremental rotation - it can be called at any time, on any day of
         the week, and always converges on the same target state for "now".
 
@@ -981,12 +989,14 @@ class GoogleSheetsService:
                 - display_dates: The dates that should be displayed
         """
         try:
-            # Anchor to the Monday of the week containing "now" - not next
-            # Monday - so the display is always accurate to today's date
-            # regardless of which day of the week this runs on. "Now" is
-            # evaluated in the organization's timezone, not the container's:
-            # Cloud Run has no TZ set, so a naive clock reads UTC and would
-            # anchor a week behind between 00:00 and 07:00 Vietnam time.
+            # Anchor to the Monday of the current schedule week, so the
+            # display is always accurate to today's date regardless of which
+            # day of the week this runs on: the week containing "now" from
+            # Monday to Friday, and the coming Monday once Friday's classes
+            # are over. "Now" is evaluated in the organization's timezone,
+            # not the container's: Cloud Run has no TZ set, so a naive clock
+            # reads UTC and would anchor a week behind for the first seven
+            # hours of every Vietnamese day, the Saturday turnover included.
             current_monday = current_week_monday(ConfigHelper.get_schedule_timezone(db))
 
             # Get all existing schedule sheets before rotation
