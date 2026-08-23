@@ -34,7 +34,7 @@ from app.services.google_sheets import (
     GoogleSheetsService,
 )
 from app.utils.schedule_dates import current_week_monday, format_schedule_sheet_title
-from tests.test_schedule_dates import frozen_at
+from tests.conftest import frozen_at
 
 
 def sheet_props(title, sheet_id, index=0, hidden=False):
@@ -52,8 +52,9 @@ def current_monday():
     """The Monday rotation will anchor to right now, on the org's clock.
 
     Delegated rather than recomputed from a naive datetime.now(): the two
-    diverge every weekend (and in the 00:00-07:00 Vietnam window), which
-    would make the unfrozen tests below fail on the days that matter most.
+    diverge from every Friday through Sunday (and in the 00:00-07:00 Vietnam
+    window), which would make the unfrozen tests below fail on the days that
+    matter most.
     """
     return current_week_monday()
 
@@ -251,9 +252,10 @@ class TestRotationAnchorDate:
     other day (e.g. the Monday the new week begins), which dropped that
     week's sheet entirely instead of displaying it.
 
-    The skip is right on a weekend, though, and only then - once Friday is
-    past, the week containing "now" is finished. That case is the last test
-    here, and the anchor rule producing it lives in test_schedule_dates.py.
+    The skip is right from Friday onwards, though, and only then - the
+    displayed week turns over a day before classes end so volunteers can
+    sign up early. That case is the last test here, and the anchor rule
+    producing it lives in test_schedule_dates.py.
     """
 
     def test_display_starts_on_current_week_when_run_on_monday(self, service):
@@ -302,17 +304,17 @@ class TestRotationAnchorDate:
         mock_tz.assert_called_once()
         mock_anchor.assert_called_once_with("Asia/Ho_Chi_Minh")
 
-    def test_display_leads_with_next_monday_when_run_on_a_weekend(self, service):
-        """The Monday-to-Friday week is over, so the window must move on.
+    def test_display_leads_with_next_monday_when_run_on_friday(self, service):
+        """The displayed week turns over on Friday, so the window moves on.
 
         Unlike its neighbours this exercises the real current_week_monday()
         rather than patching it: the point under test is the anchor rule
-        itself reaching the display window.
+        itself reaching the display window, pinned at the exact turnover.
         """
-        # Saturday 00:30 Vietnam, still Friday 17:30 UTC - so this also pins
+        # Friday 00:30 Vietnam, still Thursday 17:30 UTC - so this also pins
         # that the roll-forward is judged on the org's clock, not the box's.
         with (
-            frozen_at("2026-07-31T17:30:00"),
+            frozen_at("2026-07-30T17:30:00"),
             patch(
                 "app.services.google_sheets.ConfigHelper.get_schedule_timezone",
                 return_value="Asia/Ho_Chi_Minh",

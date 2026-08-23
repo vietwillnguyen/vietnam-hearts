@@ -28,9 +28,12 @@ DEFAULT_SCHEDULE_TIMEZONE = "Asia/Ho_Chi_Minh"
 # error it exists to absorb.
 _FIXED_DEFAULT_OFFSET = timezone(timedelta(hours=7), "UTC+07:00")
 
-# Classes run Monday to Friday, so the schedule week is finished the instant
-# Friday is. datetime.weekday() numbers Monday 0 ... Sunday 6.
-_LAST_SCHEDULE_WEEKDAY = 4  # Friday
+# The last weekday on which the current week still LEADS the display. Classes
+# still run Monday to Friday; the display turns over a day earlier because
+# rotation exists to let volunteers sign up for the coming week ahead of time,
+# so on Friday the next week takes the leading tab and Friday's own classes are
+# no longer led with. datetime.weekday() numbers Monday 0 ... Sunday 6.
+_LAST_LEADING_WEEKDAY = 3  # Thursday
 _DAYS_IN_WEEK = 7
 
 
@@ -52,12 +55,12 @@ def schedule_week_monday(now: datetime) -> datetime:
     """
     Midnight on the Monday of the schedule week ``now`` belongs to.
 
-    A schedule week runs Monday to Friday, so from Saturday 00:00 the week
-    containing ``now`` is over and the one that matters is the next: the
-    weekend rolls the anchor forward to the coming Monday. Monday through
-    Friday resolve to their own Monday, which is the same value the roll
-    forward produces, so the anchor moves exactly once a week - at Saturday
-    00:00 - and does not move again when Monday arrives.
+    The display turns over on Friday: from Friday 00:00 the week containing
+    ``now`` no longer leads and the one that matters is the next, so Friday,
+    Saturday and Sunday all roll the anchor forward to the coming Monday.
+    Monday through Thursday resolve to their own Monday, which is the same
+    value the roll forward produces, so the anchor moves exactly once a week
+    - at Friday 00:00 - and does not move again when Monday arrives.
 
     ``now`` is read as a local wall clock; the caller owns the conversion.
     Returned naive so it composes with the naive datetimes produced by
@@ -65,7 +68,7 @@ def schedule_week_monday(now: datetime) -> datetime:
     raises.
     """
     monday = now - timedelta(days=now.weekday())
-    if now.weekday() > _LAST_SCHEDULE_WEEKDAY:
+    if now.weekday() > _LAST_LEADING_WEEKDAY:
         monday += timedelta(days=_DAYS_IN_WEEK)
     return monday.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
@@ -76,12 +79,12 @@ def current_week_monday(
     """
     Midnight on the Monday of the current schedule week in ``timezone_name``.
 
-    That is the Monday of the week containing "now" from Monday to Friday,
-    and the following Monday across the weekend - see
+    That is the Monday of the week containing "now" from Monday to Thursday,
+    and the following Monday from Friday onwards - see
     ``schedule_week_monday`` for why. Evaluating "now" in the organization's
     zone rather than the container's matters twice over: Cloud Run sets no
     TZ, so a naive clock reads UTC, which is still on the previous day
-    between 00:00 and 07:00 Vietnam time - including across the Saturday
+    between 00:00 and 07:00 Vietnam time - including across the Friday
     turnover. An unknown or empty timezone falls back to the default rather
     than failing rotation outright, since a bad settings value should not
     take the schedule offline.

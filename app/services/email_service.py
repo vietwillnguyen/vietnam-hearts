@@ -233,13 +233,16 @@ class EmailService:
         Returns:
             tuple: (html_body, subject)
         """
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         from app.services.google_sheets import sheets_service
+        from app.utils.config_helper import ConfigHelper
+        from app.utils.schedule_dates import current_week_monday
 
-        # Calculate date range for the reminder (current week)
-        today = datetime.now()
-        start_date = today - timedelta(days=today.weekday())  # Monday
+        # The subject must name the same week the body's tables come from:
+        # both now derive from the one shared anchor, evaluated in the
+        # organization's timezone rather than the container's UTC clock.
+        start_date = current_week_monday(ConfigHelper.get_schedule_timezone(db))
         end_date = start_date + timedelta(days=6)  # Sunday
 
         # Get the reminder subject
@@ -256,8 +259,6 @@ class EmailService:
         if not volunteer.email_unsubscribe_token:
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
             db.commit()
-
-        from app.utils.config_helper import ConfigHelper
 
         # Render template with class tables and all variables
         template = self.email_env.get_template("weekly-reminder-email.html")

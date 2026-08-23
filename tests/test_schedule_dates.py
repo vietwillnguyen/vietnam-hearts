@@ -1,6 +1,6 @@
 """Tests for schedule sheet title parsing/formatting utilities."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -11,33 +11,7 @@ from app.utils.schedule_dates import (
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
 )
-
-
-class FrozenDatetime(datetime):
-    """datetime whose now() reports a fixed instant, converting tz for real.
-
-    Patching ``datetime.now`` with a plain MagicMock would ignore the tzinfo
-    argument entirely, so the conversion under test would never actually run.
-    This subclass keeps the real astimezone() maths and only freezes the clock.
-    """
-
-    frozen_utc = datetime(1970, 1, 1, tzinfo=UTC)
-
-    @classmethod
-    def now(cls, tz=None):
-        if tz is None:
-            return cls.frozen_utc.replace(tzinfo=None)
-        return cls.frozen_utc.astimezone(tz)
-
-
-def frozen_at(iso_utc: str):
-    """Patch the schedule_dates clock to a fixed UTC instant."""
-    frozen = type(
-        "Frozen",
-        (FrozenDatetime,),
-        {"frozen_utc": datetime.fromisoformat(iso_utc).replace(tzinfo=UTC)},
-    )
-    return patch("app.utils.schedule_dates.datetime", frozen)
+from tests.conftest import frozen_at
 
 
 class TestFormatScheduleSheetTitle:
@@ -102,10 +76,10 @@ class TestCurrentWeekMonday:
     week's sheet hidden. A weekly Friday-evening cron never entered that
     window; an hourly cron does, once a week.
 
-    The anchor changes value exactly once a week, at Saturday 00:00 local
-    (see TestWeekendRollForward), so that is the only boundary at which the
-    two clocks can disagree: Friday 17:00-24:00 UTC is already Saturday in
-    Vietnam.
+    The anchor changes value exactly once a week, at Friday 00:00 local
+    (see TestRollForwardToTheComingWeek), so that is the only boundary at
+    which the two clocks can disagree: Thursday 17:00-24:00 UTC is already
+    Friday in Vietnam.
     """
 
     def test_monday_just_after_local_midnight_anchors_to_that_monday(self):
@@ -141,19 +115,25 @@ class TestCurrentWeekMonday:
             assert current_week_monday("") == datetime(2026, 7, 27)
 
 
-class TestWeekendRollForward:
-    """The schedule week is Monday to Friday, so it is over once Friday is.
+class TestRollForwardToTheComingWeek:
+    """The displayed week turns over on Friday, a day before classes end.
 
-    Anchoring to the Monday of the week *containing* now left the tabs
-    leading with a week whose classes had all already happened, for the
-    whole of Saturday and Sunday, until the next Monday arrived. From
-    Saturday 00:00 local the window must lead with the coming Monday.
+    Rotation exists so volunteers can sign up for the coming week ahead of
+    time, so from Friday 00:00 local the leading tab is next week's and
+    Friday's own classes are no longer led with. Anchoring to the Monday of
+    the week *containing* now instead left the tabs leading with a nearly
+    finished week for three days, until the next Monday arrived.
     """
 
-    def test_friday_still_anchors_to_that_weeks_monday(self):
-        # Friday 10:00 Vietnam == Friday 03:00 UTC; the week is still running.
-        with frozen_at("2026-07-31T03:00:00"):
+    def test_thursday_still_anchors_to_that_weeks_monday(self):
+        # Thursday 10:00 Vietnam == Thursday 03:00 UTC; still the leading week.
+        with frozen_at("2026-07-30T03:00:00"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
+
+    def test_friday_anchors_to_the_following_monday(self):
+        # Friday 10:00 Vietnam == Friday 03:00 UTC.
+        with frozen_at("2026-07-31T03:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
 
     def test_saturday_anchors_to_the_following_monday(self):
         # Saturday 09:00 Vietnam == Saturday 02:00 UTC.
@@ -171,22 +151,22 @@ class TestWeekendRollForward:
         with frozen_at("2026-08-03T02:00:00"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
 
-    def test_last_second_of_friday_has_not_rolled_over_yet(self):
-        # Friday 23:59:59 Vietnam == Friday 16:59:59 UTC.
-        with frozen_at("2026-07-31T16:59:59"):
+    def test_last_second_of_thursday_has_not_rolled_over_yet(self):
+        # Thursday 23:59:59 Vietnam == Thursday 16:59:59 UTC.
+        with frozen_at("2026-07-30T16:59:59"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
 
-    def test_first_second_of_saturday_has_rolled_over(self):
-        # Saturday 00:00:00 Vietnam == Friday 17:00:00 UTC: the turnover is
-        # the first instant that is no longer Friday, not an end-of-classes
-        # cutoff earlier on Friday evening.
-        with frozen_at("2026-07-31T17:00:00"):
+    def test_first_second_of_friday_has_rolled_over(self):
+        # Friday 00:00:00 Vietnam == Thursday 17:00:00 UTC: the turnover is
+        # the first instant that is no longer Thursday, not a cutoff at some
+        # hour of Friday.
+        with frozen_at("2026-07-30T17:00:00"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
 
     def test_roll_forward_is_evaluated_in_the_org_timezone(self):
-        # Saturday 00:30 Vietnam is still Friday 17:30 UTC. The container
-        # clock would keep the finished week on screen for another 7 hours.
-        with frozen_at("2026-07-31T17:30:00"):
+        # Friday 00:30 Vietnam is still Thursday 17:30 UTC. The container
+        # clock would keep the outgoing week leading for another 7 hours.
+        with frozen_at("2026-07-30T17:30:00"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
             assert current_week_monday("UTC") == datetime(2026, 7, 27)
 
@@ -213,15 +193,15 @@ class TestMissingTimezoneDatabase:
             # offset must still anchor to the same Monday a real zone would.
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
 
-    def test_fixed_offset_still_rolls_the_weekend_forward(self):
+    def test_fixed_offset_still_rolls_the_week_forward(self):
         with (
-            frozen_at("2026-07-31T17:30:00"),
+            frozen_at("2026-07-30T17:30:00"),
             patch(
                 "app.utils.schedule_dates.ZoneInfo",
                 side_effect=ZoneInfoNotFoundError("No time zone found"),
             ),
         ):
-            # Friday 17:30 UTC is Saturday 00:30 at UTC+7, so the stand-in
+            # Thursday 17:30 UTC is Friday 00:30 at UTC+7, so the stand-in
             # offset must roll forward exactly as the real zone does.
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
 

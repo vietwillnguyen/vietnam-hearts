@@ -714,7 +714,7 @@ class GoogleSheetsService:
         Monday and Friday of the current schedule week, without reading a sheet.
 
         Shares the rotation anchor so a fallback names the week the tabs
-        display - including the Saturday roll-forward past a finished week -
+        display - including the Friday roll-forward onto the coming week -
         rather than the container's UTC containing-week. The timezone lookup
         is guarded because one caller below is an except block that may have
         been entered because the database session itself is unusable.
@@ -973,7 +973,9 @@ class GoogleSheetsService:
         """
         Sync schedule sheets to the current date: exactly `display_weeks_count`
         dated sheets are visible, starting from the Monday of the current
-        schedule week and running forward in chronological order. Every other
+        schedule week - which turns over to the coming week on Friday, see
+        current_week_monday() - and running forward in chronological order.
+        Every other
         dated sheet is hidden. This is idempotent reconciliation, not
         incremental rotation - it can be called at any time, on any day of
         the week, and always converges on the same target state for "now".
@@ -992,11 +994,12 @@ class GoogleSheetsService:
             # Anchor to the Monday of the current schedule week, so the
             # display is always accurate to today's date regardless of which
             # day of the week this runs on: the week containing "now" from
-            # Monday to Friday, and the coming Monday once Friday's classes
-            # are over. "Now" is evaluated in the organization's timezone,
-            # not the container's: Cloud Run has no TZ set, so a naive clock
-            # reads UTC and would anchor a week behind for the first seven
-            # hours of every Vietnamese day, the Saturday turnover included.
+            # Monday to Thursday, and the coming Monday from Friday onwards
+            # so volunteers can sign up for it early. "Now" is evaluated in
+            # the organization's timezone, not the container's: Cloud Run has
+            # no TZ set, so a naive clock reads UTC and would anchor a week
+            # behind for the first seven hours of every Vietnamese day, the
+            # Friday turnover included.
             current_monday = current_week_monday(ConfigHelper.get_schedule_timezone(db))
 
             # Get all existing schedule sheets before rotation

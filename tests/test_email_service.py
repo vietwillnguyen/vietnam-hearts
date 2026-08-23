@@ -9,10 +9,17 @@ Tests cover:
 - Max assistants enforcement / counting
 - Status logic (missing teacher / head TA / assistants, optional, no class, no limit)
 - Head TA column dropped when the class has no head TA row
+- The weekly reminder subject naming the same week the shared anchor points at
 """
 
+from datetime import datetime, timedelta
+from unittest.mock import patch
+
+from app.models import Setting
 from app.services.email_service import EmailService
 from app.services.schedule_parser import ClassBlock
+from app.utils.schedule_dates import current_week_monday
+from tests.conftest import frozen_at
 
 
 def _block(
@@ -295,3 +302,62 @@ class TestBuildClassTable:
         )
         result = EmailService().build_class_table(block)
         assert result["needs_volunteers"] is False
+
+
+class TestWeeklyReminderSubject:
+    """The subject must name the same week the email body shows.
+
+    The body's class tables come from the first visible schedule tab, which
+    rotation rolls forward to the coming Monday from Friday 00:00 local. The
+    subject used to recompute its own range from a bare datetime.now(), so it
+    both ignored the roll-forward and read the container clock - UTC on Cloud
+    Run - instead of the organization's. Both now come off the one shared
+    anchor.
+    """
+
+    # Friday 00:30 in Vietnam, still Thursday 17:30 in UTC: the one instant
+    # that separates the org's clock from the container's at the turnover.
+    TURNOVER_INSTANT = "2026-07-30T17:30:00"
+
+    def _subject(self, test_db, volunteer):
+        with (
+            frozen_at(self.TURNOVER_INSTANT),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_blocks",
+                return_value=[],
+            ),
+        ):
+            _, subject = EmailService().build_weekly_reminder_content(
+                volunteer, test_db
+            )
+        return subject
+
+    def _set_timezone(self, test_db, timezone_name):
+        test_db.merge(Setting(key="SCHEDULE_TIMEZONE", value=timezone_name))
+        test_db.commit()
+
+    def test_subject_names_the_week_the_shared_anchor_points_at(
+        self, test_db, mock_volunteer
+    ):
+        self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
+
+        with frozen_at(self.TURNOVER_INSTANT):
+            expected_monday = current_week_monday("Asia/Ho_Chi_Minh")
+
+        assert expected_monday == datetime(2026, 8, 3)
+        subject = self._subject(test_db, mock_volunteer)
+        assert "(03/08 to 09/08)" in subject
+        assert subject == EmailService().get_reminder_subject(
+            expected_monday, expected_monday + timedelta(days=6)
+        )
+
+    def test_subject_week_is_evaluated_in_the_org_timezone(
+        self, test_db, mock_volunteer
+    ):
+        # Same instant, different configured zone: a container-clock subject
+        # would read the same either way.
+        self._set_timezone(test_db, "UTC")
+        assert "(27/07 to 02/08)" in self._subject(test_db, mock_volunteer)
+
+        self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
+        assert "(03/08 to 09/08)" in self._subject(test_db, mock_volunteer)
