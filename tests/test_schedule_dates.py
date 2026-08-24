@@ -7,9 +7,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.utils.schedule_dates import (
     _FIXED_DEFAULT_OFFSET,
     DEFAULT_SCHEDULE_TIMEZONE,
+    DEFAULT_TEACHING_DAYS,
+    DEFAULT_TEACHING_DAYS_SETTING,
     current_week_monday,
     format_schedule_sheet_title,
+    is_teaching_day,
     parse_schedule_sheet_title,
+    parse_teaching_days,
 )
 from tests.conftest import frozen_at
 
@@ -210,3 +214,59 @@ class TestMissingTimezoneDatabase:
         assert _FIXED_DEFAULT_OFFSET.utcoffset(None) == ZoneInfo(
             DEFAULT_SCHEDULE_TIMEZONE
         ).utcoffset(datetime(2026, 7, 27))
+
+
+class TestTeachingDays:
+    """The days classes actually run on, matched against sheet day labels.
+
+    Vietnam Hearts teaches on Tuesday and Thursday; the schedule grid keeps a
+    column for every weekday and leaves the rest blank. build_class_table uses
+    this to tell a day with no class apart from an unfilled teaching slot.
+    """
+
+    def test_default_is_tuesday_and_thursday(self):
+        assert parse_teaching_days(None) == {"tue", "thu"}
+
+    def test_parses_a_settings_string(self):
+        assert parse_teaching_days("Monday, Wednesday, Friday") == {
+            "mon",
+            "wed",
+            "fri",
+        }
+
+    def test_accepts_abbreviations_and_odd_separators(self):
+        assert parse_teaching_days("Tue; Thu / Sat") == {"tue", "thu", "sat"}
+
+    def test_accepts_an_iterable_of_day_names(self):
+        assert parse_teaching_days(["Tuesday", "Thursday"]) == {"tue", "thu"}
+
+    def test_blank_value_falls_back_to_the_default(self):
+        assert parse_teaching_days("") == parse_teaching_days(None)
+
+    def test_value_naming_no_weekday_falls_back_rather_than_emptying(self):
+        # An empty teaching week would mark every day non-teaching and so
+        # suppress the weekly reminder entirely.
+        assert parse_teaching_days("whenever") == {"tue", "thu"}
+
+    def test_matches_a_bare_weekday_name(self):
+        assert is_teaching_day("Tuesday") is True
+        assert is_teaching_day("Monday") is False
+
+    def test_matches_a_label_carrying_a_date(self):
+        assert is_teaching_day("Thursday 6/25") is True
+        assert is_teaching_day("Wed 6/24") is False
+
+    def test_honours_an_explicit_teaching_week(self):
+        assert is_teaching_day("Monday", ["Monday"]) is True
+        assert is_teaching_day("Tuesday", ["Monday"]) is False
+
+    def test_unrecognized_label_counts_as_a_teaching_day(self):
+        # Failing open keeps a genuinely unfilled slot visible; failing closed
+        # would drop it from the reminder with no other symptom.
+        assert is_teaching_day("Week 3 session") is True
+        assert is_teaching_day("") is True
+
+    def test_seeded_setting_value_parses_to_the_code_default(self):
+        assert parse_teaching_days(
+            DEFAULT_TEACHING_DAYS_SETTING
+        ) == parse_teaching_days(DEFAULT_TEACHING_DAYS)

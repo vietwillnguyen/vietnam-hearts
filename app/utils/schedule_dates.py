@@ -8,6 +8,8 @@ duplicates. Non-date suffixes ("Schedule Template", "Schedule Config")
 parse to None and are therefore excluded from rotation logic.
 """
 
+import re
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -35,6 +37,67 @@ _FIXED_DEFAULT_OFFSET = timezone(timedelta(hours=7), "UTC+07:00")
 # no longer led with. datetime.weekday() numbers Monday 0 ... Sunday 6.
 _LAST_LEADING_WEEKDAY = 3  # Thursday
 _DAYS_IN_WEEK = 7
+
+# Vietnam Hearts teaches on Tuesday and Thursday only. The schedule grid still
+# carries a column for every weekday, and days with no class are left blank
+# rather than written out as "No Class", so a blank teacher cell on a Monday is
+# not an unfilled teaching slot - it is a day the organization does not teach.
+# Overridable per deployment (the SCHEDULE_TEACHING_DAYS setting) because a
+# timetable is exactly the kind of thing that changes.
+DEFAULT_TEACHING_DAYS = ("Tuesday", "Thursday")
+
+# The same default in the form the SCHEDULE_TEACHING_DAYS setting stores, so the
+# seeded value and the code default can never drift apart.
+DEFAULT_TEACHING_DAYS_SETTING = ", ".join(DEFAULT_TEACHING_DAYS)
+
+# Sheet day labels vary in form and usually carry a date - "Tue", "Monday 6/22".
+# Only the leading weekday token identifies the day.
+_WEEKDAY_TOKEN_RE = re.compile(r"\b(mon|tue|wed|thu|fri|sat|sun)", re.IGNORECASE)
+
+
+def weekday_token(label: str) -> str | None:
+    """The lowercase three-letter weekday token in ``label``, or None."""
+    if not label:
+        return None
+    match = _WEEKDAY_TOKEN_RE.search(str(label))
+    return match.group(1).lower() if match else None
+
+
+def parse_teaching_days(raw: str | Iterable[str] | None) -> frozenset[str]:
+    """
+    Weekday tokens for the days classes actually run on.
+
+    Accepts either a separated string as stored in settings ("Tuesday,
+    Thursday") or an iterable of day names. Entries naming no weekday are
+    dropped; a value naming none at all falls back to the default, because an
+    empty teaching week would mark every day as non-teaching and so suppress
+    the weekly reminder entirely.
+    """
+    parts = re.split(r"[,;/|]+", raw) if isinstance(raw, str) else list(raw or ())
+    tokens = frozenset(t for part in parts if (t := weekday_token(part)))
+    if tokens:
+        return tokens
+    if isinstance(raw, str) and raw.strip():
+        logger.warning(
+            "Teaching days %r name no weekday, falling back to %s",
+            raw,
+            ", ".join(DEFAULT_TEACHING_DAYS),
+        )
+    return frozenset(weekday_token(day) for day in DEFAULT_TEACHING_DAYS)
+
+
+def is_teaching_day(day_label: str, teaching_days: Iterable[str] | None = None) -> bool:
+    """
+    True if ``day_label`` names one of the days classes run on.
+
+    A label naming no recognizable weekday counts as a teaching day: failing
+    open keeps a genuinely unfilled slot visible in the reminder, where failing
+    closed would silently drop it.
+    """
+    token = weekday_token(day_label)
+    if token is None:
+        return True
+    return token in parse_teaching_days(teaching_days)
 
 
 def _default_timezone() -> timezone | ZoneInfo:

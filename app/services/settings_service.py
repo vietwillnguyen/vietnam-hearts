@@ -10,7 +10,10 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.models import Setting
-from app.utils.schedule_dates import DEFAULT_SCHEDULE_TIMEZONE
+from app.utils.schedule_dates import (
+    DEFAULT_SCHEDULE_TIMEZONE,
+    DEFAULT_TEACHING_DAYS_SETTING,
+)
 
 
 def get_setting(db: Session, key: str, default: str | None = None) -> str | None:
@@ -157,6 +160,16 @@ def initialize_default_settings(db: Session) -> None:
                 "Cloud Run containers run on UTC, so without this the display window "
                 "would shift a week early between midnight and 7am Vietnam time. Also "
                 "used as the timezone of the Cloud Scheduler cron jobs below."
+            ),
+        },
+        "SCHEDULE_TEACHING_DAYS": {
+            "value": DEFAULT_TEACHING_DAYS_SETTING,
+            "description": (
+                "Comma-separated weekdays classes actually run on, e.g. "
+                "Tuesday, Thursday. The schedule sheet keeps a column for every "
+                "weekday and leaves the days with no class blank, so without "
+                "this the weekly reminder reports every one of them to "
+                "volunteers as a teaching slot missing a teacher."
             ),
         },
         "CRON_SYNC_VOLUNTEERS": {

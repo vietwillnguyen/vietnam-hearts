@@ -14,14 +14,19 @@ That workflow is the authoritative list; it also pins the lint gates (`ruff chec
 
 ## Schedule weeks
 
-Classes run Monday to Friday, but the displayed week is anchored by
-`app/utils/schedule_dates.py::current_week_monday()`, which is the single source of truth
-for "which week are we showing". Two properties are easy to break and are covered by tests:
-"now" is evaluated in the organization's timezone (Cloud Run sets no TZ, so a naive clock
-reads UTC and lands a week off), and the anchor rolls forward to the coming Monday from
-Friday 00:00 local, one day before classes end, so volunteers can sign up for next week
-early. Derive dates from that function rather than recomputing `now.weekday()` at the
-call site.
+The schedule week runs Monday to Friday, but Vietnam Hearts only teaches on the days in
+the `SCHEDULE_TEACHING_DAYS` setting - Tuesday and Thursday. The sheet still carries a
+column for every weekday and leaves the non-teaching ones blank, so a blank cell is only
+an unfilled slot on a teaching day (`schedule_dates.py::is_teaching_day`); treating every
+blank as one is what used to fill the reminder email with false "Missing Teacher" rows.
+
+The displayed week is anchored by `app/utils/schedule_dates.py::current_week_monday()`,
+the single source of truth for "which week are we showing". Two properties are easy to
+break and are covered by tests: "now" is evaluated in the organization's timezone (Cloud
+Run sets no TZ, so a naive clock reads UTC and lands a week off), and the anchor rolls
+forward to the coming Monday from Friday 00:00 local so volunteers can sign up for next
+week early. Derive dates from that function rather than recomputing `now.weekday()` at
+the call site.
 
 ## Maintaining this file
 

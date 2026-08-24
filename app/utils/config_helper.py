@@ -18,7 +18,11 @@ from app.config import (
     PORT,
 )
 from app.services.settings_service import get_setting
-from app.utils.schedule_dates import DEFAULT_SCHEDULE_TIMEZONE
+from app.utils.schedule_dates import (
+    DEFAULT_SCHEDULE_TIMEZONE,
+    DEFAULT_TEACHING_DAYS_SETTING,
+    parse_teaching_days,
+)
 from app.utils.sheet_utils import extract_sheet_id_from_url
 
 
@@ -117,6 +121,21 @@ class ConfigHelper:
         if db is None:
             return default
         return get_setting(db, "SCHEDULE_TIMEZONE", default) or default
+
+    @staticmethod
+    def get_schedule_teaching_days(
+        db: Session, default: str = DEFAULT_TEACHING_DAYS_SETTING
+    ) -> frozenset[str]:
+        """Get the weekday tokens for the days classes actually run on.
+
+        Returned normalized (lowercase three-letter tokens) so callers compare
+        against sheet day labels of any form - see is_teaching_day().
+        """
+        if db is None:
+            return parse_teaching_days(default)
+        return parse_teaching_days(
+            get_setting(db, "SCHEDULE_TEACHING_DAYS", default) or default
+        )
 
     @staticmethod
     def get_google_sheets_max_retries(db: Session, default: int = 3) -> int:
