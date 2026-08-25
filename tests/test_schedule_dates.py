@@ -1,43 +1,21 @@
 """Tests for schedule sheet title parsing/formatting utilities."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.utils.schedule_dates import (
     _FIXED_DEFAULT_OFFSET,
     DEFAULT_SCHEDULE_TIMEZONE,
+    DEFAULT_TEACHING_DAYS,
+    DEFAULT_TEACHING_DAYS_SETTING,
     current_week_monday,
     format_schedule_sheet_title,
+    is_teaching_day,
     parse_schedule_sheet_title,
+    parse_teaching_days,
 )
-
-
-class FrozenDatetime(datetime):
-    """datetime whose now() reports a fixed instant, converting tz for real.
-
-    Patching ``datetime.now`` with a plain MagicMock would ignore the tzinfo
-    argument entirely, so the conversion under test would never actually run.
-    This subclass keeps the real astimezone() maths and only freezes the clock.
-    """
-
-    frozen_utc = datetime(1970, 1, 1, tzinfo=UTC)
-
-    @classmethod
-    def now(cls, tz=None):
-        if tz is None:
-            return cls.frozen_utc.replace(tzinfo=None)
-        return cls.frozen_utc.astimezone(tz)
-
-
-def frozen_at(iso_utc: str):
-    """Patch the schedule_dates clock to a fixed UTC instant."""
-    frozen = type(
-        "Frozen",
-        (FrozenDatetime,),
-        {"frozen_utc": datetime.fromisoformat(iso_utc).replace(tzinfo=UTC)},
-    )
-    return patch("app.utils.schedule_dates.datetime", frozen)
+from tests.fixtures.clock import frozen_at
 
 
 class TestFormatScheduleSheetTitle:
@@ -98,9 +76,14 @@ class TestCurrentWeekMonday:
     Cloud Run containers have no TZ set, so a naive datetime.now() reports
     UTC while Vietnam Hearts operates on Asia/Ho_Chi_Minh (UTC+7). Between
     00:00 and 07:00 Vietnam time the UTC clock is still on the previous day,
-    so on Monday mornings a UTC-anchored rotation would target the previous
-    week and leave the current week's sheet hidden. A weekly Friday-evening
-    cron never entered that window; an hourly cron does, every Monday.
+    so a UTC-anchored rotation targets the wrong week and leaves the right
+    week's sheet hidden. A weekly Friday-evening cron never entered that
+    window; an hourly cron does, once a week.
+
+    The anchor changes value exactly once a week, at Friday 00:00 local
+    (see TestRollForwardToTheComingWeek), so that is the only boundary at
+    which the two clocks can disagree: Thursday 17:00-24:00 UTC is already
+    Friday in Vietnam.
     """
 
     def test_monday_just_after_local_midnight_anchors_to_that_monday(self):
@@ -108,18 +91,8 @@ class TestCurrentWeekMonday:
         with frozen_at("2026-07-26T17:30:00"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
 
-    def test_same_instant_in_utc_anchors_a_week_earlier(self):
-        # Pins the exact bug: same instant, UTC anchor lands a week behind.
-        with frozen_at("2026-07-26T17:30:00"):
-            assert current_week_monday("UTC") == datetime(2026, 7, 20)
-
     def test_midweek_anchors_to_that_weeks_monday(self):
         with frozen_at("2026-07-29T07:00:00"):
-            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
-
-    def test_sunday_evening_local_still_anchors_to_that_weeks_monday(self):
-        # Sunday 23:00 Vietnam == Sunday 16:00 UTC; still the same local week.
-        with frozen_at("2026-08-02T16:00:00"):
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
 
     def test_result_is_naive_and_midnight_normalized(self):
@@ -146,6 +119,62 @@ class TestCurrentWeekMonday:
             assert current_week_monday("") == datetime(2026, 7, 27)
 
 
+class TestRollForwardToTheComingWeek:
+    """The displayed week turns over on Friday, a day before classes end.
+
+    Rotation exists so volunteers can sign up for the coming week ahead of
+    time, so from Friday 00:00 local the leading tab is next week's and
+    Friday's own classes are no longer led with. Anchoring to the Monday of
+    the week *containing* now instead left the tabs leading with a nearly
+    finished week for three days, until the next Monday arrived.
+    """
+
+    def test_thursday_still_anchors_to_that_weeks_monday(self):
+        # Thursday 10:00 Vietnam == Thursday 03:00 UTC; still the leading week.
+        with frozen_at("2026-07-30T03:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
+
+    def test_friday_anchors_to_the_following_monday(self):
+        # Friday 10:00 Vietnam == Friday 03:00 UTC.
+        with frozen_at("2026-07-31T03:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+    def test_saturday_anchors_to_the_following_monday(self):
+        # Saturday 09:00 Vietnam == Saturday 02:00 UTC.
+        with frozen_at("2026-08-01T02:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+    def test_sunday_anchors_to_the_following_monday(self):
+        # Sunday 23:00 Vietnam == Sunday 16:00 UTC.
+        with frozen_at("2026-08-02T16:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+    def test_monday_anchors_to_that_same_monday(self):
+        # The rolled-forward anchor and the new week's own anchor agree, so
+        # the window does not move again when Monday arrives.
+        with frozen_at("2026-08-03T02:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+    def test_last_second_of_thursday_has_not_rolled_over_yet(self):
+        # Thursday 23:59:59 Vietnam == Thursday 16:59:59 UTC.
+        with frozen_at("2026-07-30T16:59:59"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
+
+    def test_first_second_of_friday_has_rolled_over(self):
+        # Friday 00:00:00 Vietnam == Thursday 17:00:00 UTC: the turnover is
+        # the first instant that is no longer Thursday, not a cutoff at some
+        # hour of Friday.
+        with frozen_at("2026-07-30T17:00:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+    def test_roll_forward_is_evaluated_in_the_org_timezone(self):
+        # Friday 00:30 Vietnam is still Thursday 17:30 UTC. The container
+        # clock would keep the outgoing week leading for another 7 hours.
+        with frozen_at("2026-07-30T17:30:00"):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+            assert current_week_monday("UTC") == datetime(2026, 7, 27)
+
+
 class TestMissingTimezoneDatabase:
     """The fallback must not be able to raise the error it exists to absorb.
 
@@ -168,8 +197,89 @@ class TestMissingTimezoneDatabase:
             # offset must still anchor to the same Monday a real zone would.
             assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 7, 27)
 
+    def test_fixed_offset_still_rolls_the_week_forward(self):
+        with (
+            frozen_at("2026-07-30T17:30:00"),
+            patch(
+                "app.utils.schedule_dates.ZoneInfo",
+                side_effect=ZoneInfoNotFoundError("No time zone found"),
+            ),
+        ):
+            # Thursday 17:30 UTC is Friday 00:30 at UTC+7, so the stand-in
+            # offset must roll forward exactly as the real zone does.
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
     def test_fixed_offset_matches_the_default_zone(self):
         # Vietnam has had no DST since 1975, so the stand-in is exact.
         assert _FIXED_DEFAULT_OFFSET.utcoffset(None) == ZoneInfo(
             DEFAULT_SCHEDULE_TIMEZONE
         ).utcoffset(datetime(2026, 7, 27))
+
+
+class TestTeachingDays:
+    """The days classes actually run on, matched against sheet day labels.
+
+    Vietnam Hearts teaches on Tuesday and Thursday; the schedule grid keeps a
+    column for every weekday and leaves the rest blank. build_class_table uses
+    this to tell a day with no class apart from an unfilled teaching slot.
+    """
+
+    def test_default_is_tuesday_and_thursday(self):
+        assert parse_teaching_days(None) == {"tue", "thu"}
+
+    def test_parses_a_settings_string(self):
+        assert parse_teaching_days("Monday, Wednesday, Friday") == {
+            "mon",
+            "wed",
+            "fri",
+        }
+
+    def test_accepts_abbreviations_and_odd_separators(self):
+        assert parse_teaching_days("Tue; Thu / Sat") == {"tue", "thu", "sat"}
+
+    def test_keeps_every_day_named_in_one_unseparated_entry(self):
+        # "Tuesday and Thursday" is a plausible way to fill the setting in.
+        # Keeping only the first day would leave the set non-empty, so the
+        # fallback below never fires: every blank Thursday cell would render
+        # as "No class" and the reminder would stop being sent at all.
+        assert parse_teaching_days("Tuesday and Thursday") == {"tue", "thu"}
+        assert parse_teaching_days("Tue Thu") == {"tue", "thu"}
+        assert parse_teaching_days(["Tuesday and Thursday"]) == {"tue", "thu"}
+
+    def test_a_day_named_second_in_an_entry_is_still_a_teaching_day(self):
+        assert is_teaching_day("Thursday 6/25", "Tuesday and Thursday") is True
+        assert is_teaching_day("Wednesday 6/24", "Tuesday and Thursday") is False
+
+    def test_accepts_an_iterable_of_day_names(self):
+        assert parse_teaching_days(["Tuesday", "Thursday"]) == {"tue", "thu"}
+
+    def test_blank_value_falls_back_to_the_default(self):
+        assert parse_teaching_days("") == parse_teaching_days(None)
+
+    def test_value_naming_no_weekday_falls_back_rather_than_emptying(self):
+        # An empty teaching week would mark every day non-teaching and so
+        # suppress the weekly reminder entirely.
+        assert parse_teaching_days("whenever") == {"tue", "thu"}
+
+    def test_matches_a_bare_weekday_name(self):
+        assert is_teaching_day("Tuesday") is True
+        assert is_teaching_day("Monday") is False
+
+    def test_matches_a_label_carrying_a_date(self):
+        assert is_teaching_day("Thursday 6/25") is True
+        assert is_teaching_day("Wed 6/24") is False
+
+    def test_honours_an_explicit_teaching_week(self):
+        assert is_teaching_day("Monday", ["Monday"]) is True
+        assert is_teaching_day("Tuesday", ["Monday"]) is False
+
+    def test_unrecognized_label_counts_as_a_teaching_day(self):
+        # Failing open keeps a genuinely unfilled slot visible; failing closed
+        # would drop it from the reminder with no other symptom.
+        assert is_teaching_day("Week 3 session") is True
+        assert is_teaching_day("") is True
+
+    def test_seeded_setting_value_parses_to_the_code_default(self):
+        assert parse_teaching_days(
+            DEFAULT_TEACHING_DAYS_SETTING
+        ) == parse_teaching_days(DEFAULT_TEACHING_DAYS)

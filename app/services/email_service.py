@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import smtplib
+from collections.abc import Iterable
 from datetime import datetime
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -24,6 +25,7 @@ from app.models import (
 from app.services.schedule_parser import ClassBlock
 from app.utils.config_helper import config
 from app.utils.logging_config import get_api_logger
+from app.utils.schedule_dates import is_teaching_day
 
 logger = get_api_logger()
 
@@ -96,13 +98,19 @@ class EmailService:
             start_date=start_date.strftime("%d/%m"), end_date=end_date.strftime("%d/%m")
         )
 
-    def build_class_table(self, block: "ClassBlock") -> dict:
+    def build_class_table(
+        self, block: "ClassBlock", teaching_days: Iterable[str] | None = None
+    ) -> dict:
         """
         Build the HTML table for a single class from a parsed ClassBlock.
 
         Columns: Day / Teacher / [Head Assistant] / Assistant(s) / Status.
         The Head Assistant column is only rendered for classes that actually have
         a head TA row (block.has_head_ta). max_assistants of None means no limit.
+
+        `teaching_days` are the weekdays the organization actually teaches on
+        (default DEFAULT_TEACHING_DAYS); a blank teacher cell on any other day
+        is a day with no class rather than an unfilled slot.
 
         The returned dict includes a `needs_volunteers` flag (True if any day is
         missing a teacher, head TA, or assistant) that callers use to decide
@@ -170,11 +178,19 @@ class EmailService:
                     )
                     bg_color = "#f5f5f5"
                 elif not teacher_lower or "need volunteers" in teacher_lower:
-                    # A blank teacher cell defaults to "Need Volunteers"; genuinely
-                    # off days are written explicitly as "No Class {reason}".
-                    status = "❌ Missing Teacher"
-                    bg_color = "#ffcccc"
-                    needs_volunteers = True
+                    if is_teaching_day(day, teaching_days):
+                        status = "❌ Missing Teacher"
+                        bg_color = "#ffcccc"
+                        needs_volunteers = True
+                    else:
+                        # Days the organization does not teach on keep their
+                        # column in the sheet and are simply left blank, so an
+                        # empty cell here is not an open slot. The row stays -
+                        # dropping it would make the email disagree with the
+                        # grid volunteers read alongside it - but it renders
+                        # neutrally and raises no call for volunteers.
+                        status = "No class"
+                        bg_color = "#f5f5f5"
                 elif block.has_head_ta and (
                     not head_ta or "need volunteers" in head_ta_lower
                 ):
@@ -233,21 +249,30 @@ class EmailService:
         Returns:
             tuple: (html_body, subject)
         """
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         from app.services.google_sheets import sheets_service
-
-        # Calculate date range for the reminder (current week)
-        today = datetime.now()
-        start_date = today - timedelta(days=today.weekday())  # Monday
-        end_date = start_date + timedelta(days=6)  # Sunday
-
-        # Get the reminder subject
-        subject = self.get_reminder_subject(start_date, end_date)
+        from app.utils.config_helper import ConfigHelper
 
         # Auto-discover class blocks from the schedule sheet (single source of truth)
         class_blocks = sheets_service.get_schedule_blocks(db)
-        class_tables = [self.build_class_table(block) for block in class_blocks]
+        teaching_days = ConfigHelper.get_schedule_teaching_days(db)
+        class_tables = [
+            self.build_class_table(block, teaching_days) for block in class_blocks
+        ]
+
+        # The subject must name the week the tables above were actually read
+        # from, and those come from the leading visible schedule tab. That tab
+        # only turns over when rotation next runs, while the computed week
+        # anchor turns over the instant Friday starts, so deriving the subject
+        # from the anchor announces a week the body does not show for as long
+        # as rotation lags. Reading the same tab the body did keeps the two
+        # together and matches the bulk send; its own fallback is that shared
+        # anchor, evaluated in the organization's timezone.
+        start_date, _ = sheets_service.get_current_schedule_dates(db)
+        end_date = start_date + timedelta(days=6)  # Sunday
+
+        subject = self.get_reminder_subject(start_date, end_date)
 
         # Get volunteer's first name
         first_name = volunteer.name.split()[0] if volunteer.name else "there"
@@ -256,8 +281,6 @@ class EmailService:
         if not volunteer.email_unsubscribe_token:
             volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
             db.commit()
-
-        from app.utils.config_helper import ConfigHelper
 
         # Render template with class tables and all variables
         template = self.email_env.get_template("weekly-reminder-email.html")

@@ -134,8 +134,9 @@ async def send_weekly_reminder_emails(request: Request):
                     "message": "Weekly reminders are currently disabled globally. Enable them in the admin settings to send weekly reminders.",
                 }
 
+            teaching_days = ConfigHelper.get_schedule_teaching_days(db)
             class_tables = [
-                email_service.build_class_table(block)
+                email_service.build_class_table(block, teaching_days)
                 for block in sheets_service.get_schedule_blocks(db)
             ]
             current_monday, current_friday = sheets_service.get_current_schedule_dates(

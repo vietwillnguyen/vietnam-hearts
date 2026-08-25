@@ -9,10 +9,18 @@ Tests cover:
 - Max assistants enforcement / counting
 - Status logic (missing teacher / head TA / assistants, optional, no class, no limit)
 - Head TA column dropped when the class has no head TA row
+- Days the organization does not teach on never counting as unfilled slots
+- The weekly reminder subject naming the same week the body's tables come from
 """
 
+from datetime import datetime, timedelta
+from unittest.mock import patch
+
+from app.models import Setting
 from app.services.email_service import EmailService
 from app.services.schedule_parser import ClassBlock
+from app.utils.schedule_dates import current_week_monday
+from tests.fixtures.clock import frozen_at
 
 
 def _block(
@@ -124,9 +132,10 @@ class TestBuildClassTable:
         assert "Michael" in html
 
     def test_missing_teacher_status(self):
+        # Teaching days only: an unfilled Tuesday is a real open slot.
         block = _block(
             max_assistants=3,
-            days=["Monday", "Tuesday"],
+            days=["Tuesday", "Thursday"],
             teacher=["Need Volunteers", "John Doe"],
             assistants=["TA1, TA2", "TA1"],
         )
@@ -134,18 +143,19 @@ class TestBuildClassTable:
         assert "❌ Missing Teacher" in html
         assert "Partially Covered (1/3 assistants)" in html
 
-    def test_blank_teacher_defaults_to_missing_teacher(self):
-        # A blank teacher cell defaults to "Need Volunteers". Genuinely-off days
-        # are written explicitly as "No Class {reason}" and handled separately.
+    def test_blank_teacher_on_a_teaching_day_is_missing_teacher(self):
+        # A blank teacher cell on a day classes run on defaults to
+        # "Need Volunteers"; the same cell on any other day does not - see
+        # TestNonTeachingDays.
         block = _block(
             max_assistants=2,
-            days=["Monday", "Tuesday"],
+            days=["Tuesday", "Thursday"],
             teacher=["", "Trúc"],
             assistants=["", "Yến, Thomas"],
         )
         html = EmailService().build_class_table(block)["table_html"]
-        assert html.count("❌ Missing Teacher") == 1  # Monday only
-        assert "Fully Covered (2/2 assistants)" in html  # Tuesday unaffected
+        assert html.count("❌ Missing Teacher") == 1  # Tuesday only
+        assert "Fully Covered (2/2 assistants)" in html  # Thursday unaffected
         # A blank day must NOT be reported as covered/partially covered
         assert "Partially Covered (0/2 assistants)" not in html
 
@@ -222,7 +232,7 @@ class TestBuildClassTable:
         block = _block(
             max_assistants=3,
             has_head_ta=True,
-            days=["Monday"],
+            days=["Tuesday"],
             teacher=["Need Volunteers"],
             head_ta=["Need Volunteers"],
             assistants=["Need Volunteers"],
@@ -235,7 +245,7 @@ class TestBuildClassTable:
     def test_case_insensitive_status_detection(self):
         block = _block(
             max_assistants=3,
-            days=["Monday", "Tuesday", "Wednesday"],
+            days=["Tuesday", "Wednesday", "Thursday"],
             teacher=["NEED VOLUNTEERS", "optional day", "NO CLASS"],
             assistants=["TA1", "TA1", "TA1"],
         )
@@ -247,7 +257,7 @@ class TestBuildClassTable:
     def test_needs_volunteers_true_when_teacher_missing(self):
         block = _block(
             max_assistants=3,
-            days=["Monday", "Tuesday"],
+            days=["Tuesday", "Thursday"],
             teacher=["Need Volunteers", "John Doe"],
             assistants=["TA1, TA2", "TA1"],
         )
@@ -295,3 +305,189 @@ class TestBuildClassTable:
         )
         result = EmailService().build_class_table(block)
         assert result["needs_volunteers"] is False
+
+
+class TestNonTeachingDays:
+    """Days the organization does not teach on are not unfilled slots.
+
+    Vietnam Hearts teaches on Tuesday and Thursday, but the schedule grid keeps
+    a column for every weekday and leaves the rest blank rather than writing
+    "No Class" into them. Every one of those blanks used to be reported to
+    volunteers as a red "Missing Teacher" and to set needs_volunteers, which
+    was both wrong and the noisiest thing in the reminder email.
+    """
+
+    def _full_week(self, **overrides):
+        """A Mon-Fri grid staffed on Tuesday and Thursday, blank elsewhere.
+
+        This is the real sheet shape - see _grade2a_rows in
+        tests/test_schedule_discovery.py.
+        """
+        fields = {
+            "max_assistants": 2,
+            "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+            "teacher": ["", "Trúc", "", "Trúc", ""],
+            "assistants": ["", "Yến, Thomas", "", "Yến, Thomas", ""],
+        }
+        return _block(**{**fields, **overrides})
+
+    def test_blank_non_teaching_days_are_not_missing_teacher(self):
+        html = EmailService().build_class_table(self._full_week())["table_html"]
+        assert "❌ Missing Teacher" not in html
+        assert "#ffcccc" not in html  # the red "unfilled slot" background
+        assert html.count("No class") == 3  # Monday, Wednesday, Friday
+
+    def test_blank_non_teaching_days_do_not_request_volunteers(self):
+        result = EmailService().build_class_table(self._full_week())
+        assert result["needs_volunteers"] is False
+
+    def test_teaching_days_still_report_a_missing_teacher(self):
+        # The genuine case must survive: Thursday has nobody in front of it.
+        block = self._full_week(teacher=["", "Trúc", "", "", ""])
+        result = EmailService().build_class_table(block)
+        assert result["table_html"].count("❌ Missing Teacher") == 1
+        assert result["needs_volunteers"] is True
+
+    def test_non_teaching_day_with_a_teacher_still_renders_its_coverage(self):
+        # A one-off class on a Friday is real data; it must not be flattened to
+        # "No class" just because Friday is not a normal teaching day.
+        block = self._full_week(
+            teacher=["", "Trúc", "", "Trúc", "Lydie"],
+            assistants=["", "Yến, Thomas", "", "Yến, Thomas", "Michael"],
+        )
+        html = EmailService().build_class_table(block)["table_html"]
+        assert "Lydie" in html
+        assert "Partially Covered (1/2 assistants)" in html
+
+    def test_explicit_no_class_and_optional_keep_precedence(self):
+        block = self._full_week(
+            teacher=["Optional Day", "Trúc", "No Class - Holiday", "Trúc", ""],
+        )
+        html = EmailService().build_class_table(block)["table_html"]
+        assert "optional day, volunteers welcome to support existing classes" in html
+        assert "No class: holiday" in html
+
+    def test_day_labels_carrying_dates_are_matched(self):
+        # Sheet headers are usually "Tuesday 6/22", not a bare weekday name.
+        block = _block(
+            max_assistants=2,
+            days=["Monday 6/22", "Tue 6/23"],
+            teacher=["", ""],
+            assistants=["", ""],
+        )
+        html = EmailService().build_class_table(block)["table_html"]
+        assert html.count("❌ Missing Teacher") == 1  # Tuesday only
+        assert html.count("No class") == 1  # Monday only
+
+    def test_teaching_days_are_configurable(self):
+        # The timetable changes; the status branch must not hard-code weekdays.
+        block = _block(
+            max_assistants=2,
+            days=["Monday", "Tuesday"],
+            teacher=["", ""],
+            assistants=["", ""],
+        )
+        html = EmailService().build_class_table(block, ["Monday"])["table_html"]
+        assert html.count("❌ Missing Teacher") == 1  # Monday, now a teaching day
+        assert html.count("No class") == 1  # Tuesday, now not
+
+    def test_unrecognized_day_label_fails_open(self):
+        # An unparseable label must not silently hide an unfilled slot.
+        block = _block(
+            max_assistants=2,
+            days=["Week 3 session"],
+            teacher=[""],
+            assistants=[""],
+        )
+        html = EmailService().build_class_table(block)["table_html"]
+        assert "❌ Missing Teacher" in html
+
+
+class TestWeeklyReminderSubject:
+    """The subject must name the same week the email body shows.
+
+    The body's class tables are read from the leading visible schedule tab.
+    That tab only turns over when rotation next runs, while the computed week
+    anchor turns over the instant Friday starts, so a subject taken from the
+    anchor announces a week the tables below it do not show for as long as
+    rotation lags - and unboundedly while rotation is failing. The subject is
+    therefore read from the same visible tab, falling back to the shared
+    anchor (in the organization's timezone, not the container's UTC clock)
+    only when no tab can be read at all.
+    """
+
+    # Friday 00:30 in Vietnam, still Thursday 17:30 in UTC: the one instant
+    # that separates the org's clock from the container's at the turnover.
+    TURNOVER_INSTANT = "2026-07-30T17:30:00"
+
+    @staticmethod
+    def _visible_tab(title):
+        return {"properties": {"sheetId": 1, "title": title, "hidden": False}}
+
+    def _subject(self, test_db, volunteer, schedule_sheets=()):
+        with (
+            frozen_at(self.TURNOVER_INSTANT),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_blocks",
+                return_value=[],
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_sheets",
+                return_value=list(schedule_sheets),
+            ),
+        ):
+            _, subject = EmailService().build_weekly_reminder_content(
+                volunteer, test_db
+            )
+        return subject
+
+    def _set_timezone(self, test_db, timezone_name):
+        test_db.merge(Setting(key="SCHEDULE_TIMEZONE", value=timezone_name))
+        test_db.commit()
+
+    def test_subject_names_the_week_the_visible_tab_shows(
+        self, test_db, mock_volunteer
+    ):
+        # Rotation last succeeded before the Friday turnover, so the tab the
+        # body is parsed from is still the outgoing week while the anchor has
+        # already moved on. The subject must follow the tab, not the anchor.
+        self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
+
+        with frozen_at(self.TURNOVER_INSTANT):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+        subject = self._subject(
+            test_db,
+            mock_volunteer,
+            [self._visible_tab("Schedule 27/07/2026")],
+        )
+        assert "(27/07 to 02/08)" in subject
+        assert subject == EmailService().get_reminder_subject(
+            datetime(2026, 7, 27), datetime(2026, 7, 27) + timedelta(days=6)
+        )
+
+    def test_subject_falls_back_to_the_shared_anchor_with_no_visible_tab(
+        self, test_db, mock_volunteer
+    ):
+        self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
+
+        with frozen_at(self.TURNOVER_INSTANT):
+            expected_monday = current_week_monday("Asia/Ho_Chi_Minh")
+
+        assert expected_monday == datetime(2026, 8, 3)
+        subject = self._subject(test_db, mock_volunteer)
+        assert "(03/08 to 09/08)" in subject
+        assert subject == EmailService().get_reminder_subject(
+            expected_monday, expected_monday + timedelta(days=6)
+        )
+
+    def test_fallback_week_is_evaluated_in_the_org_timezone(
+        self, test_db, mock_volunteer
+    ):
+        # Same instant, different configured zone: a container-clock subject
+        # would read the same either way.
+        self._set_timezone(test_db, "UTC")
+        assert "(27/07 to 02/08)" in self._subject(test_db, mock_volunteer)
+
+        self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
+        assert "(03/08 to 09/08)" in self._subject(test_db, mock_volunteer)

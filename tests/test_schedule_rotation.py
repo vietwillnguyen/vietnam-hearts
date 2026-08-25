@@ -14,7 +14,7 @@ These pin down two production failure modes:
   that week's sheet entirely - it was never shown, never hidden in the right
   order, and legacy-titled sheets that rotated out of view before ever being
   shown in the new format never got backfilled. Rotation must always anchor
-  to the Monday of the week containing "now", keep display sheets in
+  to the Monday of the current schedule week, keep display sheets in
   chronological order, show exactly `display_weeks_count` of them, and
   backfill legacy titles on sheets that are visible or entering the display
   range this run. A legacy "Schedule MM/DD" title carries no year, so
@@ -33,7 +33,8 @@ from app.services.google_sheets import (
     SCHEDULE_SHEET_PROTECTION_DESCRIPTION,
     GoogleSheetsService,
 )
-from app.utils.schedule_dates import format_schedule_sheet_title
+from app.utils.schedule_dates import current_week_monday, format_schedule_sheet_title
+from tests.fixtures.clock import frozen_at
 
 
 def sheet_props(title, sheet_id, index=0, hidden=False):
@@ -48,8 +49,14 @@ def sheet_props(title, sheet_id, index=0, hidden=False):
 
 
 def current_monday():
-    now = datetime.now()
-    return now - timedelta(days=now.weekday())
+    """The Monday rotation will anchor to right now, on the org's clock.
+
+    Delegated rather than recomputed from a naive datetime.now(): the two
+    diverge from every Friday through Sunday (and in the 00:00-07:00 Vietnam
+    window), which would make the unfrozen tests below fail on the days that
+    matter most.
+    """
+    return current_week_monday()
 
 
 @pytest.fixture
@@ -172,6 +179,69 @@ class TestCurrentScheduleDates:
         assert (monday.month, monday.day) == (7, 13)
 
 
+class TestCurrentScheduleDatesFallback:
+    """The no-sheet fallbacks must name the same week rotation displays.
+
+    These dates become the weekly reminder's subject line, and that job runs
+    at Sunday noon by default - squarely inside the weekend, where a
+    containing-week fallback would announce a week whose classes are over.
+    They also went through a naive datetime.now(), i.e. UTC on Cloud Run.
+    """
+
+    # Saturday 00:30 Vietnam, still Friday 17:30 UTC.
+    WEEKEND_INSTANT = "2026-07-31T17:30:00"
+    ROLLED_FORWARD_MONDAY = datetime(2026, 8, 3)
+
+    def _assert_rolled_forward(self, service):
+        with (
+            frozen_at(self.WEEKEND_INSTANT),
+            patch(
+                "app.services.google_sheets.ConfigHelper.get_schedule_timezone",
+                return_value="Asia/Ho_Chi_Minh",
+            ),
+        ):
+            monday, friday = service.get_current_schedule_dates(MagicMock())
+
+        assert monday == self.ROLLED_FORWARD_MONDAY
+        assert friday == self.ROLLED_FORWARD_MONDAY + timedelta(days=4)
+
+    def test_no_visible_sheet_falls_back_to_the_rotation_anchor(self, service):
+        service.get_schedule_sheets = MagicMock(
+            return_value=[sheet_props("Schedule 20/07/2026", sheet_id=2, hidden=True)]
+        )
+        self._assert_rolled_forward(service)
+
+    def test_unparseable_title_falls_back_to_the_rotation_anchor(self, service):
+        service.get_schedule_sheets = MagicMock(
+            return_value=[sheet_props("Schedule 99/99", sheet_id=2, hidden=False)]
+        )
+        self._assert_rolled_forward(service)
+
+    def test_sheet_lookup_failure_falls_back_to_the_rotation_anchor(self, service):
+        service.get_schedule_sheets = MagicMock(
+            side_effect=Exception("HttpError 503: backend error")
+        )
+        self._assert_rolled_forward(service)
+
+    def test_fallback_survives_an_unreadable_timezone_setting(self, service):
+        """The outer fallback is reached when the db session itself is broken."""
+        service.get_schedule_sheets = MagicMock(
+            side_effect=Exception("HttpError 503: backend error")
+        )
+
+        with (
+            frozen_at(self.WEEKEND_INSTANT),
+            patch(
+                "app.services.google_sheets.ConfigHelper.get_schedule_timezone",
+                side_effect=Exception("no database session"),
+            ),
+        ):
+            monday, friday = service.get_current_schedule_dates(MagicMock())
+
+        assert monday == self.ROLLED_FORWARD_MONDAY
+        assert friday == self.ROLLED_FORWARD_MONDAY + timedelta(days=4)
+
+
 class TestRotationAnchorDate:
     """Regression tests for the "current week gets skipped" bug.
 
@@ -181,6 +251,11 @@ class TestRotationAnchorDate:
     the current week ends; it's wrong for an ad-hoc/manual trigger on any
     other day (e.g. the Monday the new week begins), which dropped that
     week's sheet entirely instead of displaying it.
+
+    The skip is right from Friday onwards, though, and only then - the
+    displayed week turns over a day before classes end so volunteers can
+    sign up early. That case is the last test here, and the anchor rule
+    producing it lives in test_schedule_dates.py.
     """
 
     def test_display_starts_on_current_week_when_run_on_monday(self, service):
@@ -228,6 +303,26 @@ class TestRotationAnchorDate:
 
         mock_tz.assert_called_once()
         mock_anchor.assert_called_once_with("Asia/Ho_Chi_Minh")
+
+    def test_display_leads_with_next_monday_when_run_on_friday(self, service):
+        """The displayed week turns over on Friday, so the window moves on.
+
+        Unlike its neighbours this exercises the real current_week_monday()
+        rather than patching it: the point under test is the anchor rule
+        itself reaching the display window, pinned at the exact turnover.
+        """
+        # Friday 00:30 Vietnam, still Thursday 17:30 UTC - so this also pins
+        # that the roll-forward is judged on the org's clock, not the box's.
+        with (
+            frozen_at("2026-07-30T17:30:00"),
+            patch(
+                "app.services.google_sheets.ConfigHelper.get_schedule_timezone",
+                return_value="Asia/Ho_Chi_Minh",
+            ),
+        ):
+            result = rotate(service, [], weeks=2)
+
+        assert result["display_dates"] == ["03/08/2026", "10/08/2026"]
 
 
 class TestRotationBackfill:

@@ -11,6 +11,8 @@ from app.services.settings_service import (
     initialize_default_settings,
     set_setting,
 )
+from app.utils.config_helper import ConfigHelper
+from app.utils.schedule_dates import DEFAULT_TEACHING_DAYS_SETTING
 
 CRON_KEYS = [
     "CRON_SYNC_VOLUNTEERS",
@@ -176,3 +178,29 @@ class TestDefaultDescriptionRefresh:
         initialize_default_settings(db)
 
         assert get_setting(db, "CRON_ROTATE_SCHEDULE") == "0 */6 * * *"
+
+
+class TestScheduleTeachingDaysSetting:
+    """The teaching week is configuration, not a hard-coded pair of weekdays."""
+
+    def test_seeded_with_the_code_default(self, db):
+        initialize_default_settings(db)
+        assert (
+            get_setting(db, "SCHEDULE_TEACHING_DAYS") == DEFAULT_TEACHING_DAYS_SETTING
+        )
+        assert ConfigHelper.get_schedule_teaching_days(db) == {"tue", "thu"}
+
+    def test_a_configured_week_is_honoured(self, db):
+        initialize_default_settings(db)
+        set_setting(db, "SCHEDULE_TEACHING_DAYS", "Monday, Wednesday, Friday")
+        assert ConfigHelper.get_schedule_teaching_days(db) == {"mon", "wed", "fri"}
+
+    def test_no_session_falls_back_to_the_default(self):
+        # Callers without a database (scripts, previews) must still get a
+        # sane teaching week rather than an empty one.
+        assert ConfigHelper.get_schedule_teaching_days(None) == {"tue", "thu"}
+
+    def test_blanked_value_falls_back_to_the_default(self, db):
+        initialize_default_settings(db)
+        set_setting(db, "SCHEDULE_TEACHING_DAYS", "")
+        assert ConfigHelper.get_schedule_teaching_days(db) == {"tue", "thu"}

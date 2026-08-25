@@ -53,7 +53,7 @@ A `403` means the key was accepted but its identity is not an admin.
 | `/admin/send-confirmation-emails` | POST | Process and send confirmation emails to new volunteers |
 | `/admin/sync-volunteers` | POST | Sync volunteers from Google Sheets signup form |
 | `/admin/send-weekly-reminders` | POST | Send weekly reminder emails to subscribed volunteers (skipped if no class has an open volunteer slot) |
-| `/admin/rotate-schedule` | POST | Sync schedule sheets so the current week plus N-1 future weeks are visible, in order, each protected against accidental edits. Idempotent, so it is safe to run hourly. Answers `502` (with the full per-sheet detail) if any sheet was skipped, so a partial reconciliation is never recorded as a successful run |
+| `/admin/rotate-schedule` | POST | Sync schedule sheets so the current week plus N-1 future weeks are visible, in order, each protected against accidental edits. The current week is the one in progress from Monday to Thursday, and the coming one from Friday, so volunteers can sign up for next week ahead of time. Idempotent, so it is safe to run hourly. Answers `502` (with the full per-sheet detail) if any sheet was skipped, so a partial reconciliation is never recorded as a successful run |
 | `/admin/sync-cron-schedules` | POST | Apply the `CRON_*` settings to their Cloud Scheduler jobs (cadence only; never touches job credentials) |
 
 ## Troubleshooting
