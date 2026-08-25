@@ -55,12 +55,17 @@ DEFAULT_TEACHING_DAYS_SETTING = ", ".join(DEFAULT_TEACHING_DAYS)
 _WEEKDAY_TOKEN_RE = re.compile(r"\b(mon|tue|wed|thu|fri|sat|sun)", re.IGNORECASE)
 
 
-def weekday_token(label: str) -> str | None:
-    """The lowercase three-letter weekday token in ``label``, or None."""
+def weekday_tokens(label: str) -> list[str]:
+    """Every lowercase three-letter weekday token in ``label``, in order."""
     if not label:
-        return None
-    match = _WEEKDAY_TOKEN_RE.search(str(label))
-    return match.group(1).lower() if match else None
+        return []
+    return [match.lower() for match in _WEEKDAY_TOKEN_RE.findall(str(label))]
+
+
+def weekday_token(label: str) -> str | None:
+    """The first lowercase three-letter weekday token in ``label``, or None."""
+    tokens = weekday_tokens(label)
+    return tokens[0] if tokens else None
 
 
 def parse_teaching_days(raw: str | Iterable[str] | None) -> frozenset[str]:
@@ -68,13 +73,17 @@ def parse_teaching_days(raw: str | Iterable[str] | None) -> frozenset[str]:
     Weekday tokens for the days classes actually run on.
 
     Accepts either a separated string as stored in settings ("Tuesday,
-    Thursday") or an iterable of day names. Entries naming no weekday are
-    dropped; a value naming none at all falls back to the default, because an
-    empty teaching week would mark every day as non-teaching and so suppress
-    the weekly reminder entirely.
+    Thursday") or an iterable of day names. Every weekday an entry names
+    counts, not just its first: "Tuesday and Thursday" is as plausible a way
+    to fill the setting in as "Tuesday, Thursday", and keeping only the first
+    would silently stop the reminder reporting the dropped day's unfilled
+    slots while leaving the set non-empty, so the guard below never fires.
+    Entries naming no weekday are dropped; a value naming none at all falls
+    back to the default, because an empty teaching week would mark every day
+    as non-teaching and so suppress the weekly reminder entirely.
     """
     parts = re.split(r"[,;/|]+", raw) if isinstance(raw, str) else list(raw or ())
-    tokens = frozenset(t for part in parts if (t := weekday_token(part)))
+    tokens = frozenset(t for part in parts for t in weekday_tokens(part))
     if tokens:
         return tokens
     if isinstance(raw, str) and raw.strip():

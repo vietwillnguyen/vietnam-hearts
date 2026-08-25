@@ -34,7 +34,7 @@ from app.services.google_sheets import (
     GoogleSheetsService,
 )
 from app.utils.schedule_dates import current_week_monday, format_schedule_sheet_title
-from tests.conftest import frozen_at
+from tests.fixtures.clock import frozen_at
 
 
 def sheet_props(title, sheet_id, index=0, hidden=False):

@@ -253,16 +253,6 @@ class EmailService:
 
         from app.services.google_sheets import sheets_service
         from app.utils.config_helper import ConfigHelper
-        from app.utils.schedule_dates import current_week_monday
-
-        # The subject must name the same week the body's tables come from:
-        # both now derive from the one shared anchor, evaluated in the
-        # organization's timezone rather than the container's UTC clock.
-        start_date = current_week_monday(ConfigHelper.get_schedule_timezone(db))
-        end_date = start_date + timedelta(days=6)  # Sunday
-
-        # Get the reminder subject
-        subject = self.get_reminder_subject(start_date, end_date)
 
         # Auto-discover class blocks from the schedule sheet (single source of truth)
         class_blocks = sheets_service.get_schedule_blocks(db)
@@ -270,6 +260,19 @@ class EmailService:
         class_tables = [
             self.build_class_table(block, teaching_days) for block in class_blocks
         ]
+
+        # The subject must name the week the tables above were actually read
+        # from, and those come from the leading visible schedule tab. That tab
+        # only turns over when rotation next runs, while the computed week
+        # anchor turns over the instant Friday starts, so deriving the subject
+        # from the anchor announces a week the body does not show for as long
+        # as rotation lags. Reading the same tab the body did keeps the two
+        # together and matches the bulk send; its own fallback is that shared
+        # anchor, evaluated in the organization's timezone.
+        start_date, _ = sheets_service.get_current_schedule_dates(db)
+        end_date = start_date + timedelta(days=6)  # Sunday
+
+        subject = self.get_reminder_subject(start_date, end_date)
 
         # Get volunteer's first name
         first_name = volunteer.name.split()[0] if volunteer.name else "there"

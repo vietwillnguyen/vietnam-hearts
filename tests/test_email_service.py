@@ -10,7 +10,7 @@ Tests cover:
 - Status logic (missing teacher / head TA / assistants, optional, no class, no limit)
 - Head TA column dropped when the class has no head TA row
 - Days the organization does not teach on never counting as unfilled slots
-- The weekly reminder subject naming the same week the shared anchor points at
+- The weekly reminder subject naming the same week the body's tables come from
 """
 
 from datetime import datetime, timedelta
@@ -20,7 +20,7 @@ from app.models import Setting
 from app.services.email_service import EmailService
 from app.services.schedule_parser import ClassBlock
 from app.utils.schedule_dates import current_week_monday
-from tests.conftest import frozen_at
+from tests.fixtures.clock import frozen_at
 
 
 def _block(
@@ -406,24 +406,34 @@ class TestNonTeachingDays:
 class TestWeeklyReminderSubject:
     """The subject must name the same week the email body shows.
 
-    The body's class tables come from the first visible schedule tab, which
-    rotation rolls forward to the coming Monday from Friday 00:00 local. The
-    subject used to recompute its own range from a bare datetime.now(), so it
-    both ignored the roll-forward and read the container clock - UTC on Cloud
-    Run - instead of the organization's. Both now come off the one shared
-    anchor.
+    The body's class tables are read from the leading visible schedule tab.
+    That tab only turns over when rotation next runs, while the computed week
+    anchor turns over the instant Friday starts, so a subject taken from the
+    anchor announces a week the tables below it do not show for as long as
+    rotation lags - and unboundedly while rotation is failing. The subject is
+    therefore read from the same visible tab, falling back to the shared
+    anchor (in the organization's timezone, not the container's UTC clock)
+    only when no tab can be read at all.
     """
 
     # Friday 00:30 in Vietnam, still Thursday 17:30 in UTC: the one instant
     # that separates the org's clock from the container's at the turnover.
     TURNOVER_INSTANT = "2026-07-30T17:30:00"
 
-    def _subject(self, test_db, volunteer):
+    @staticmethod
+    def _visible_tab(title):
+        return {"properties": {"sheetId": 1, "title": title, "hidden": False}}
+
+    def _subject(self, test_db, volunteer, schedule_sheets=()):
         with (
             frozen_at(self.TURNOVER_INSTANT),
             patch(
                 "app.services.google_sheets.sheets_service.get_schedule_blocks",
                 return_value=[],
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_sheets",
+                return_value=list(schedule_sheets),
             ),
         ):
             _, subject = EmailService().build_weekly_reminder_content(
@@ -435,7 +445,28 @@ class TestWeeklyReminderSubject:
         test_db.merge(Setting(key="SCHEDULE_TIMEZONE", value=timezone_name))
         test_db.commit()
 
-    def test_subject_names_the_week_the_shared_anchor_points_at(
+    def test_subject_names_the_week_the_visible_tab_shows(
+        self, test_db, mock_volunteer
+    ):
+        # Rotation last succeeded before the Friday turnover, so the tab the
+        # body is parsed from is still the outgoing week while the anchor has
+        # already moved on. The subject must follow the tab, not the anchor.
+        self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
+
+        with frozen_at(self.TURNOVER_INSTANT):
+            assert current_week_monday("Asia/Ho_Chi_Minh") == datetime(2026, 8, 3)
+
+        subject = self._subject(
+            test_db,
+            mock_volunteer,
+            [self._visible_tab("Schedule 27/07/2026")],
+        )
+        assert "(27/07 to 02/08)" in subject
+        assert subject == EmailService().get_reminder_subject(
+            datetime(2026, 7, 27), datetime(2026, 7, 27) + timedelta(days=6)
+        )
+
+    def test_subject_falls_back_to_the_shared_anchor_with_no_visible_tab(
         self, test_db, mock_volunteer
     ):
         self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
@@ -450,7 +481,7 @@ class TestWeeklyReminderSubject:
             expected_monday, expected_monday + timedelta(days=6)
         )
 
-    def test_subject_week_is_evaluated_in_the_org_timezone(
+    def test_fallback_week_is_evaluated_in_the_org_timezone(
         self, test_db, mock_volunteer
     ):
         # Same instant, different configured zone: a container-clock subject

@@ -15,7 +15,7 @@ from app.utils.schedule_dates import (
     parse_schedule_sheet_title,
     parse_teaching_days,
 )
-from tests.conftest import frozen_at
+from tests.fixtures.clock import frozen_at
 
 
 class TestFormatScheduleSheetTitle:
@@ -236,6 +236,19 @@ class TestTeachingDays:
 
     def test_accepts_abbreviations_and_odd_separators(self):
         assert parse_teaching_days("Tue; Thu / Sat") == {"tue", "thu", "sat"}
+
+    def test_keeps_every_day_named_in_one_unseparated_entry(self):
+        # "Tuesday and Thursday" is a plausible way to fill the setting in.
+        # Keeping only the first day would leave the set non-empty, so the
+        # fallback below never fires: every blank Thursday cell would render
+        # as "No class" and the reminder would stop being sent at all.
+        assert parse_teaching_days("Tuesday and Thursday") == {"tue", "thu"}
+        assert parse_teaching_days("Tue Thu") == {"tue", "thu"}
+        assert parse_teaching_days(["Tuesday and Thursday"]) == {"tue", "thu"}
+
+    def test_a_day_named_second_in_an_entry_is_still_a_teaching_day(self):
+        assert is_teaching_day("Thursday 6/25", "Tuesday and Thursday") is True
+        assert is_teaching_day("Wednesday 6/24", "Tuesday and Thursday") is False
 
     def test_accepts_an_iterable_of_day_names(self):
         assert parse_teaching_days(["Tuesday", "Thursday"]) == {"tue", "thu"}
