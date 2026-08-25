@@ -975,8 +975,7 @@ class GoogleSheetsService:
         dated sheets are visible, starting from the Monday of the current
         schedule week - which turns over to the coming week on Friday, see
         current_week_monday() - and running forward in chronological order.
-        Every other
-        dated sheet is hidden. This is idempotent reconciliation, not
+        Every other dated sheet is hidden. This is idempotent reconciliation, not
         incremental rotation - it can be called at any time, on any day of
         the week, and always converges on the same target state for "now".
 

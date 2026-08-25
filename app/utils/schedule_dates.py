@@ -1,7 +1,10 @@
 """
-Schedule sheet title parsing and formatting.
+Schedule week semantics: which Monday the displayed week starts on, which
+weekdays classes run on, and the "Schedule <date>" tab naming scheme.
 
-Single source of truth for the "Schedule <date>" tab naming scheme.
+Single source of truth for all three, so the week anchor, the teaching-day
+check and the title format cannot drift apart across their callers.
+
 New sheets are named with DD/MM/YYYY; legacy MM/DD titles (no year) are
 still parsed so rotation can match and migrate them instead of creating
 duplicates. Non-date suffixes ("Schedule Template", "Schedule Config")
