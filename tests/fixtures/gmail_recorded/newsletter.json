@@ -1,0 +1,68 @@
+{
+  "id": "18f2a1b4c5d6e845",
+  "threadId": "18f2a1b4c5d6e845",
+  "labelIds": [
+    "INBOX",
+    "UNREAD",
+    "CATEGORY_UPDATES"
+  ],
+  "snippet": "This week in nonprofit news. Unsubscribe at any time.",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "news@newsletter.example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Your weekly digest is here"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Precedence",
+        "value": "bulk"
+      },
+      {
+        "name": "List-Id",
+        "value": "<digest.newsletter.example.com>"
+      },
+      {
+        "name": "List-Unsubscribe",
+        "value": "<https://newsletter.example.com/u/1>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 72,
+      "data": "VGhpcyB3ZWVrIGluIG5vbnByb2ZpdCBuZXdzLiBVbnN1YnNjcmliZSBhdCBhbnkgdGltZS4="
+    }
+  }
+}

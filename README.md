@@ -102,6 +102,9 @@ The application uses the following environment variables (see `env.template` for
 - `SENTRY_DSN` - Sentry DSN for error tracking. If unset, Sentry is disabled entirely
 - `SENTRY_TRACES_SAMPLE_RATE` - Fraction of requests to sample for Sentry performance tracing (default: 0.1)
 
+#### Volunteer Inbox Bot (optional, off by default)
+- `EMAIL_BOT_ENABLED`, `GMAIL_OAUTH_*`, `TYPESAFE_API_KEY`, `DISCORD_WEBHOOK_URL`, `ANTHROPIC_API_KEY` - see the inbound email bot block in `env.template` and the setup runbook [`docs/GMAIL_BOT_SETUP.md`](docs/GMAIL_BOT_SETUP.md)
+
 ### Google Sheets Setup
 
 1. **Create a Google Cloud Project**:
@@ -212,7 +215,7 @@ The embedding probes are live Gemini calls made once when the service is first b
 ## Deploy Configuration
 
 All non-secret deployment settings live in `scripts/deploy.config`.
-This file is committed to version control — it contains no secrets.
+This file is committed to version control: it contains no secrets.
 
 ```bash
 # deploy.config controls:
@@ -255,7 +258,7 @@ Docker management CLI for build/push/pull/run:
 ```
 
 ### `scripts/create-or-update-scheduler-jobs.sh`
-Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule).
+Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule, poll-volunteer-inbox, sync-knowledge-base).
 Reads scheduler region and timezone from `deploy.config`, and the `apikey` header from `SUPABASE_SECRET_KEY` in `.env`.
 
 Run this after rotating the Supabase secret key.
@@ -263,7 +266,7 @@ Each job stores its own copy of that key in an HTTP header, so a rotated key lea
 
 This script owns job *existence* and *credentials*.
 The job *cadence* is owned by the `CRON_*` settings and applied by `POST /admin/sync-cron-schedules`; the schedule and timezone in this script are only bootstrap defaults, sent when creating a job that does not exist yet.
-Re-running the script against existing jobs refreshes the `apikey` header, URI, and description but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
+Re-running the script against existing jobs refreshes the `apikey` header, URI, description, and any attempt deadline but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
 
 ### `run.sh`
 Local application runner (no Docker):
@@ -285,6 +288,15 @@ One-off migration helper that re-embeds every document in `document_chunks` with
 uv run scripts/reembed_knowledge_base.py [--dry-run]
 ```
 
+### `scripts/gmail_oauth_consent.py`
+One-off OAuth consent for the volunteer inbox bot's Gmail grant (single `gmail.modify` scope), and a `--check` mode that proves the refresh token still works.
+Prints the refresh token to stdout and writes nothing to disk.
+See [`docs/GMAIL_BOT_SETUP.md`](docs/GMAIL_BOT_SETUP.md) for when and how to run it.
+
+### `scripts/seed_test_inbox.py`
+Seeds a throwaway Gmail inbox with the anonymised sample corpus for the live end-to-end test.
+It sends real mail, so it refuses the real volunteer inbox and requires `--i-confirm-this-is-a-throwaway-account`; never run it from CI.
+
 ## Project Structure
 
 ```
@@ -298,11 +310,14 @@ vietnam-hearts/
 │   └── utils/             # Utility functions
 ├── alembic/                # Database schema migrations (Postgres/Supabase)
 ├── docs/                  # Extended documentation
+├── evals/                 # On-demand inbox bot evaluation harness (see evals/README.md)
 ├── scripts/               # Deployment and setup scripts
 │   ├── create-or-update-scheduler-jobs.sh          # Cloud Scheduler job setup
 │   ├── deploy.config      # Non-secret deployment settings (GCP, Docker)
 │   ├── docker.sh          # Docker build/push/run management
+│   ├── gmail_oauth_consent.py     # Volunteer inbox bot Gmail consent and token check
 │   ├── reembed_knowledge_base.py  # Re-embed knowledge base after an embedding model change
+│   ├── seed_test_inbox.py         # Seed a throwaway inbox for the live bot test
 │   └── setup-dev-env.sh   # Developer environment setup
 ├── templates/             # Email and HTML templates
 ├── secrets/               # Credentials (not in git)

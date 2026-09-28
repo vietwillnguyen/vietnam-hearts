@@ -1,0 +1,55 @@
+{
+  "id": "18f2a1b4c5d6e801",
+  "threadId": "18f2a1b4c5d6e801",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Xin chào,\n\nMình muốn tham gia làm tình nguyện viên dạy tiếng Anh cùng các bạn. M",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Đăng ký làm tình nguyện viên"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 212,
+      "data": "WGluIGNow6BvLAoKTcOsbmggbXXhu5FuIHRoYW0gZ2lhIGzDoG0gdMOsbmggbmd1eeG7h24gdmnDqm4gZOG6oXkgdGnhur9uZyBBbmggY8O5bmcgY8OhYyBi4bqhbi4gTcOsbmggY-G6p24gbMOgbSBnw6wgxJHhu4MgxJHEg25nIGvDvSDhuqE_CgpD4bqjbSDGoW4gbmhp4buBdSE="
+    }
+  }
+}

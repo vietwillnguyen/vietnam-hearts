@@ -28,6 +28,7 @@ STORED_CRON_VALUES = {
     "CRON_SYNC_VOLUNTEERS": "0 */2 * * *",
     "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
     "CRON_ROTATE_SCHEDULE": "0 * * * *",
+    "CRON_POLL_INBOX": "0 8,18 * * *",
 }
 
 
@@ -124,3 +125,225 @@ class TestCronFieldsRenderStoredValues:
 
         assert attr(tag, "value") == ""
         assert attr(tag, "placeholder") != "0 * * * *"
+
+
+class TestInboxBotCard:
+    """The card an operator reads to know what the bot is doing.
+
+    The mode badge and the error banner are rendered server-side from the
+    settings already in context, so they are correct on first paint rather than
+    after a fetch. The counters and the escalation list come from
+    ``/admin/email-bot/*`` because they change every run.
+    """
+
+    def test_the_card_is_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Inbox Bot" in html
+        assert 'id="inbox-bot-card"' in html
+
+    @pytest.mark.parametrize("mode", ["off", "draft", "auto"])
+    def test_the_mode_badge_shows_the_stored_mode(self, admin_client, test_db, mode):
+        set_setting(test_db, "EMAIL_BOT_MODE", mode)
+        html = admin_client.get("/admin/dashboard").text
+
+        match = re.search(
+            r'<span id="inbox-bot-mode"[^>]*>([^<]*)</span>', html, re.DOTALL
+        )
+        assert match, "the mode badge did not render"
+        assert match.group(1).strip() == mode
+
+    def test_off_says_plainly_that_nothing_happens(self, admin_client, test_db):
+        set_setting(test_db, "EMAIL_BOT_MODE", "off")
+        html = admin_client.get("/admin/dashboard").text
+        assert "Nothing is read, labelled, or drafted while the mode is off." in html
+
+    def test_draft_says_plainly_that_nothing_is_sent(self, admin_client, test_db):
+        set_setting(test_db, "EMAIL_BOT_MODE", "draft")
+        html = admin_client.get("/admin/dashboard").text
+        assert "Nothing is sent." in html
+
+    def test_the_banner_appears_when_a_run_recorded_an_error(
+        self, admin_client, test_db
+    ):
+        set_setting(test_db, "EMAIL_BOT_LAST_ERROR", "the Gmail grant was revoked")
+        html = admin_client.get("/admin/dashboard").text
+
+        assert 'id="inbox-bot-banner"' in html
+        assert "the Gmail grant was revoked" in html
+
+    def test_the_banner_is_absent_after_a_clean_run(self, admin_client, test_db):
+        # The pipeline clears the setting on a clean run, so a stale banner
+        # would mean the problem is still there.
+        set_setting(test_db, "EMAIL_BOT_LAST_ERROR", "")
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-banner"' not in html
+
+    def test_the_card_reads_the_run_and_escalation_endpoints(
+        self, admin_client, test_db
+    ):
+        html = admin_client.get("/admin/dashboard").text
+        assert "/admin/email-bot/runs" in html
+        assert "/admin/email-bot/escalations" in html
+
+    def test_the_card_offers_no_way_to_trigger_a_poll(self, admin_client, test_db):
+        # Polling is the scheduler's job. A button that ran the bot on click
+        # would make "twice a day" untrue and give the run lock something to
+        # refuse.
+        html = admin_client.get("/admin/dashboard").text
+        assert "/admin/email-bot/poll" not in html
+
+    def test_the_resume_button_posts_to_the_resume_endpoint(
+        self, admin_client, test_db
+    ):
+        html = admin_client.get("/admin/dashboard").text
+        assert "resumeInboxConversation" in html
+        assert "/resume" in html
+
+    def test_rendered_escalation_values_are_escaped(self, admin_client, test_db):
+        # The list is built in JavaScript from API values, so it needs an
+        # escaper rather than raw interpolation into innerHTML.
+        html = admin_client.get("/admin/dashboard").text
+        assert "function escapeHtml" in html
+        assert "escapeHtml(item.category" in html
+
+
+class TestPollInboxCronField:
+    def test_the_new_cadence_field_renders_its_stored_value(
+        self, admin_client, test_db
+    ):
+        set_setting(test_db, "CRON_POLL_INBOX", "30 7,19 * * *")
+        html = admin_client.get("/admin/dashboard").text
+        assert attr(find_input(html, "CRON_POLL_INBOX"), "value") == "30 7,19 * * *"
+
+    def test_it_is_labelled_for_a_human(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Poll Volunteer Inbox" in html
+
+
+class TestAcceptanceAndAgreementOnTheCard:
+    """The card says the same thing the design's gate does.
+
+    The gates come from one table, ``ACCEPTANCE_GATES``, which the card's
+    prose and the metrics endpoint both render, and which is held to the
+    design's Evaluation record here, so the card and the design cannot drift
+    into stating different gates.
+    """
+
+    def test_both_sections_are_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-acceptance"' in html
+        assert 'id="inbox-bot-agreement"' in html
+
+    def test_the_card_reads_the_metrics_endpoint(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "/admin/email-bot/metrics" in html
+
+    def test_the_gate_table_matches_the_design(self):
+        from pathlib import Path
+
+        from app.services.email_bot.gates import ACCEPTANCE_GATES
+
+        design = (
+            Path(__file__).resolve().parents[1]
+            / "docs/superpowers/specs/2026-09-29-email-channel-design.md"
+        )
+        record = design.read_text().split("## Evaluation record", 1)[1]
+        rows = {
+            cells[0]: cells[2]
+            for line in record.splitlines()
+            if line.startswith("|")
+            and len(cells := [cell.strip() for cell in line.strip("|").split("|")]) >= 3
+        }
+
+        def gate(measurement: str) -> float:
+            found = re.fullmatch(r"at least (\d+) percent", rows[measurement])
+            assert found, rows[measurement]
+            return int(found.group(1)) / 100
+
+        assert {
+            "signup": gate("Sign-up drafts sent unchanged"),
+            "faq": gate("FAQ drafts sent unchanged"),
+        } == dict(ACCEPTANCE_GATES)
+
+    def test_the_prose_renders_the_gate_table(self, admin_client, test_db, monkeypatch):
+        from app.services.email_bot import gates
+
+        monkeypatch.setattr(gates, "ACCEPTANCE_GATES", {"signup": 0.75, "faq": 0.6})
+        html = admin_client.get("/admin/dashboard").text
+        assert "the gate is 75% for sign-up drafts and 60% for FAQ drafts" in html
+
+    def test_the_prose_states_what_the_measurement_is_for(self, admin_client, test_db):
+        # An operator looking at this number has to know it is the thing that
+        # decides whether the bot ever sends.
+        html = admin_client.get("/admin/dashboard").text
+        assert "sent automatically" in html
+
+    def test_not_measured_yet_reads_differently_from_zero(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "not measured yet" in html
+
+    def test_a_low_agreement_is_not_presented_as_a_fault(self, admin_client, test_db):
+        # It means the two classifiers disagree about this inbox, which is
+        # information, not an error.
+        html = admin_client.get("/admin/dashboard").text
+        assert "not itself a fault" in html
+
+    def test_the_rendered_values_are_escaped(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "escapeHtml(kind)" in html
+
+
+class TestTodaysSendingOnTheCard:
+    """What auto mode has left today.
+
+    Shown even while the mode is off, because an operator about to turn it on
+    wants to know what it would be allowed to do before they do.
+    """
+
+    def test_the_section_is_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-caps"' in html
+
+    def test_it_says_a_reached_cap_drafts_rather_than_drops(
+        self, admin_client, test_db
+    ):
+        # The thing an operator most needs to know about a cap here: running
+        # out does not lose mail.
+        html = admin_client.get("/admin/dashboard").text
+        assert "A reached cap drafts the reply rather than dropping it" in html
+
+    def test_it_says_the_day_is_the_local_one(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Vietnam day" in html
+
+    def test_the_renderer_is_wired_up(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "renderCaps" in html
+
+
+class TestTheKnowledgeBaseSectionOnTheCard:
+    def test_the_section_is_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-knowledge-base"' in html
+
+    def test_it_points_at_the_editor_guide(self, admin_client, test_db):
+        # The people who edit the doc are coordinators, not engineers, so the
+        # card has to tell them where the guide is.
+        html = admin_client.get("/admin/dashboard").text
+        assert "KNOWLEDGE_BASE_EDITING.md" in html
+
+
+class TestTheBannerNamesTheRunbookForARevokedGrant:
+    def test_a_revoked_grant_banner_shows_the_reason(self, admin_client, test_db):
+        set_setting(
+            test_db,
+            "EMAIL_BOT_LAST_ERROR",
+            "the Gmail refresh token no longer works; re-consent by the runbook "
+            "in docs/GMAIL_BOT_SETUP.md",
+        )
+        html = admin_client.get("/admin/dashboard").text
+
+        assert 'id="inbox-bot-banner"' in html
+        # The reason the pipeline writes already names the runbook, so an
+        # operator reading the banner knows where to go.
+        assert "GMAIL_BOT_SETUP.md" in html
