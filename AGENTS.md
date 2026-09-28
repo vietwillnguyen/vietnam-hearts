@@ -43,10 +43,13 @@ phase-0 webhook and has not been migrated onto it.
 
 Two properties of that code are load-bearing and easy to break:
 
-- **The bot cannot send mail to the public, by construction.** `GmailTransport` has no
-  `send_reply` and `users.messages.send` is called nowhere. Do not add one outside the
-  phase that introduces `SendSink`; `tests/test_gmail_transport.py` fails on any attribute
-  access named `send`. The only outbound path is `EmailForwardNotifier`, whose recipient is
+- **There is exactly one way to send mail to the public.** `GmailTransport.send_reply` is
+  the only send-shaped name on the transport and `SendSink` its only caller, reached only
+  through `app/services/email_bot/delivery.py::choose_sink`, so the mode, the per-language
+  gate, the caps and the pipeline's one-reply-per-thread rule are all decided before the
+  transport is reached. `off` and `draft` never return `SendSink`.
+  `tests/test_gmail_transport.py` fails on any other send-shaped attribute on the Gmail
+  chain. The only other outbound path is `EmailForwardNotifier`, whose recipient is
   fixed at construction.
 - **Nothing derived from inbound mail may be logged or stored.** Log lines and exception
   messages carry Gmail ids, categories, tiers and actions only, because logs persist to the

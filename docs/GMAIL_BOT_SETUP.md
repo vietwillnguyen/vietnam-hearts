@@ -9,10 +9,10 @@ Read `docs/superpowers/specs/2026-09-29-email-channel-design.md` for why any of 
 
 Once the steps below are done and `EMAIL_BOT_MODE` is set to `draft`, the bot reads the volunteer inbox twice a day and, for each new mail, does exactly three things: applies Gmail labels, saves a suggested reply as a Gmail draft inside the thread, and forwards anything that needs a person to one configured address with a Discord notice.
 
-It cannot send mail to a member of the public.
-Not "is configured not to" - the code that would do it does not exist yet.
-`GmailTransport` has no send method, `users.messages.send` is not called anywhere in the repository, and a test fails if anything so much as reaches for it.
-Sending arrives in phase E3, behind its own caps and a canary week.
+In `draft` it sends nothing to a member of the public.
+Only `auto` sends, and only sign-up replies, confident FAQ answers and holding messages, in-thread, in the languages listed in `EMAIL_BOT_AUTO_LANGUAGES`, one reply per thread, and under the daily and per-sender caps; a reply held back by any of those is drafted instead.
+`GmailTransport.send_reply` is the only send path in the repository, and a test fails if a second one appears.
+Do not set `auto` until the loop test and the canary week below have been done.
 
 ## Before you start
 
@@ -198,7 +198,7 @@ Only the **Resume bot** button on the dashboard hands the thread back.
 | Scheduler | Pause the `poll-volunteer-inbox` job | No polls happen at all. |
 | Grant | Revoke the app at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) | The bot loses all access to the mailbox. |
 
-**Reading the card.** Mode, the last run's counters, and open escalations with a link straight into Gmail.
+**Reading the card.** Mode, today's sending against the caps, the last run's counters, and open escalations with a link straight into Gmail.
 A warning banner means the last run recorded a problem; it clears itself on the next clean run, so a banner that stays means the problem is still there.
 
 ## Re-consent
@@ -229,11 +229,9 @@ Never on the real inbox.
 
 1. On the **throwaway sender**, turn on Gmail's vacation responder ("Vacation
    responder" under Settings > General), set to reply to everyone.
-2. Seed exactly one sign-up mail from that account:
-
-   ```bash
-   uv run python scripts/seed_test_inbox.py        --corpus tests/fixtures/sample_corpus.yaml        --to <throwaway-inbox>@gmail.com        --from-address <throwaway-sender>@gmail.com        --i-confirm-this-is-a-throwaway-account
-   ```
+2. Send exactly one sign-up mail from that account to the throwaway inbox, by
+   hand; the `signup-en-1` case in `tests/fixtures/sample_corpus.yaml` will do.
+   Not `scripts/seed_test_inbox.py`, which sends the whole corpus.
 
 3. With the local instance in `auto` mode against the throwaway inbox, run
    `POST /admin/email-bot/poll` **twice**, a minute apart.

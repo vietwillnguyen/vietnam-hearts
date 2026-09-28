@@ -101,8 +101,7 @@ def _sender_key(reply: OutboundReply) -> str:
 class DraftSink:
     """Saves the reply as a Gmail draft inside its thread. Sends nothing.
 
-    The adapter it holds has no send path at all in this phase, so this class
-    could not send even if asked to.
+    It only ever calls the adapter's ``draft``; sending is ``SendSink``'s alone.
     """
 
     action = "drafted"
