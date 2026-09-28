@@ -123,14 +123,26 @@ async def evaluate(
             metrics.record_refusal(str(row.id), "no inbound row to judge against")
             continue
 
-        question = fetch_question(adapter, inbound.provider_message_id)
+        try:
+            question = fetch_question(adapter, inbound.provider_message_id)
+        except Exception as exc:
+            metrics.record_refusal(
+                inbound.provider_message_id, f"fetch failed: {type(exc).__name__}"
+            )
+            continue
         if not question:
             metrics.record_refusal(
                 inbound.provider_message_id, "the original mail is no longer in Gmail"
             )
             continue
 
-        context = await retrieve_context(bot_service, question)
+        try:
+            context = await retrieve_context(bot_service, question)
+        except Exception as exc:
+            metrics.record_refusal(
+                inbound.provider_message_id, f"retrieval failed: {type(exc).__name__}"
+            )
+            continue
 
         try:
             verdict = judge_answer(

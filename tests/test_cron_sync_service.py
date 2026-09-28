@@ -51,6 +51,64 @@ def make_client(current_schedules, patch_side_effect=None):
     return client, jobs
 
 
+def run_scheduler_script(tmp_path, *, jobs_exist: bool) -> dict[str, dict[str, str]]:
+    """Run the deploy script against a stub ``gcloud`` and return what it asked for.
+
+    Keyed by job id, each value is the ``--flag=value`` arguments of the
+    create or update call the script made for that job.
+    """
+    import shutil
+    import subprocess
+
+    from app.config import PROJECT_ROOT
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(
+        PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh", scripts
+    )
+    (scripts / "deploy.config").write_text(
+        'SCHEDULER_REGION="test-region"\n'
+        'SCHEDULER_TIMEZONE="Asia/Ho_Chi_Minh"\n'
+        'BASE_URL="https://service.example.test"\n'
+    )
+    (tmp_path / ".env").write_text("SUPABASE_SECRET_KEY=test-key\n")
+
+    log = tmp_path / "gcloud.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gcloud = bin_dir / "gcloud"
+    gcloud.write_text(
+        "#!/bin/bash\n"
+        'if [ "$3" = describe ]; then exit "$GCLOUD_DESCRIBE_EXIT"; fi\n'
+        'printf "%s\\x1f" "$@" >> "$GCLOUD_LOG"\n'
+        'printf "\\n" >> "$GCLOUD_LOG"\n'
+    )
+    gcloud.chmod(0o755)
+
+    subprocess.run(
+        ["bash", str(scripts / "create-or-update-scheduler-jobs.sh")],
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "GCLOUD_LOG": str(log),
+            "GCLOUD_DESCRIBE_EXIT": "0" if jobs_exist else "1",
+        },
+        check=True,
+        capture_output=True,
+    )
+
+    verb = "update" if jobs_exist else "create"
+    calls: dict[str, dict[str, str]] = {}
+    for line in log.read_text().splitlines():
+        args = [arg for arg in line.split("\x1f") if arg]
+        if args[:4] != ["scheduler", "jobs", verb, "http"]:
+            continue
+        calls[args[4]] = dict(
+            arg[2:].split("=", 1) for arg in args[5:] if arg.startswith("--")
+        )
+    return calls
+
+
 @pytest.fixture
 def settings_db():
     """A db whose get_setting returns values from a plain dict."""
@@ -341,25 +399,20 @@ class TestPollInboxJobMapping:
     def test_the_setting_maps_to_the_job(self):
         assert CRON_SETTING_TO_JOB["CRON_POLL_INBOX"] == "poll-volunteer-inbox"
 
-    def test_the_job_id_matches_the_deploy_script(self):
+    def test_the_deploy_script_creates_the_job_against_the_poll_endpoint(
+        self, tmp_path
+    ):
         # The script owns job existence; this module owns cadence. A name that
         # disagrees means the sync silently updates nothing.
-        from app.config import PROJECT_ROOT
+        created = run_scheduler_script(tmp_path, jobs_exist=False)
+        assert created["poll-volunteer-inbox"]["uri"] == (
+            "https://service.example.test/admin/email-bot/poll"
+        )
 
-        script = (
-            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
-        ).read_text()
-        assert '"poll-volunteer-inbox"' in script
-        assert "/admin/email-bot/poll" in script
-
-    def test_every_mapped_job_exists_in_the_deploy_script(self):
-        from app.config import PROJECT_ROOT
-
-        script = (
-            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
-        ).read_text()
+    def test_every_mapped_job_is_created_by_the_deploy_script(self, tmp_path):
+        created = run_scheduler_script(tmp_path, jobs_exist=False)
         for job_id in CRON_SETTING_TO_JOB.values():
-            assert f'"{job_id}"' in script, f"{job_id} is mapped but never created"
+            assert job_id in created, f"{job_id} is mapped but never created"
 
     def test_a_drifted_poll_cadence_is_patched(self, settings_db):
         db, _ = settings_db
@@ -385,38 +438,38 @@ class TestPollInboxJobMapping:
         # structural validator has to accept.
         assert is_valid_cron("0 8,18 * * *")
 
-    def test_the_attempt_deadline_is_set_on_the_poll_job(self):
+    @pytest.mark.parametrize("jobs_exist", [False, True])
+    def test_the_attempt_deadline_is_set_on_the_poll_job(self, tmp_path, jobs_exist):
         # It has to exceed the worst case of one run at EMAIL_BOT_PER_RUN_CAP.
         # A deadline that fires mid-run produces exactly the concurrent-retry
         # case the run lock exists for.
-        from app.config import PROJECT_ROOT
-
-        script = (
-            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
-        ).read_text()
-        assert "--attempt-deadline" in script
-        assert '"600s"' in script
+        calls = run_scheduler_script(tmp_path, jobs_exist=jobs_exist)
+        assert calls["poll-volunteer-inbox"]["attempt-deadline"] == "600s"
 
 
 class TestKnowledgeBaseSyncJobMapping:
     def test_the_setting_maps_to_the_job(self):
         assert CRON_SETTING_TO_JOB["CRON_SYNC_KNOWLEDGE_BASE"] == "sync-knowledge-base"
 
-    def test_the_job_targets_the_sync_endpoint(self):
-        from app.config import PROJECT_ROOT
+    def test_the_job_targets_the_sync_endpoint(self, tmp_path):
+        created = run_scheduler_script(tmp_path, jobs_exist=False)
+        assert created["sync-knowledge-base"]["uri"] == (
+            "https://service.example.test/admin/email-bot/sync-knowledge-base"
+        )
 
-        script = (
-            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
-        ).read_text()
-        assert '"sync-knowledge-base"' in script
-        assert "/admin/email-bot/sync-knowledge-base" in script
-
-    def test_it_runs_before_the_morning_poll(self, settings_db):
+    def test_it_runs_before_the_morning_poll(self, test_db):
         # The point of the job: an edit made today is answerable tomorrow
         # morning, which needs the sync to land before the 08:00 poll.
-        db, values = settings_db
-        sync_hour = int(values["CRON_SYNC_KNOWLEDGE_BASE"].split()[1])
-        first_poll_hour = int(values["CRON_POLL_INBOX"].split()[1].split(",")[0])
+        from app.services.settings_service import (
+            get_setting,
+            initialize_default_settings,
+        )
+
+        initialize_default_settings(test_db)
+        sync = get_setting(test_db, "CRON_SYNC_KNOWLEDGE_BASE")
+        poll = get_setting(test_db, "CRON_POLL_INBOX")
+        sync_hour = int(sync.split()[1])
+        first_poll_hour = min(int(hour) for hour in poll.split()[1].split(","))
         assert sync_hour < first_poll_hour
 
     def test_a_drifted_sync_cadence_is_patched(self, settings_db):

@@ -2175,7 +2175,9 @@ class TestARevokedGrantTurnsTheBotOff:
         pipeline, _t, _n = self._revoked(test_db, on_preflight=True)
         run(pipeline)
 
-        assert "refresh token" in (get_setting(test_db, SETTING_LAST_ERROR) or "")
+        banner = get_setting(test_db, SETTING_LAST_ERROR) or ""
+        assert "refresh token" in banner
+        assert "EMAIL_BOT_MODE was draft" in banner
 
     def test_an_urgent_alert_is_sent(self, test_db):
         pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
@@ -2194,6 +2196,12 @@ class TestARevokedGrantTurnsTheBotOff:
         detail = notifier.alerts[0].detail
         assert "older_than" in detail
         assert "VH-Bot/Seen" in detail
+
+    def test_the_alert_says_which_mode_to_restore(self, test_db):
+        pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
+        run(pipeline)
+
+        assert "(it was draft)" in notifier.alerts[0].detail
 
     def test_the_alert_carries_no_mail_content(self, test_db):
         pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
@@ -2223,6 +2231,76 @@ class TestARevokedGrantTurnsTheBotOff:
 
         assert get_setting(test_db, SETTING_MODE) == "off"
         assert "revoked" in summary.aborted_reason
+
+
+class TestAGrantRevokedMidRunStillTurnsTheBotOff:
+    """The access token can die after the pre-flight has already passed.
+
+    A revocation met inside per-mail work must reach the same handler as one
+    met in the pre-flight, rather than being escalated message by message
+    until the circuit breaker trips with the mode still on.
+    """
+
+    def _pipeline(self, test_db, fixture, category, failing):
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        revoked = GmailAuthRevoked("the Gmail refresh token no longer works")
+
+        class RevokedMidRun(FakeTransport):
+            def get_thread(self, thread_id):
+                if failing == "get_thread":
+                    raise revoked
+                return super().get_thread(thread_id)
+
+            def create_draft(self, thread_id, mime):
+                if failing == "create_draft":
+                    raise revoked
+                return super().create_draft(thread_id, mime)
+
+        notifier = RecordingAlertNotifier()
+        mail = load_gmail(fixture)
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(RevokedMidRun(mails=[mail])),
+            classifier=FakeClassifier(
+                default=signals(category=category, confidence=0.94)
+            ),
+            notifier=notifier,
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+        return pipeline, notifier
+
+    @pytest.mark.parametrize("failing", ["get_thread", "create_draft"])
+    def test_an_answer_path_revocation_turns_the_bot_off(self, test_db, failing):
+        from app.services.email_bot.settings import SETTING_MODE
+        from app.services.settings_service import get_setting
+
+        pipeline, notifier = self._pipeline(
+            test_db, "signup_en.json", "signup", failing
+        )
+        summary = run(pipeline)
+
+        assert "revoked" in summary.aborted_reason
+        assert get_setting(test_db, SETTING_MODE) == "off"
+        assert len(notifier.alerts) == 1
+        assert notifier.events == []
+        assert all(row.handled_at is None for row in inbound(test_db))
+
+    def test_a_revoked_holding_message_still_forwards_first(self, test_db):
+        from app.services.email_bot.settings import SETTING_MODE
+        from app.services.settings_service import get_setting
+
+        pipeline, notifier = self._pipeline(
+            test_db, "safeguarding_vi.json", "safeguarding_legal", "create_draft"
+        )
+        summary = run(pipeline)
+
+        assert notifier.categories == ["safeguarding_legal"]
+        assert "revoked" in summary.aborted_reason
+        assert get_setting(test_db, SETTING_MODE) == "off"
+        assert len(notifier.alerts) == 1
+        assert all(row.handled_at is not None for row in inbound(test_db))
 
 
 class RecordingAlertNotifier(RecordingNotifier):

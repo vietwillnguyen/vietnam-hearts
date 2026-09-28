@@ -814,9 +814,19 @@ class TestWeeklyLiveSampling:
 
         before = test_db.query(Message).count()
 
+        import base64
+
+        question = "Do I need a teaching certificate?"
         adapter = MagicMock()
         adapter.get_message.return_value = MagicMock(
-            payload={"payload": {"mimeType": "text/plain", "body": {}}}
+            payload={
+                "payload": {
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(question.encode()).decode()
+                    },
+                }
+            }
         )
         bot = MagicMock()
 
@@ -833,7 +843,12 @@ class TestWeeklyLiveSampling:
 
         until = datetime.now(UTC) + timedelta(minutes=1)
         rows = sent_faq_rows(test_db, until - timedelta(days=7), until)
-        asyncio.run(evaluate(test_db, adapter, bot, judge, rows))
+        metrics = asyncio.run(evaluate(test_db, adapter, bot, judge, rows))
+
+        assert metrics.judged == 1
+        assert metrics.refused == 0
+        judge.models.generate_content.assert_called_once()
+        assert question in str(judge.models.generate_content.call_args)
 
         # The whole point: the inbound body was fetched from Gmail for this run
         # and discarded. Nothing new is in the database.
@@ -841,4 +856,52 @@ class TestWeeklyLiveSampling:
         assert all(
             row.text is None
             for row in test_db.query(Message).filter(Message.direction == "inbound")
+        )
+
+    @pytest.mark.parametrize("failing", ["fetch", "retrieval"])
+    def test_one_failing_row_does_not_lose_the_report(self, test_db, failing):
+        import asyncio
+        from datetime import UTC, datetime, timedelta
+
+        from evals.sample_live_answers import evaluate, sent_faq_rows
+
+        conversation = self._conversation(test_db)
+        self._row(
+            test_db,
+            conversation,
+            direction="inbound",
+            action="labelled",
+            provider_message_id="msg-1",
+            text=None,
+            created_at=datetime.now(UTC) - timedelta(minutes=5),
+        )
+        self._row(test_db, conversation)
+
+        adapter = MagicMock()
+        bot = MagicMock()
+        if failing == "fetch":
+            adapter.get_message.side_effect = ConnectionError("down")
+        else:
+            adapter.get_message.return_value = MagicMock(
+                payload={
+                    "payload": {
+                        "mimeType": "text/plain",
+                        "body": {"data": "SGVsbG8"},
+                    }
+                }
+            )
+
+            async def search(question, limit=3):
+                raise ConnectionError("down")
+
+            bot.knowledge_service.similarity_search = search
+
+        until = datetime.now(UTC) + timedelta(minutes=1)
+        rows = sent_faq_rows(test_db, until - timedelta(days=7), until)
+        metrics = asyncio.run(evaluate(test_db, adapter, bot, MagicMock(), rows))
+
+        assert metrics.refused == 1
+        assert metrics.judged == 0
+        assert any(
+            f"{failing} failed: ConnectionError" in item for item in metrics.failures
         )

@@ -3281,7 +3281,7 @@ function renderKnowledgeBase(kb) {
     const chunks = kb.chunks === null || kb.chunks === undefined ? 'unknown' : kb.chunks;
     if (kb.stale) {
         target.innerHTML = `<span class="text-warning small">
-            Last synced ${when} (${chunks} chunks). That is more than a day ago,
+            Last synced ${when} (${chunks} chunks). That is more than 36 hours ago,
             so the daily sync has probably stopped and the bot is answering from
             an old copy.</span>`;
         return;

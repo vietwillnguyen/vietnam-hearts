@@ -240,8 +240,9 @@ Steps 2, 3 and 4 of this document again:
    consent.
 3. Replace `GMAIL_OAUTH_REFRESH_TOKEN` in Secret Manager.
 4. Confirm with `--check`, which prints the address the grant belongs to.
-5. Set `EMAIL_BOT_MODE` back to `draft` (or `auto`, if it was in `auto` and the
-   canary has already passed). The bot turned it off; it will not turn it back
+5. Set `EMAIL_BOT_MODE` back to what it was before (the alert and the banner
+   both name it): `draft`, or `auto` if it was in `auto` and the canary has
+   already passed. The bot turned it off; it will not turn it back
    on by itself.
 
 ### It is not finished until you have triaged the gap by hand

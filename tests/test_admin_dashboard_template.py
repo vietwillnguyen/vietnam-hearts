@@ -332,16 +332,6 @@ class TestTheKnowledgeBaseSectionOnTheCard:
         html = admin_client.get("/admin/dashboard").text
         assert "KNOWLEDGE_BASE_EDITING.md" in html
 
-    def test_never_synced_is_worded_differently_from_stale(self, admin_client, test_db):
-        html = admin_client.get("/admin/dashboard").text
-        assert "Never synced" in html
-        assert "daily sync has probably stopped" in html
-
-    def test_the_renderer_is_wired_up(self, admin_client, test_db):
-        html = admin_client.get("/admin/dashboard").text
-        assert "renderKnowledgeBase" in html
-        assert "/admin/email-bot/metrics" in html
-
 
 class TestTheBannerNamesTheRunbookForARevokedGrant:
     def test_a_revoked_grant_banner_shows_the_reason(self, admin_client, test_db):

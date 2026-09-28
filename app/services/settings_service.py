@@ -324,7 +324,8 @@ def initialize_default_settings(db: Session) -> None:
                 "(default: 05:00 Vietnam time). Early enough that the 08:00 "
                 "inbox poll answers from a freshly synced base, so an edit a "
                 "coordinator makes today is in use by tomorrow morning with "
-                "nobody deploying or clicking anything."
+                "nobody deploying or clicking anything. Keep it at least daily: the "
+                "dashboard warns when the last sync is more than 36 hours old."
             ),
         },
         "KNOWLEDGE_BASE_LAST_SYNC": {

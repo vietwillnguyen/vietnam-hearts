@@ -332,6 +332,8 @@ class EmailBotPipeline:
         for row in self.conversations.pending_drafts():
             try:
                 self._reconcile_one(row)
+            except GmailAuthRevoked:
+                raise
             except Exception as exc:
                 self._summary.errors += 1
                 logger.warning(
@@ -377,7 +379,7 @@ class EmailBotPipeline:
 
         try:
             self._handle(message)
-        except _CircuitOpen:
+        except (_CircuitOpen, GmailAuthRevoked):
             raise
         except Exception as exc:
             self._note_failure(
@@ -743,6 +745,8 @@ class EmailBotPipeline:
         labels.append(LABEL_SEEN)
         self._label(message, labels)
 
+        if isinstance(holding_error, GmailAuthRevoked):
+            raise holding_error
         if holding_error is not None:
             self._note_failure(
                 f"holding message failed: {type(holding_error).__name__}"
@@ -763,6 +767,8 @@ class EmailBotPipeline:
         """
         try:
             self._deliver_reply(conversation, message, decision, **reply)
+        except GmailAuthRevoked:
+            raise
         except Exception as exc:
             logger.error(
                 "Reply to %s could not be delivered: %s",
@@ -1038,7 +1044,9 @@ class EmailBotPipeline:
 
         reason = f"the Gmail grant was revoked: {revoked}"
         self._summary.aborted_reason = reason
-        self._record_last_error(str(revoked))
+        self._record_last_error(
+            f"{revoked} (EMAIL_BOT_MODE was {self.mode.value}, now off)"
+        )
         logger.error("Refusing to poll: %s", reason)
 
         self._disable_mode()
@@ -1049,8 +1057,8 @@ class EmailBotPipeline:
                     subject="the inbox bot's Gmail grant was revoked",
                     detail=(
                         f"{revoked}\n\n"
-                        "EMAIL_BOT_MODE has been set to off, so no mail is "
-                        "being triaged. Anything that stays unlabelled for more "
+                        "EMAIL_BOT_MODE has been set to off (it was "
+                        f"{self.mode.value}), so no mail is being triaged. Anything that stays unlabelled for more "
                         f"than {LISTING_WINDOW_DAYS} days is never picked up by "
                         "the bot, so after re-consenting, hand triage "
                         "in:inbox -label:VH-Bot/Seen older_than:"
