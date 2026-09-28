@@ -163,14 +163,14 @@ curl -X POST <service-url>/admin/email-bot/sync-knowledge-base -H "apikey: ..."
 curl <service-url>/health                            # confirm documents are indexed
 ```
 
-## Step 9: Create the scheduler job and turn the bot on
+## Step 9: Create the scheduler jobs and turn the bot on
 
 ```bash
 ./scripts/create-or-update-scheduler-jobs.sh
 ```
 
-This creates `poll-volunteer-inbox`, pointed at `/admin/email-bot/poll`, with a 600 second attempt deadline.
-The cadence it sets is only a bootstrap default; the live cadence is owned by the `CRON_POLL_INBOX` setting and applied by pressing **Apply to Cloud Scheduler** on the dashboard.
+This creates `poll-volunteer-inbox`, pointed at `/admin/email-bot/poll`, with a 600 second attempt deadline, and `sync-knowledge-base`, pointed at `/admin/email-bot/sync-knowledge-base`, which re-reads the knowledge-base doc daily before the morning poll.
+The cadences it sets are only bootstrap defaults; the live cadences are owned by the `CRON_POLL_INBOX` and `CRON_SYNC_KNOWLEDGE_BASE` settings and applied by pressing **Apply to Cloud Scheduler** on the dashboard.
 
 Then, in order:
 
@@ -198,7 +198,7 @@ Only the **Resume bot** button on the dashboard hands the thread back.
 | Scheduler | Pause the `poll-volunteer-inbox` job | No polls happen at all. |
 | Grant | Revoke the app at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) | The bot loses all access to the mailbox. |
 
-**Reading the card.** Mode, today's sending against the caps, the last run's counters, and open escalations with a link straight into Gmail.
+**Reading the card.** Mode, today's sending against the caps, the last run's counters, when the knowledge base was last synced (with a warning once that is more than 36 hours ago), and open escalations with a link straight into Gmail.
 A warning banner means the last run recorded a problem; it clears itself on the next clean run, so a banner that stays means the problem is still there.
 
 ## Re-consent

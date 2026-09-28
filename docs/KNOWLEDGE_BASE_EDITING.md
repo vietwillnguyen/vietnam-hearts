@@ -91,7 +91,7 @@ An edit you make today is being used by tomorrow morning, with nobody deploying 
 You can see when it last read the doc on the admin dashboard, on the **Inbox Bot** card: it shows the last sync time and how many chunks it found.
 If the last sync is older than a day, the daily job has failed and it is worth telling whoever runs the service.
 
-If you need an edit to take effect now rather than tomorrow, an admin can press the sync button on the dashboard.
+If you need an edit to take effect now rather than tomorrow, ask an admin to force-run the `sync-knowledge-base` job in Cloud Scheduler.
 
 ## Checking your work
 

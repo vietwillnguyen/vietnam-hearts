@@ -48,22 +48,17 @@ the re-consent runbook in `docs/GMAIL_BOT_SETUP.md` ends with a hand triage of
 `in:inbox -label:VH-Bot/Seen older_than:7d`, and why a revoked grant turns the
 mode off and alerts rather than failing quietly twice a day.
 
-Three properties of that code are load-bearing and easy to break:
+Two properties of that code are load-bearing and easy to break:
 
 - **There is exactly one way to send mail to the public.** `GmailTransport.send_reply` is
   the only send-shaped name on the transport and `SendSink` its only caller, reached only
   through `app/services/email_bot/delivery.py::choose_sink`, so the mode, the per-language
   gate, the caps and the pipeline's one-reply-per-thread rule are all decided before the
   transport is reached. `off` and `draft` never return `SendSink`.
-  `tests/test_gmail_transport.py` fails on any other send-shaped attribute on the Gmail
-  chain. The only other outbound path is `EmailForwardNotifier`, whose recipient is
+  `tests/test_gmail_transport.py` asserts the set of send-shaped names on the class is
+  exactly `{"send_reply"}` - an exact set, because "at most one" would quietly permit a
+  rename. The only other outbound path is `EmailForwardNotifier`, whose recipient is
   fixed at construction.
-- **Exactly one send path.** `GmailTransport.send_reply` is the only way mail
-  reaches the public and `SendSink` is its only caller, so the mode, the
-  per-language gate and the caps all apply to it.
-  `tests/test_gmail_transport.py` asserts the set of send-shaped names on the
-  class is exactly `{"send_reply"}` - an exact set, because "at most one"
-  would quietly permit a rename.
 - **Nothing derived from inbound mail may be logged or stored.** Log lines and exception
   messages carry Gmail ids, categories, tiers and actions only, because logs persist to the
   database and Sentry runs with `send_default_pii=True`. `tests/test_email_bot_privacy.py`

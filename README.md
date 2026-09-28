@@ -258,7 +258,7 @@ Docker management CLI for build/push/pull/run:
 ```
 
 ### `scripts/create-or-update-scheduler-jobs.sh`
-Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule, poll-volunteer-inbox).
+Sets up Cloud Scheduler cron jobs (sync-volunteers, send-weekly-reminders, rotate-schedule, poll-volunteer-inbox, sync-knowledge-base).
 Reads scheduler region and timezone from `deploy.config`, and the `apikey` header from `SUPABASE_SECRET_KEY` in `.env`.
 
 Run this after rotating the Supabase secret key.
