@@ -4,9 +4,12 @@ Three safety controls live here rather than in the pipeline, because all three
 are really statements about persisted state and a control that only holds while
 one function runs is not a control.
 
-*Idempotence.* ``is_duplicate`` reads the unique index on the Gmail message id.
-The inbound row is committed before any side effect, so a run that dies after
-drafting and before labelling cannot draft twice.
+*Idempotence, without losing mail.* The inbound row is committed before any
+side effect, so a run that dies after drafting cannot draft twice. But the row
+existing and the mail being finished with are different facts, so the dedupe
+check is ``is_handled``, which reads ``handled_at``. A row with no
+``handled_at`` is a mail that was seen and not completed, and it is retried
+rather than written off.
 
 *One bot reply per thread.* ``bot_reply_count`` is capped at 1. A second
 inbound on a thread the bot already answered escalates instead of getting a
@@ -59,17 +62,51 @@ class ConversationService:
     def is_duplicate(self, provider_message_id: str) -> bool:
         """True when this provider message already has an inbound row.
 
-        Cheap, and asked before anything else in the per-message loop, so a
-        re-listed message costs one indexed lookup instead of a classifier
-        call.
+        "Seen before", which is not the same as "finished with" - see
+        ``is_handled``. Used to decide whether to insert a row or update the
+        one already there, not to decide whether to skip the mail.
         """
+        return self._inbound_row(provider_message_id) is not None
+
+    def is_handled(self, provider_message_id: str) -> bool:
+        """True when this mail reached a terminal state on an earlier run.
+
+        This is the dedupe check, and it deliberately reads ``handled_at``
+        rather than the existence of the row. The row is committed before any
+        side effect so that a crash cannot produce a second draft, which means
+        a row can exist for a mail that was never answered and never escalated.
+        Treating that as done is a silent drop, and for a safeguarding mail it
+        means nobody is ever told.
+
+        An unhandled row is therefore retried. That is safe because the reply
+        cap lives on the conversation row and is committed together with the
+        outbound reply: a retry cannot produce a second reply, only the
+        escalation the mail never got.
+        """
+        row = self._inbound_row(provider_message_id)
+        return row is not None and row.handled_at is not None
+
+    def mark_handled(self, row: Message) -> Message:
+        """Record that this mail is finished with.
+
+        Called at every terminal point and nowhere else. Anything that returns
+        without calling this is asking for the mail to be picked up again.
+        """
+        row.handled_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def _inbound_row(self, provider_message_id: str) -> Message | None:
         if not provider_message_id:
-            return False
+            return None
         return (
-            self.db.query(Message.id)
-            .filter(Message.provider_message_id == provider_message_id)
+            self.db.query(Message)
+            .filter(
+                Message.direction == "inbound",
+                Message.provider_message_id == provider_message_id,
+            )
             .first()
-            is not None
         )
 
     def get_or_create(
@@ -113,21 +150,25 @@ class ConversationService:
         is everything the dashboard, the metrics and an investigation need
         without the database becoming a second copy of the inbox.
         """
-        row = Message(
+        # Updated in place when a previous run recorded this mail but never
+        # finished with it. Inserting again would hit the unique index, and the
+        # retry's triage metadata is the more recent of the two anyway.
+        row = self._inbound_row(message.provider_message_id) or Message(
             conversation_id=conversation.id,
             direction="inbound",
             provider_message_id=message.provider_message_id,
-            text=None,
-            language=decision.language,
-            action=action,
-            rfc_message_id=message.rfc_message_id,
-            gmail_thread_id=message.thread_key,
-            category=decision.category,
-            tier=decision.tier,
-            triage_confidence=decision.confidence,
-            classifier=decision.classifier,
-            triage_shadow=shadow.as_record() if shadow else None,
         )
+        row.text = None
+        row.language = decision.language
+        row.action = action
+        row.rfc_message_id = message.rfc_message_id
+        row.gmail_thread_id = message.thread_key
+        row.category = decision.category
+        row.tier = decision.tier
+        row.triage_confidence = decision.confidence
+        row.classifier = decision.classifier
+        row.triage_shadow = shadow.as_record() if shadow else None
+
         conversation.last_category = decision.category
         conversation.last_tier = decision.tier
         self.db.add(row)
@@ -144,15 +185,16 @@ class ConversationService:
         decision to record, but the idempotence key must still be written or
         the next run would process the mail again.
         """
-        row = Message(
+        row = self._inbound_row(message.provider_message_id) or Message(
             conversation_id=conversation.id,
             direction="inbound",
             provider_message_id=message.provider_message_id,
-            text=None,
-            action=action,
-            rfc_message_id=message.rfc_message_id,
-            gmail_thread_id=message.thread_key,
         )
+        row.text = None
+        row.action = action
+        row.rfc_message_id = message.rfc_message_id
+        row.gmail_thread_id = message.thread_key
+
         self.db.add(row)
         self.db.commit()
         self.db.refresh(row)

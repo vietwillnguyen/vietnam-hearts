@@ -1305,3 +1305,482 @@ class TestNothingSendsInThisPhase:
         assert summary.sent == 0
         assert summary.drafted == 1
         assert not hasattr(transport, "send_reply")
+
+
+class TestTheInboxAddressPreflight:
+    """An unresolvable inbox address stops the run instead of eating the mail.
+
+    ``human_replied`` has no safe answer without an inbox address. False lets
+    the bot reply over a human; True pauses the thread, and because the inbound
+    row is committed before the pause, the mail is permanently deduped as done
+    with nobody told. So the decision belongs before any mail is touched, in
+    the same place as the ``ESCALATION_OWNER_EMAIL`` refusal.
+    """
+
+    def test_an_empty_inbox_address_refuses_to_poll(self, test_db):
+        transport = FakeTransport(
+            mails=[load_gmail("safeguarding_vi.json")], inbox_address=""
+        )
+        notifier = RecordingNotifier()
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(
+                default=signals(category="safeguarding_legal", language="vi")
+            ),
+            notifier=notifier,
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+
+        summary = run(pipeline)
+
+        assert "inbox address" in summary.aborted_reason
+        # Nothing was listed, so nothing was audited and nothing was dropped.
+        assert transport.list_calls == []
+        assert inbound(test_db) == []
+        assert notifier.events == []
+
+    def test_a_safeguarding_mail_is_not_silently_paused(self, test_db):
+        # The regression this exists for: with the guard failing closed and no
+        # pre-flight, this mail was paused, labelled and recorded as done
+        # without ever being forwarded.
+        transport = FakeTransport(
+            mails=[load_gmail("safeguarding_vi.json")], inbox_address=""
+        )
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(
+                default=signals(category="safeguarding_legal", language="vi")
+            ),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+
+        run(pipeline)
+
+        assert transport.applied == []
+        assert LABEL_PAUSED not in transport.labels_for("18f2a1b4c5d6e878")
+
+    def test_a_grant_that_cannot_be_read_refuses_to_poll(self, test_db):
+        # A revoked or broken grant: users.getProfile raises rather than
+        # returning an address.
+        class BrokenGrant(FakeTransport):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                type(self).inbox_address = property(self._refuse)
+
+            @staticmethod
+            def _refuse(_self):
+                raise RuntimeError("invalid_grant")
+
+        transport = BrokenGrant(mails=[load_gmail("signup_en.json")])
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(default=signals()),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+
+        summary = run(pipeline)
+
+        assert "could not be read" in summary.aborted_reason
+        assert transport.list_calls == []
+
+    def test_the_refusal_is_recorded_for_the_dashboard_banner(self, test_db):
+        from app.services.email_bot.settings import SETTING_LAST_ERROR
+        from app.services.settings_service import get_setting
+
+        transport = FakeTransport(mails=[], inbox_address="")
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(default=signals()),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+        run(pipeline)
+
+        # A broken grant is what the banner is for, unlike an unset setting,
+        # which is already visible on the settings page.
+        assert "inbox address" in (get_setting(test_db, SETTING_LAST_ERROR) or "")
+
+    def test_no_run_row_is_created_for_a_refusal(self, test_db):
+        transport = FakeTransport(mails=[], inbox_address="")
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(default=signals()),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+        run(pipeline)
+
+        assert test_db.query(EmailBotRun).count() == 0
+
+    def test_a_resolvable_address_polls_normally(self, test_db):
+        pipeline, transport = build(
+            test_db,
+            [load_gmail("signup_en.json")],
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+        )
+        summary = run(pipeline)
+
+        assert summary.aborted_reason is None
+        assert summary.drafted == 1
+
+
+class TestADraftIsNeverOrphaned:
+    """A draft in Gmail with no audit row can never be found or deleted again.
+
+    ``outstanding_draft`` reads the rows, so an unrecorded draft is invisible
+    to ``_take_over`` for good, and it sits in the thread one click from being
+    sent with no record that the bot wrote it.
+    """
+
+    def _pipeline(self, test_db, transport):
+        return EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+
+    def test_a_failed_audit_write_deletes_the_draft(self, test_db, monkeypatch):
+        transport = FakeTransport(mails=[load_gmail("signup_en.json")])
+        pipeline = self._pipeline(test_db, transport)
+
+        def explode(*args, **kwargs):
+            raise RuntimeError("the commit failed")
+
+        monkeypatch.setattr(pipeline.conversations, "record_outbound", explode)
+
+        run(pipeline)
+
+        # The draft was created, then removed, so nothing is left behind.
+        assert transport.deleted_drafts == ["draft-1"]
+        assert transport.drafts == {}
+
+    def test_the_mail_still_reaches_a_person(self, test_db, monkeypatch):
+        transport = FakeTransport(mails=[load_gmail("signup_en.json")])
+        notifier = RecordingNotifier()
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+            notifier=notifier,
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+
+        calls = {"n": 0}
+        original = pipeline.conversations.record_outbound
+
+        def fail_first(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("the commit failed")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(pipeline.conversations, "record_outbound", fail_first)
+
+        summary = run(pipeline)
+
+        # The inbound row is already committed, so the next run dedupes this
+        # mail as done. A person has to hear about it now or never.
+        assert summary.forwarded == 1
+        assert len(notifier.events) == 1
+
+    def test_the_session_is_usable_again_afterwards(self, test_db, monkeypatch):
+        # Without the rollback, the fallback escalation's own pause() commit
+        # raises too, which re-opens the lost-mail path.
+        transport = FakeTransport(mails=[load_gmail("signup_en.json")])
+        pipeline = self._pipeline(test_db, transport)
+
+        from sqlalchemy import text
+
+        def explode(*args, **kwargs):
+            test_db.execute(text("SELECT * FROM does_not_exist"))
+
+        monkeypatch.setattr(pipeline.conversations, "record_outbound", explode)
+        summary = run(pipeline)
+
+        assert summary.aborted_reason is None
+        # The conversation was still paused, which needed a working session.
+        conversation = ConversationService(test_db).get_or_create(
+            "email", "18f2a1b4c5d6e7f0", "unused"
+        )
+        assert conversation.status == STATUS_PAUSED_HANDOFF
+
+    def test_a_cleanup_failure_does_not_mask_the_original_error(
+        self, test_db, monkeypatch
+    ):
+        transport = FakeTransport(mails=[load_gmail("signup_en.json")])
+        pipeline = self._pipeline(test_db, transport)
+
+        monkeypatch.setattr(
+            pipeline.conversations,
+            "record_outbound",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("the commit failed")),
+        )
+
+        def refuse(draft_id):
+            raise RuntimeError("Gmail refused the delete")
+
+        transport.delete_draft = refuse
+
+        summary = run(pipeline)
+
+        # Still escalated, still counted, and the run did not abort.
+        assert summary.forwarded == 1
+        assert summary.errors == 1
+
+
+class TestNoInboundMailIsEverSilentlyDropped:
+    """The completed-action marker, at the level the failure actually happens.
+
+    The inbound row commits before any side effect so a crash cannot draft
+    twice. That means a row exists for a mail that has been triaged and
+    nothing more, and if the next run treated that as done the mail would be
+    written off having been neither answered nor escalated. These tests fail a
+    message part-way and then poll again, which is the shape of every real
+    version of this: a Gmail error on the draft, an aborted run, a notifier
+    outage.
+    """
+
+    def _run_failing_then_recovering(self, test_db, fixture, triage, breaker):
+        """Poll once with ``breaker`` sabotaging the message, then poll clean."""
+        first, first_transport = build(
+            test_db, [load_gmail(fixture)], classifier=FakeClassifier(default=triage)
+        )
+        breaker(first, first_transport)
+        first_summary = run(first)
+
+        second_notifier = RecordingNotifier()
+        second, second_transport = build(
+            test_db,
+            [load_gmail(fixture)],
+            classifier=FakeClassifier(default=triage),
+            notifier=second_notifier,
+        )
+        second_summary = run(second)
+        return (
+            first_summary,
+            second_summary,
+            second_transport,
+            second_notifier,
+        )
+
+    def test_a_safeguarding_mail_whose_forward_failed_is_retried(self, test_db):
+        # The worst case, stated plainly: the notifier raised, so nobody was
+        # told. The mail must come back on the next poll.
+        def break_notifier(pipeline, _transport):
+            def explode(event):
+                raise RuntimeError("SMTP refused the forward")
+
+            pipeline.notifier = type("Broken", (), {"notify": staticmethod(explode)})()
+
+        _first, second, _transport, notifier = self._run_failing_then_recovering(
+            test_db,
+            "safeguarding_vi.json",
+            signals(category="safeguarding_legal", language="vi", confidence=0.91),
+            break_notifier,
+        )
+
+        assert second.forwarded == 1
+        assert notifier.categories == ["safeguarding_legal"]
+
+    def test_a_mail_whose_draft_failed_is_escalated_and_then_left_alone(self, test_db):
+        # A draft failure is recovered inside the same run: the reply could not
+        # be delivered, so a person is told instead. That *is* a terminal
+        # state, so the mail is marked handled and the next run must not
+        # forward it a second time. Retrying is for mail nobody heard about.
+        def break_drafting(pipeline, transport):
+            def refuse(thread_id, mime):
+                raise RuntimeError("Gmail refused drafts.create")
+
+            transport.create_draft = refuse
+
+        first, second, _transport, notifier = self._run_failing_then_recovering(
+            test_db,
+            "signup_en.json",
+            signals(category="signup", confidence=0.94),
+            break_drafting,
+        )
+
+        assert first.forwarded == 1
+        assert second.forwarded == 0
+        assert notifier.events == []
+        assert all(row.handled_at is not None for row in inbound(test_db))
+
+    def test_a_handled_mail_is_not_retried(self, test_db):
+        # The other half of the property: a mail that genuinely finished must
+        # not be answered twice.
+        triage = signals(category="signup", confidence=0.94)
+        first, _ = build(
+            test_db,
+            [load_gmail("signup_en.json")],
+            classifier=FakeClassifier(default=triage),
+        )
+        assert run(first).drafted == 1
+
+        second, second_transport = build(
+            test_db,
+            [load_gmail("signup_en.json")],
+            classifier=FakeClassifier(default=triage),
+        )
+        second_summary = run(second)
+
+        assert second_summary.drafted == 0
+        assert second_transport.drafts == {}
+        assert second_transport.labels_for("18f2a1b4c5d6e7f0") == [LABEL_SEEN]
+
+    def test_the_row_is_marked_only_once_the_mail_is_finished(self, test_db):
+        pipeline, _ = build(
+            test_db,
+            [load_gmail("signup_en.json")],
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+        )
+        run(pipeline)
+
+        row = inbound(test_db)[0]
+        assert row.handled_at is not None
+
+    def test_an_unfinished_mail_leaves_the_marker_unset(self, test_db):
+        def break_drafting(pipeline, transport):
+            def refuse(thread_id, mime):
+                raise RuntimeError("Gmail refused drafts.create")
+
+            transport.create_draft = refuse
+
+            def explode(event):
+                raise RuntimeError("and the forward failed too")
+
+            pipeline.notifier = type("Broken", (), {"notify": staticmethod(explode)})()
+
+        pipeline, transport = build(
+            test_db,
+            [load_gmail("safeguarding_vi.json")],
+            classifier=FakeClassifier(
+                default=signals(category="safeguarding_legal", language="vi")
+            ),
+        )
+        break_drafting(pipeline, transport)
+        run(pipeline)
+
+        # Neither answered nor escalated, so it is not finished with.
+        row = inbound(test_db)[0]
+        assert row.handled_at is None
+
+    @pytest.mark.parametrize(
+        "fixture,triage",
+        [
+            ("newsletter.json", signals(category="automated", confidence=0.97)),
+            ("signup_en.json", signals(category="signup", confidence=0.94)),
+            ("faq_en.json", signals(category="faq", confidence=0.86)),
+            (
+                "sponsorship_en.json",
+                signals(category="sponsorship", confidence=0.82, money=True),
+            ),
+        ],
+    )
+    def test_every_terminal_outcome_marks_the_mail_handled(
+        self, test_db, fixture, triage
+    ):
+        # Every branch out of _handle, so a new one cannot be added without
+        # either marking the mail or failing here.
+        pipeline, _ = build(
+            test_db, [load_gmail(fixture)], classifier=FakeClassifier(default=triage)
+        )
+        run(pipeline)
+
+        rows = inbound(test_db)
+        assert rows, fixture
+        assert all(row.handled_at is not None for row in rows), fixture
+
+    def test_a_paused_thread_is_marked_handled(self, test_db):
+        thread = load_gmail("thread_with_human_reply.json")
+        pipeline, _ = build(
+            test_db,
+            [load_gmail("second_inbound.json")],
+            threads={thread["id"]: thread["messages"]},
+        )
+        run(pipeline)
+
+        assert all(row.handled_at is not None for row in inbound(test_db))
+
+    def test_a_circuit_breaker_abort_leaves_the_rest_of_the_mail_untouched(
+        self, test_db
+    ):
+        # The abort case. A classifier outage still reaches a person, through
+        # the fail-closed path, so the messages that got that far are handled.
+        # What matters is the mail the breaker stopped short of: it must have
+        # no row and no label at all, so the next run picks it up.
+        mails = [
+            payloads.message(message_id=f"m-{index}", thread_id=f"t-{index}")
+            for index in range(6)
+        ]
+        pipeline, transport = build(
+            test_db,
+            mails,
+            classifier=FakeClassifier(default=TriageUnavailable("everything is down")),
+        )
+        summary = run(pipeline)
+
+        assert summary.aborted_reason is not None
+
+        recorded = {row.provider_message_id for row in inbound(test_db)}
+        touched = {message_id for message_id, _ in transport.applied}
+        untouched = {f"m-{index}" for index in range(6)} - recorded - touched
+        assert untouched, "the breaker fired without leaving anything for the next run"
+
+        # And every mail that was recorded was genuinely finished with: the
+        # fail-closed decision was escalated, so somebody was told.
+        assert all(row.handled_at is not None for row in inbound(test_db))
+
+    def test_a_mail_the_breaker_stopped_short_of_is_processed_next_run(self, test_db):
+        mails = [
+            payloads.message(message_id=f"m-{index}", thread_id=f"t-{index}")
+            for index in range(6)
+        ]
+        first, _ = build(
+            test_db,
+            mails,
+            classifier=FakeClassifier(default=TriageUnavailable("everything is down")),
+        )
+        run(first)
+        recorded_after_first = {row.provider_message_id for row in inbound(test_db)}
+
+        second, _ = build(
+            test_db,
+            mails,
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+        )
+        second_summary = run(second)
+
+        # The leftovers are answered, and the two already finished with are
+        # not answered again. Asserted on `drafted` rather than `processed`:
+        # the fake transport hands back every mail, whereas real Gmail excludes
+        # anything carrying VH-Bot/Seen, so `processed` counts the relabel
+        # no-ops too.
+        expected = len(mails) - len(recorded_after_first)
+        assert second_summary.drafted == expected
+        assert all(row.handled_at is not None for row in inbound(test_db))

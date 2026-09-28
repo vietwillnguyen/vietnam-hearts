@@ -283,6 +283,17 @@ class Message(Base):
     gmail_draft_id = Column(String, nullable=True)
     draft_outcome = Column(String, nullable=True)
 
+    # When this inbound mail finished being handled: answered, escalated,
+    # skipped or paused. NULL means the pipeline started on it and did not get
+    # to a terminal state, so the next run must pick it up again.
+    #
+    # Dedupe reads this rather than the existence of the row. The row is
+    # committed early, before any side effect, so that a crash cannot produce
+    # a second draft - but "we have seen this" and "a person has been told
+    # about this" are different facts, and conflating them is how a mail gets
+    # recorded as done without ever being answered or forwarded.
+    handled_at = Column(DateTime, nullable=True, index=True)
+
     category = Column(String, nullable=True)
     tier = Column(String, nullable=True)
     triage_confidence = Column(Float, nullable=True)

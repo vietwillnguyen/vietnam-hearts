@@ -172,6 +172,7 @@ class EmailBotPipeline:
         self._summary = RunSummary(mode=self.mode)
         self._consecutive_failures = 0
         self._failed_this_message = False
+        self._inbound_row: Any = None
 
     # ------------------------------------------------------------------ run
 
@@ -192,6 +193,13 @@ class EmailBotPipeline:
             # while silently dropping the handoffs.
             self._summary.aborted_reason = "ESCALATION_OWNER_EMAIL is not set"
             logger.error("Refusing to poll: ESCALATION_OWNER_EMAIL is not set")
+            return self._summary
+
+        inbox_refusal = self._inbox_address_refusal()
+        if inbox_refusal is not None:
+            self._summary.aborted_reason = inbox_refusal
+            self._record_last_error(inbox_refusal)
+            logger.error("Refusing to poll: %s", inbox_refusal)
             return self._summary
 
         run_row = self._acquire_run()
@@ -220,6 +228,31 @@ class EmailBotPipeline:
 
         return self._summary
 
+    def _inbox_address_refusal(self) -> str | None:
+        """Why this run must not start, if the inbox address is unusable.
+
+        Resolved once, before any mail is touched, because every "is this us?"
+        decision below depends on it and none of them has a safe answer without
+        it. ``human_replied`` with no inbox address is the case in point:
+        answering False lets the bot reply over a human, and answering True
+        pauses every thread and - since the inbound row is committed before the
+        pause - permanently drops mail the next run dedupes as done. There is
+        no correct value, so the guard must never be reached with an empty
+        address.
+
+        Recorded as ``EMAIL_BOT_LAST_ERROR`` as well as aborted, unlike the
+        other pre-flight refusals: an unresolvable address means the Gmail
+        grant itself is broken, which is exactly what the dashboard banner is
+        for, whereas an unset setting is visible on the settings page already.
+        """
+        try:
+            address = self.adapter.inbox_address
+        except Exception as exc:
+            return "the Gmail grant could not be read: " f"{type(exc).__name__}"
+        if not address:
+            return "the Gmail grant reports no inbox address"
+        return None
+
     def _poll(self) -> None:
         self.adapter.ensure_labels(self._label_names())
 
@@ -242,6 +275,7 @@ class EmailBotPipeline:
 
         self._summary.processed += 1
         self._failed_this_message = False
+        self._inbound_row = None
 
         try:
             self._handle(message)
@@ -269,18 +303,26 @@ class EmailBotPipeline:
             self._consecutive_failures = 0
 
     def _handle(self, message: IncomingMessage) -> None:
-        if self.conversations.is_duplicate(message.provider_message_id):
-            # Already audited on an earlier run. Re-apply the marker label so a
+        if self.conversations.is_handled(message.provider_message_id):
+            # Finished with on an earlier run. Re-apply the marker label so a
             # run that died before labelling converges, and do nothing else.
+            #
+            # Deliberately ``is_handled`` and not ``is_duplicate``: a row
+            # exists from the moment the mail is triaged, before anything has
+            # been answered or forwarded, so skipping on the row alone is how
+            # a mail gets written off without a person ever seeing it.
             self._label(message, [LABEL_SEEN])
             return
 
         guard = self._guard_reason(message)
         if guard:
             conversation = self._conversation(message)
-            self.conversations.record_action(conversation, message, ACTION_SKIPPED)
+            row = self.conversations.record_action(
+                conversation, message, ACTION_SKIPPED
+            )
             self._summary.skipped += 1
             logger.info("Skipped %s by guard %s", message.provider_message_id, guard)
+            self.conversations.mark_handled(row)
             self._label(message, [LABEL_SKIPPED, LABEL_SEEN])
             return
 
@@ -305,10 +347,17 @@ class EmailBotPipeline:
             decision = decision.with_tier("needs_admin")
             reason_override = "the bot has already replied in this thread"
 
-        self.conversations.record_inbound(conversation, message, decision, shadow)
+        # Committed before any side effect, so a crash cannot draft twice. It
+        # carries no ``handled_at`` yet, so a crash also cannot make this mail
+        # look dealt with: every terminal branch below marks it, and anything
+        # that raises leaves it for the next run.
+        self._inbound_row = self.conversations.record_inbound(
+            conversation, message, decision, shadow
+        )
 
         if decision.tier == "skip":
             self._summary.skipped += 1
+            self._finish(message)
             self._label(
                 message,
                 [LABEL_SKIPPED, category_label(decision.category), LABEL_SEEN],
@@ -378,7 +427,8 @@ class EmailBotPipeline:
                 self.db.commit()
 
         self.conversations.pause_manual(conversation)
-        self.conversations.record_action(conversation, message, ACTION_PAUSED)
+        row = self.conversations.record_action(conversation, message, ACTION_PAUSED)
+        self.conversations.mark_handled(row)
         self._label(message, [LABEL_PAUSED, LABEL_SEEN])
 
     # --------------------------------------------------------------- triage
@@ -584,6 +634,11 @@ class EmailBotPipeline:
 
         self.conversations.pause(conversation, decision.tier, reason)
 
+        # Terminal: a person has been told. Marked after the notifier rather
+        # than before, so a forward that never went out leaves the mail for the
+        # next run instead of writing it off.
+        self._finish(message)
+
         labels = [LABEL_ESCALATED, category_label(decision.category)]
         if delivered is not None:
             labels.append(LABEL_SENT if delivered.action == "sent" else LABEL_DRAFTED)
@@ -662,17 +717,31 @@ class EmailBotPipeline:
         )
         result = sink.deliver(reply)
 
-        self.conversations.record_outbound(
-            conversation,
-            text=signed,
-            action=result.action,
-            language=decision.language,
-            gmail_message_id_out=result.gmail_message_id_out,
-            gmail_draft_id=result.gmail_draft_id,
-            confidence=confidence,
-            sources=sources,
-            kind=kind,
-        )
+        try:
+            self.conversations.record_outbound(
+                conversation,
+                text=signed,
+                action=result.action,
+                language=decision.language,
+                gmail_message_id_out=result.gmail_message_id_out,
+                gmail_draft_id=result.gmail_draft_id,
+                confidence=confidence,
+                sources=sources,
+                kind=kind,
+            )
+        except Exception:
+            # The draft already exists in Gmail and only its audit row is
+            # missing, which is the worst of both: ``outstanding_draft`` reads
+            # the rows, so nothing can ever find that draft again, and
+            # ``_take_over`` can never delete it. It sits in the thread one
+            # click from being sent, with no record that the bot wrote it.
+            #
+            # Removing it is therefore the safe direction. The rollback matters
+            # as much: without it the caller's fallback escalation hits a
+            # session that still needs one, and its own ``pause()`` commit
+            # raises too, which would re-open the lost-mail path this guards.
+            self._discard_undone_delivery(result)
+            raise
 
         if result.action == "sent":
             self._summary.sent += 1
@@ -680,12 +749,45 @@ class EmailBotPipeline:
             self._summary.drafted += 1
 
         if label_after:
+            # Terminal only for the answer paths. A holding message inside an
+            # escalation passes label_after=False, and that escalation marks
+            # the mail itself once the forward has gone out.
+            self._finish(message)
             outcome = LABEL_SENT if result.action == "sent" else LABEL_DRAFTED
             self._label(
                 message, [outcome, category_label(decision.category), LABEL_SEEN]
             )
 
         return result
+
+    def _discard_undone_delivery(self, result: DeliveryResult) -> None:
+        """Roll the session back and remove a draft that was never recorded.
+
+        Best-effort on the delete, because the alternative to a failed cleanup
+        is raising over the original error and losing it. A draft that survives
+        this is at least logged with its id.
+        """
+        try:
+            self.db.rollback()
+        except Exception:
+            logger.error(
+                "Could not roll back after a failed audit write", exc_info=True
+            )
+
+        if not result.gmail_draft_id:
+            # Nothing to clean up. A send cannot be recalled, and E3's caps
+            # count sent rows, so a send whose row was lost is reported by the
+            # run counters being ahead of the audit table rather than silently.
+            return
+
+        try:
+            self.adapter.delete_draft(result.gmail_draft_id)
+        except Exception:
+            logger.error(
+                "Orphaned draft %s could not be deleted after a failed audit "
+                "write; it is still in the thread with no row",
+                result.gmail_draft_id,
+            )
 
     # ---------------------------------------------------------------- state
 
@@ -701,6 +803,26 @@ class EmailBotPipeline:
             class_end=self.settings.class_end_time,
             signup_form_link=self.settings.signup_form_link,
         )
+
+    def _finish(self, message: IncomingMessage) -> None:
+        """Mark this mail handled, so the next run does not pick it up again.
+
+        Best-effort: a failure here means the mail is retried, which costs a
+        duplicate forward at worst. Failing the message instead would be the
+        wrong trade, because everything that matters has already happened by
+        the time this is called.
+        """
+        row = getattr(self, "_inbound_row", None)
+        if row is None:
+            return
+        try:
+            self.conversations.mark_handled(row)
+        except Exception:
+            logger.error(
+                "Could not mark %s handled; it will be retried",
+                message.provider_message_id,
+                exc_info=True,
+            )
 
     def _label(self, message: IncomingMessage, names: list[str]) -> None:
         """Apply outcome labels, with the marker label last.

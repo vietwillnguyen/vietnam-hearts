@@ -176,9 +176,14 @@ def human_replied(
     draft's message id is never recorded; without skipping ``DRAFT`` a
     follow-up would read the bot's own draft as a person having answered.
 
-    Fails closed on an unknown inbox address: with nothing to compare against,
-    no message can be attributed to the bot, so the caller would rather pause
-    a thread it could still have acted on than reply over somebody.
+    An unknown inbox address has no safe answer here, so the pipeline refuses
+    to poll at all when it cannot resolve one
+    (``EmailBotPipeline._inbox_address_refusal``). False would let the bot
+    reply over a human; True pauses every thread, and because the inbound row
+    is committed before the pause, that permanently drops mail the next run
+    dedupes as done. This branch is therefore unreachable in the pipeline and
+    exists only so that a direct caller fails safe rather than silently
+    treating an unidentifiable mailbox as nobody.
     """
     inbox = normalise_address(inbox_address)
     if not inbox:

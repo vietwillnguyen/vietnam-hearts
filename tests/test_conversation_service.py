@@ -67,16 +67,45 @@ class TestDedupe:
         # every one of them look like a duplicate of the others.
         assert not service.is_duplicate("")
 
-    def test_the_unique_index_refuses_a_second_inbound_row(self, service, test_db):
+    def test_the_unique_index_still_refuses_a_raw_second_insert(self, service, test_db):
         from sqlalchemy.exc import IntegrityError
+
+        from app.models import Message as MessageModel
 
         conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
         service.record_inbound(conversation, message(), decision())
 
         # The idempotence guarantee is the database's, not the pipeline's.
+        test_db.add(
+            MessageModel(
+                conversation_id=conversation.id,
+                direction="inbound",
+                provider_message_id="msg-1",
+                action="labelled",
+            )
+        )
         with pytest.raises(IntegrityError):
-            service.record_inbound(conversation, message(), decision())
+            test_db.commit()
         test_db.rollback()
+
+    def test_recording_the_same_mail_again_updates_the_row_in_place(self, service):
+        # A retry of an unhandled mail has to reuse its row: inserting would
+        # hit the unique index, and the retry's triage is the more recent of
+        # the two answers anyway.
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        first = service.record_inbound(conversation, message(), decision("faq"))
+        second = service.record_inbound(conversation, message(), decision("donation"))
+
+        from app.models import Message as MessageModel
+
+        assert first.id == second.id
+        assert second.category == "donation"
+        inbound_rows = (
+            service.db.query(MessageModel)
+            .filter(MessageModel.direction == "inbound")
+            .all()
+        )
+        assert len(inbound_rows) == 1
 
     def test_several_outbound_rows_coexist(self, service):
         conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
@@ -411,3 +440,68 @@ class TestPausedActionIsAudited:
         conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
         row = service.record_action(conversation, message(), ACTION_PAUSED)
         assert row.action == ACTION_PAUSED
+
+
+class TestDedupeMeansHandledNotMerelySeen:
+    """The silent-drop guard: no inbound mail is written off unfinished.
+
+    The inbound row is committed before any side effect, so that a crash
+    cannot produce a second draft. That makes "a row exists" true for a mail
+    that has been triaged and nothing more. If that counted as done, any
+    failure afterwards - a Gmail error on the draft, an aborted run, a thread
+    that turned out to be paused - would leave the mail looking handled and the
+    next run would just relabel it. For a safeguarding mail that means nobody
+    is ever told.
+    """
+
+    def test_a_fresh_mail_is_neither_seen_nor_handled(self, service):
+        assert not service.is_duplicate("msg-1")
+        assert not service.is_handled("msg-1")
+
+    def test_a_triaged_but_unfinished_mail_is_seen_and_not_handled(self, service):
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        service.record_inbound(conversation, message(), decision())
+
+        assert service.is_duplicate("msg-1")
+        # The distinction the whole fix rests on.
+        assert not service.is_handled("msg-1")
+
+    def test_marking_handled_makes_it_handled(self, service):
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        row = service.record_inbound(conversation, message(), decision())
+        service.mark_handled(row)
+
+        assert service.is_handled("msg-1")
+        assert row.handled_at is not None
+
+    def test_a_guard_skip_is_handled_once_marked(self, service):
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        row = service.record_action(conversation, message(), ACTION_SKIPPED)
+        assert not service.is_handled("msg-1")
+
+        service.mark_handled(row)
+        assert service.is_handled("msg-1")
+
+    def test_an_outbound_row_never_answers_the_dedupe_question(self, service):
+        # Outbound rows carry no provider id, and an empty id must not make
+        # every one of them look like the same handled mail.
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        service.record_outbound(
+            conversation, text="a reply", action=ACTION_DRAFTED, language="en"
+        )
+        assert not service.is_handled("")
+        assert not service.is_duplicate("")
+
+    def test_a_retry_cannot_produce_a_second_reply(self, service):
+        # Why retrying an unhandled mail is safe: the reply cap lives on the
+        # conversation row and is committed with the outbound reply, so the
+        # retry can only supply the escalation the mail never got.
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        row = service.record_inbound(conversation, message(), decision())
+        service.record_outbound(
+            conversation, text="a reply", action=ACTION_DRAFTED, language="en"
+        )
+
+        assert not service.is_handled("msg-1")
+        assert not service.can_bot_reply(conversation)
+        assert row.handled_at is None
