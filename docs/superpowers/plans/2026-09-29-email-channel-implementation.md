@@ -37,7 +37,7 @@ Inputs the design implies but no phase's headline tests exercise, most likely to
 Each line names the phase and test file that pins it.
 
 1. **A mail with no `text/plain` part, or an empty body.** Expected: the adapter extracts text from `text/html`, and an empty result is `needs_admin` with the holding message, never a crashed run. Pinned in E1, `tests/test_gmail_adapter.py`.
-2. **Two inbound mails from the same sender in the same thread before the first poll.** Expected: one reply, both inbound rows recorded, the second marked `paused` with no second draft. Pinned in E1, `tests/test_email_bot_pipeline.py`.
+2. **Two inbound mails from the same sender in the same thread before the first poll.** Expected: one reply, both inbound rows recorded, the second marked `paused` with no second draft, and the second forwarded and posted to Discord. Pinned in E1, `tests/test_email_bot_pipeline.py`.
 3. **A mail from the escalation owner or an `ADMIN_EMAILS` address.** Expected: skipped and labelled, never triaged and never answered. Pinned in E1, `tests/test_mail_guards.py`.
 4. **A Vietnamese sign-up mail in `auto` mode while `EMAIL_BOT_AUTO_LANGUAGES` is `en`.** Expected: drafted, not sent, and the run counts it as drafted. Pinned in E3, `tests/test_email_bot_delivery.py`.
 5. **A scheduler retry while the previous run is still executing.** Expected: the second request returns 200 with `status: already_running` and does nothing; a run older than 30 minutes with no `finished_at` is treated as dead. Pinned in E1, `tests/test_email_bot_endpoint.py`.
@@ -189,7 +189,8 @@ class RunSummary:
     aborted_reason: str | None
 
 class EmailBotPipeline:
-    def run(self) -> RunSummary: ...
+    def run(self) -> RunSummary: ...   # sync, runs in the threadpool; reaches the async
+                                       # BotService.chat() via anyio.from_thread.run
 ```
 
 ---
@@ -292,7 +293,7 @@ class EmailBotPipeline:
 
 - [ ] **Task E1.5: Triage package**
   - Create: `app/services/triage/__init__.py`, `protocol.py`, `policy.py`, `jev.py`, `litellm.py`, `shadow.py`; Modify: `pyproject.toml`, `uv.lock`
-  - Test: `tests/test_triage_policy.py` (table-driven: every category to its tier; money signal forces executive; asks-for-human forces admin; below-threshold forces admin; executive beats everything); `tests/test_triage_classifiers.py` (contract tests against a recorded Jev response and a recorded Gemini structured response committed under `tests/fixtures/triage_recorded/`; malformed responses raise rather than guess); `tests/test_triage_shadow.py` (decider's answer returned, both recorded, a shadow failure never affects the decision).
+  - Test: `tests/test_triage_policy.py` (table-driven: every category to its tier; money signal forces executive; `language == other` forces admin; asks-for-human forces admin; below-threshold forces admin; `automated` stays `skip` at low confidence and with asks-for-human; executive beats everything); `tests/test_triage_classifiers.py` (contract tests against a recorded Jev response and a recorded Gemini structured response committed under `tests/fixtures/triage_recorded/`; malformed responses raise rather than guess); `tests/test_triage_shadow.py` (decider's answer returned, both recorded, a shadow failure never affects the decision).
 
 - [ ] **Task E1.6: Notifier**
   - Create: `app/services/notifier.py`; Test: `tests/test_notifier.py`
@@ -304,18 +305,18 @@ class EmailBotPipeline:
 
 - [ ] **Task E1.8: BotService hardening**
   - Modify: `app/services/bot_service.py`; Test: `tests/test_bot_service_failure.py` extended
-  - Behaviour under test: `_build_context` returning empty raises `NoRelevantContext` before generation (the phase-0 carry-over); the refusal sentinel in the generated text raises `NoRelevantContext`; the email prompt contains every prohibition in the design and the sender-language instruction; `chat()` still returns the top similarity as `confidence`.
+  - Behaviour under test: `_build_context` returning empty raises `NoRelevantContext` before generation (the phase-0 carry-over); the refusal sentinel in the generated text raises `NoRelevantContext`; the email prompt contains every prohibition in the design and the sender-language instruction; `chat()` still returns the top similarity as `confidence`; the `Processing chat message` log line is removed, so no record `chat()` logs contains the message text.
 
 - [ ] **Task E1.9: Delivery gate, settings loader and pipeline**
   - Create: `app/services/email_bot/delivery.py`, `app/services/email_bot/settings.py`, `app/services/email_bot/pipeline.py`
-  - Test: `tests/test_email_bot_delivery.py` (`parse_mode` maps unknown to `off`; `off` yields no sink; `draft` and `auto` both yield `DraftSink` in this phase); `tests/test_email_bot_pipeline.py` with fakes for transport, classifier, bot service and notifier: guard skip; duplicate no-op; human-replied thread paused and the bot's own draft deleted; executive category drafts the holding message and escalates even at high similarity; FAQ below threshold escalates; sign-up drafts the template; `bot_reply_count` cap; per-run cap leaves the rest unlabelled; circuit breaker after three infrastructure failures; the marker label is applied last; Review Focus item 2.
+  - Test: `tests/test_email_bot_delivery.py` (`parse_mode` maps unknown to `off`; `off` yields no sink; `draft` and `auto` both yield `DraftSink` in this phase); `tests/test_email_bot_pipeline.py` with fakes for transport, classifier, bot service and notifier, run through `anyio.to_thread.run_sync` so the `anyio.from_thread.run` bridge to the async `chat()` is exercised: guard skip; duplicate no-op; human-replied thread paused and the bot's own draft deleted; executive category drafts the holding message and escalates even at high similarity; FAQ below threshold escalates; sign-up drafts the template; `bot_reply_count` cap; per-run cap leaves the rest unlabelled; circuit breaker after three infrastructure failures; the marker label is applied last; Review Focus item 2.
 
 - [ ] **Task E1.10: Endpoint, scheduler job, dashboard card**
   - Create: `app/routers/admin/email_bot.py`; Modify: `app/routers/admin/__init__.py`, `app/services/cron_sync_service.py`, `scripts/create-or-update-scheduler-jobs.sh`, `templates/web/admin/dashboard.html`
-  - Test: `tests/test_email_bot_endpoint.py` (`EMAIL_BOT_ENABLED` false returns `disabled` and constructs nothing; `off` returns `off`; run lock, Review Focus item 5; `sync-knowledge-base` calls `BotService.sync_documents` with the configured doc id; resume endpoint); `tests/test_cron_sync_service.py` extended for the new mapping; `tests/test_admin_dashboard_template.py` extended for the card.
+  - Test: `tests/test_email_bot_endpoint.py` (`EMAIL_BOT_ENABLED` false returns `disabled` and constructs nothing; `off` returns `off`; run lock, Review Focus item 5; `sync-knowledge-base` is an `async def` route that awaits `BotService.sync_documents` with the configured doc id; resume endpoint); `tests/test_cron_sync_service.py` extended for the new mapping; `tests/test_admin_dashboard_template.py` extended for the card.
 
 - [ ] **Task E1.11: Privacy and the rewritten FAQ test**
-  - Create: `tests/test_email_bot_privacy.py` (runs the pipeline over the fixtures with `caplog` and asserts no `@` and no fixture body substring in any log record or in any exception message raised); Rewrite and un-skip: `tests/test_faq_handling.py` (drives the pipeline end to end with fixture mails through fakes: sign-up drafted, FAQ drafted, executive escalated, automated skipped, both languages).
+  - Create: `tests/test_email_bot_privacy.py` (runs the pipeline over the fixtures with `caplog`, with the real `BotService.chat()` and only retrieval and generation mocked, and asserts no `@` and no fixture body substring in any log record or in any exception message raised); Rewrite and un-skip: `tests/test_faq_handling.py` (drives the pipeline end to end with fixture mails through fakes: sign-up drafted, FAQ drafted, executive escalated, automated skipped, both languages).
 
 - [ ] **Task E1.12: Knowledge base prerequisite**
   - Run `scripts/reembed_knowledge_base.py` against production once, then `POST /admin/email-bot/sync-knowledge-base`, and confirm `GET /health` reports documents indexed. Recorded in the runbook, not in code.
@@ -329,7 +330,7 @@ class EmailBotPipeline:
 **Acceptance criteria:**
 
 - On the throwaway inbox, every seeded mail carries `VH-Bot/Seen` and its outcome label after one poll; sign-up and FAQ mails have a draft inside their thread with correct `In-Reply-To`, `References` and RFC 3834 headers; executive mails have a holding-message draft, a forward in the owner's mailbox and a Discord post; automated mails are skipped with no draft.
-- `grep -rn "messages().send\|\.send(" app/services/channels/` finds nothing, and the transport test that fails on send is green.
+- A pipeline run in `auto` mode over every fixture, against a Gmail client mock that raises on any access to `users().messages().send`, drafts and escalates without error, and the transport test that fails on send is green.
 - Replying by hand from the throwaway inbox to a drafted thread, then polling again, pauses the thread and removes the bot's draft.
 - The full suite is green, `tests/test_faq_handling.py` is un-skipped, and coverage does not drop below the CI threshold.
 - Production runs in `draft` mode twice a day and the dashboard card shows each run.
@@ -420,7 +421,7 @@ class EmailBotPipeline:
 
 - [ ] **Task E3.3: Pipeline in auto**
   - Modify: `app/services/email_bot/pipeline.py`, `app/routers/admin/email_bot.py`, `templates/web/admin/dashboard.html`
-  - Test: `tests/test_email_bot_pipeline.py` extended (in `auto`: sign-up sent, FAQ above threshold sent, FAQ below threshold gets a sent holding message and an escalation, executive gets a sent holding message and an escalation, second inbound on a replied thread is silent, a send failure leaves the thread unpaused and unlabelled `Sent`).
+  - Test: `tests/test_email_bot_pipeline.py` extended (in `auto`: sign-up sent, FAQ above threshold sent, FAQ below threshold gets a sent holding message and an escalation, executive gets a sent holding message and an escalation, second inbound on a replied thread gets no second reply but is still forwarded and posted to Discord, `automated` at low confidence is skipped with no holding message, a send failure leaves the thread unpaused and unlabelled `Sent`).
 
 - [ ] **Task E3.4: Canary and loop test**
   - Modify: `docs/GMAIL_BOT_SETUP.md`
@@ -473,6 +474,7 @@ class EmailBotPipeline:
 - [ ] **Task E4.3: Revoked-grant alert and re-consent runbook**
   - Modify: `app/services/channels/gmail_transport.py`, `app/services/email_bot/pipeline.py`, `app/services/notifier.py`, `docs/GMAIL_BOT_SETUP.md`
   - Test: `tests/test_gmail_transport.py` extended (`invalid_grant` maps to `GmailAuthRevoked`; other refresh errors do not); `tests/test_email_bot_pipeline.py` extended (revocation flips the mode, writes the banner setting, notifies, and the run summary records the abort).
+  - Runbook: the re-consent section ends with a hand triage of `in:inbox -label:VH-Bot/Seen older_than:7d`, since mail left unlabelled beyond the listing window is never picked up by the bot.
 
 - [ ] **Task E4.4: Dashboard polish**
   - Modify: `app/routers/admin/email_bot.py`, `templates/web/admin/dashboard.html`
