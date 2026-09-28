@@ -302,10 +302,12 @@ class ConversationService:
         )
 
     def pending_drafts(self, limit: int = 50) -> list[Message]:
-        """Every draft the bot is still waiting on an answer about.
+        """The drafts the bot is still waiting on an answer about, least recently checked first.
 
-        Ordered oldest first, because a draft that has been pending for two
-        weeks is the one whose outcome the acceptance metric is missing.
+        Rotated by when each was last checked rather than ordered by age. A
+        draft the captain never touches stays pending indefinitely, and with a
+        fixed oldest-first window enough of those would crowd every newer draft
+        out for good, leaving the acceptance rate computed from old drafts only.
         """
         return (
             self.db.query(Message)
@@ -314,7 +316,11 @@ class ConversationService:
                 Message.gmail_draft_id.isnot(None),
                 Message.draft_outcome == DRAFT_PENDING,
             )
-            .order_by(Message.id)
+            .order_by(
+                Message.draft_checked_at.isnot(None),
+                Message.draft_checked_at,
+                Message.id,
+            )
             .limit(limit)
             .all()
         )
@@ -324,13 +330,22 @@ class ConversationService:
     ) -> Message:
         """Record what became of a draft.
 
-        ``sent_message_id`` is kept when the captain sent it, so the next run's
-        "never talk over a human" check can tell that message apart from a
-        reply he typed himself.
+        ``sent_message_id`` is kept only when the draft went out unchanged, so
+        the next run's "never talk over a human" check can tell the bot's words
+        apart from a reply the captain typed. An edited send is kept out on
+        purpose: it is indistinguishable from the captain discarding the draft
+        and writing their own, and either way a human has spoken in the thread.
         """
         row.draft_outcome = outcome
-        if sent_message_id:
+        if sent_message_id and outcome == DRAFT_SENT_UNCHANGED:
             row.gmail_message_id_out = sent_message_id
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def mark_draft_checked(self, row: Message) -> Message:
+        """Record that reconciliation looked at this draft, whatever it found."""
+        row.draft_checked_at = datetime.now(UTC)
         self.db.commit()
         self.db.refresh(row)
         return row

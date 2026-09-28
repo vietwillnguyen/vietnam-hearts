@@ -376,7 +376,10 @@ class TestTheJudge:
 
         client = MagicMock()
         client.models.generate_content.return_value = MagicMock(
-            text='{"mentions": {}, "grounded": true, "violations": []}'
+            text=(
+                '{"mentions": {"signup form link": true}, "grounded": true, '
+                '"violations": []}'
+            )
         )
         judge_answer(
             client,
@@ -392,6 +395,47 @@ class TestTheJudge:
         assert "acceptance" in prompt
         assert "How do I sign up?" in prompt
         assert "Fill in the form." in prompt
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            '{"grounded": true, "violations": []}',
+            '{"mentions": {}, "grounded": true, "violations": []}',
+            '{"mentions": {"class time": true}, "grounded": true, "violations": []}',
+        ],
+    )
+    def test_silence_on_a_required_fact_raises_rather_than_passing(self, raw):
+        from evals.judge import parse_verdict
+
+        with pytest.raises(ValueError):
+            parse_verdict(raw, required=("class time", "signup form link"))
+
+    def test_a_non_boolean_mention_raises(self):
+        from evals.judge import parse_verdict
+
+        with pytest.raises(ValueError):
+            parse_verdict(
+                '{"mentions": {"class time": "false"}, "grounded": true, '
+                '"violations": []}',
+                required=("class time",),
+            )
+
+    def test_judge_answer_holds_the_verdict_to_the_cases_facts(self):
+        from evals.judge import judge_answer
+
+        client = MagicMock()
+        client.models.generate_content.return_value = MagicMock(
+            text='{"grounded": true, "violations": []}'
+        )
+        with pytest.raises(ValueError):
+            judge_answer(
+                client,
+                question="When are classes?",
+                answer="Tuesdays.",
+                context="Classes are on Tuesdays and Thursdays.",
+                must_mention=("class days", "class time"),
+                must_not_answer=(),
+            )
 
 
 class TestThresholdSweeps:
@@ -487,6 +531,44 @@ class TestThresholdSweeps:
         assert rows[1]["wrong_answers"] == 0
         assert rows[1]["precision"] == 1.0
         assert rows[2]["answered"] == 1
+
+    def test_the_groundedness_run_feeds_the_answer_sweep(self, tmp_path):
+        # The sweep needs per-answer similarity and verdict; the counts alone
+        # cannot produce it.
+        import json
+
+        from evals.calibrate_thresholds import (
+            load_answer_similarities,
+            sweep_answer_threshold,
+        )
+        from evals.run_groundedness_eval import answers_payload
+
+        metrics = GroundednessMetrics()
+        metrics.record("a", True, similarity=0.9)
+        metrics.record("b", False, "ungrounded", similarity=0.4)
+        path = tmp_path / "answers.json"
+        path.write_text(json.dumps(answers_payload(metrics)))
+
+        similarities = load_answer_similarities(json.loads(path.read_text()))
+        assert similarities == [("a", 0.9, True), ("b", 0.4, False)]
+
+        rows = sweep_answer_threshold(similarities, thresholds=(0.0, 0.5))
+        assert rows[0]["wrong_answers"] == 1
+        assert rows[1]["wrong_answers"] == 0
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {},
+            {"answers": [{"id": "a", "passed": True}]},
+            {"answers": [{"id": "a", "similarity": 0.9, "passed": "yes"}]},
+        ],
+    )
+    def test_a_malformed_answers_file_raises(self, payload):
+        from evals.calibrate_thresholds import load_answer_similarities
+
+        with pytest.raises(ValueError):
+            load_answer_similarities(payload)
 
 
 class TestAgreementMetrics:

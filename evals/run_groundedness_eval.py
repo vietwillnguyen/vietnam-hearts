@@ -87,6 +87,7 @@ async def evaluate(bot_service, gemini_client, cases) -> GroundednessMetrics:
             case.id,
             verdict.passes,
             f"{verdict.why_not()} (similarity {confidence:.2f})",
+            similarity=confidence,
         )
 
     return metrics
@@ -123,11 +124,28 @@ def report(metrics: GroundednessMetrics, threshold: float) -> str:
     return "\n".join(lines)
 
 
+def answers_payload(metrics: GroundednessMetrics) -> dict[str, list[dict]]:
+    """Per-answer similarity and verdict, in the shape calibrate_thresholds reads."""
+    return {
+        "answers": [
+            {"id": case_id, "similarity": similarity, "passed": passed}
+            for case_id, similarity, passed in metrics.answers
+        ]
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--threshold", type=float, default=0.9)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--only", default=None, help="Comma-separated case ids.")
+    parser.add_argument(
+        "--answers-out",
+        type=Path,
+        default=None,
+        help="Write each judged answer's similarity and verdict here, for "
+        "calibrate_thresholds.py --answers.",
+    )
     args = parser.parse_args(argv)
 
     cases = answerable_cases(load_golden_set())
@@ -153,11 +171,15 @@ def main(argv: list[str] | None = None) -> int:
                     "correctness": metrics.correctness,
                     "ungrounded": metrics.ungrounded,
                     "failures": metrics.failures,
+                    "answers": answers_payload(metrics)["answers"],
                     "passes_gate": metrics.passes_gate(args.threshold),
                 },
                 indent=2,
             )
         )
+
+    if args.answers_out:
+        args.answers_out.write_text(json.dumps(answers_payload(metrics), indent=2))
 
     return 0 if metrics.passes_gate(args.threshold) else 1
 

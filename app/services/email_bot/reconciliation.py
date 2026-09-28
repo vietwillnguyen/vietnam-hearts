@@ -106,10 +106,11 @@ def reconcile_draft(
 
     ``thread_messages`` are ``RawMail``. Only messages *from* the inbox address
     that the bot did not send itself are candidates: anything else in the thread
-    is the sender writing back.
+    is the sender writing back. An unsent draft is not a candidate either: the
+    captain starting a reply of their own is not the bot's draft being sent.
     """
     from app.services.channels.mail_builder import extract_text
-    from app.services.channels.mail_guards import normalise_address
+    from app.services.channels.mail_guards import DRAFT_LABEL, normalise_address
 
     if draft_still_exists:
         return Reconciliation("pending")
@@ -119,6 +120,7 @@ def reconcile_draft(
         message
         for message in thread_messages
         if message.id not in bot_message_ids
+        and DRAFT_LABEL not in message.label_ids
         and normalise_address(message.header("from")) == inbox
     ]
 

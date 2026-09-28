@@ -146,9 +146,20 @@ class GroundednessMetrics:
     refused: int = 0
     failures: list[str] = field(default_factory=list)
     ungrounded: list[str] = field(default_factory=list)
+    # (case_id, top_similarity, passed) per judged answer: the input the
+    # ANSWER_THRESHOLD sweep needs, which the counts above cannot give it.
+    answers: list[tuple[str, float, bool]] = field(default_factory=list)
 
-    def record(self, case_id: str, is_grounded: bool, reason: str = "") -> None:
+    def record(
+        self,
+        case_id: str,
+        is_grounded: bool,
+        reason: str = "",
+        similarity: float | None = None,
+    ) -> None:
         self.judged += 1
+        if similarity is not None:
+            self.answers.append((case_id, similarity, is_grounded))
         if is_grounded:
             self.grounded += 1
         else:

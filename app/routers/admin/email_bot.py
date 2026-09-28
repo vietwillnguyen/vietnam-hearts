@@ -24,6 +24,7 @@ from app.models import Conversation, EmailBotRun
 from app.services.conversation_service import ConversationService
 from app.services.email_bot.delivery import DeliveryMode, parse_mode
 from app.services.email_bot.factory import EmailBotNotConfigured, build_pipeline
+from app.services.email_bot.gates import ACCEPTANCE_GATES
 from app.services.email_bot.pipeline import ALREADY_RUNNING
 from app.services.email_bot.settings import EmailBotSettings
 from app.utils.logging_config import get_api_logger
@@ -119,8 +120,9 @@ def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
     """The two numbers the evaluation gate is argued from.
 
     Draft acceptance is grouped by the answer path that produced the draft,
-    because the gate is stated per kind - 90 percent of sign-up drafts, 80
-    percent of FAQ drafts - so one aggregate would not answer it.
+    because the gate is stated per kind - ``ACCEPTANCE_GATES`` - so one
+    aggregate would not answer it. Each kind carries its gate, or None where
+    the design sets none, so the card renders the table rather than a copy.
 
     Both are computed from the audit rows, so this endpoint is cheap enough
     for the dashboard to poll and carries nothing a row does not already hold.
@@ -140,9 +142,11 @@ def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
                 # and "not measured yet" would otherwise look the same, and the
                 # gate needs two weeks of the latter before it means anything.
                 "rate": _acceptance_rate(outcomes),
+                "gate": ACCEPTANCE_GATES.get(kind),
             }
             for kind, outcomes in acceptance.items()
         },
+        "acceptance_gates": dict(ACCEPTANCE_GATES),
         "shadow_agreement": service.shadow_agreement(),
     }
 

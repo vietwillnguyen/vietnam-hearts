@@ -281,7 +281,7 @@
                                     </div>
 
                                     <h6 class="text-muted mt-3">Draft acceptance</h6>
-                                    <p class="text-muted small mb-1">How often a draft was sent unchanged. This is what decides whether replies are ever sent automatically: the gate is 90% for sign-up drafts and 80% for FAQ drafts, over two weeks.</p>
+                                    <p class="text-muted small mb-1">How often a draft was sent unchanged. This is what decides whether replies are ever sent automatically: the gate is {% for kind, gate in acceptance_gates.items() %}{{ "%.0f"|format(gate * 100) }}% for {{ {"signup": "sign-up", "faq": "FAQ"}.get(kind, kind) }} drafts{% if not loop.last %} and {% endif %}{% endfor %}, over two weeks.</p>
                                     <div id="inbox-bot-acceptance">
                                         <span class="text-muted small">Loading...</span>
                                     </div>
@@ -3187,9 +3187,6 @@ async function resumeInboxConversation(conversationId) {
     }
 }
 
-// The gate per answer path, so the card says the same thing the design does.
-const ACCEPTANCE_GATES = { signup: 0.9, faq: 0.8 };
-
 function renderAcceptance(acceptance) {
     const target = document.getElementById('inbox-bot-acceptance');
     if (!target) {
@@ -3202,7 +3199,7 @@ function renderAcceptance(acceptance) {
     }
     target.innerHTML = kinds.map((kind) => {
         const row = acceptance[kind] || {};
-        const gate = ACCEPTANCE_GATES[kind];
+        const gate = typeof row.gate === 'number' ? row.gate : undefined;
         // null means nothing has resolved yet, which is different from 0% and
         // has to read differently or two weeks of no data looks like failure.
         if (row.rate === null || row.rate === undefined) {

@@ -298,6 +298,7 @@ class EmailBotPipeline:
                 )
 
     def _reconcile_one(self, row: Any) -> None:
+        self.conversations.mark_draft_checked(row)
         still_there = self.adapter.get_draft(row.gmail_draft_id) is not None
         conversation = row.conversation
 
@@ -861,10 +862,11 @@ class EmailBotPipeline:
     def _finish(self, message: IncomingMessage) -> None:
         """Mark this mail handled, so the next run does not pick it up again.
 
-        Best-effort: a failure here means the mail is retried, which costs a
-        duplicate forward at worst. Failing the message instead would be the
-        wrong trade, because everything that matters has already happened by
-        the time this is called.
+        Best-effort: by the time this is called the forward, draft or skip has
+        already happened, so failing the message instead would be the wrong
+        trade. A failure leaves ``handled_at`` NULL on a mail that was in fact
+        handled; the marker label applied next keeps it out of later listings,
+        so it is not retried.
         """
         row = getattr(self, "_inbound_row", None)
         if row is None:
@@ -873,7 +875,7 @@ class EmailBotPipeline:
             self.conversations.mark_handled(row)
         except Exception:
             logger.error(
-                "Could not mark %s handled; it will be retried",
+                "Could not mark %s handled; its action already happened",
                 message.provider_message_id,
                 exc_info=True,
             )

@@ -31,7 +31,8 @@ Reply ONLY with valid JSON (no markdown):
 }}
 
 For "mentions": for each required fact listed below, true if the reply conveys
-it and false otherwise. Judge the meaning, not the wording.
+it and false otherwise. Judge the meaning, not the wording. Key each entry by
+the fact exactly as it is written below, and include every one of them.
 
 For "grounded": true only if every factual claim in the reply is supported by
 the context. A reply that adds a plausible detail the context does not contain
@@ -67,7 +68,7 @@ class Verdict:
 
     @property
     def mentions_everything(self) -> bool:
-        return all(self.mentioned.values()) if self.mentioned else True
+        return all(self.mentioned.values())
 
     @property
     def passes(self) -> bool:
@@ -98,12 +99,13 @@ def strip_fences(text: str) -> str:
     return re.sub(r"\s*```$", "", stripped)
 
 
-def parse_verdict(raw: str) -> Verdict:
+def parse_verdict(raw: str, required: tuple[str, ...] = ()) -> Verdict:
     """Parse the judge's JSON, or raise.
 
     Raising rather than defaulting to a pass: a judge whose output could not be
     read has said nothing, and counting that as grounded is how a bad number
-    becomes a good one.
+    becomes a good one. The same goes for a required fact the judge did not
+    rule on: silence about it is not a statement that the reply conveyed it.
     """
     payload = json.loads(strip_fences(raw))
     if not isinstance(payload, dict):
@@ -112,6 +114,14 @@ def parse_verdict(raw: str) -> Verdict:
     mentions = payload.get("mentions") or {}
     if not isinstance(mentions, dict):
         raise ValueError("judge returned a non-object 'mentions'")
+    if any(not isinstance(seen, bool) for seen in mentions.values()):
+        raise ValueError("judge returned a non-boolean mention")
+
+    missing = [fact for fact in required if fact not in mentions]
+    if missing:
+        raise ValueError(f"judge did not rule on {len(missing)} required fact(s)")
+    if required:
+        mentions = {fact: mentions[fact] for fact in required}
 
     grounded = payload.get("grounded")
     if not isinstance(grounded, bool):
@@ -123,7 +133,7 @@ def parse_verdict(raw: str) -> Verdict:
 
     return Verdict(
         grounded=grounded,
-        mentioned={str(name): bool(seen) for name, seen in mentions.items()},
+        mentioned={str(name): seen for name, seen in mentions.items()},
         violations=tuple(str(item) for item in violations),
         reasoning=str(payload.get("reasoning", "")),
     )
@@ -148,4 +158,6 @@ def judge_answer(
         answer=answer,
     )
     response = gemini_client.models.generate_content(model=model, contents=prompt)
-    return parse_verdict((getattr(response, "text", "") or "").strip())
+    return parse_verdict(
+        (getattr(response, "text", "") or "").strip(), required=must_mention
+    )

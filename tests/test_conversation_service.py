@@ -435,6 +435,29 @@ class TestDraftAcceptance:
         assert service.draft_acceptance() == {}
 
 
+class TestPendingDraftRotation:
+    def test_a_checked_draft_goes_to_the_back_of_the_queue(self, service):
+        # Drafts nobody touches stay pending indefinitely. Taken oldest first
+        # they would fill every batch and newer drafts would never be settled.
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        for index in range(3):
+            service.record_outbound(
+                conversation,
+                text="reply",
+                action=ACTION_DRAFTED,
+                language="en",
+                gmail_draft_id=f"draft-{index}",
+            )
+
+        first = service.pending_drafts(limit=2)
+        assert [row.gmail_draft_id for row in first] == ["draft-0", "draft-1"]
+        for row in first:
+            service.mark_draft_checked(row)
+
+        second = service.pending_drafts(limit=2)
+        assert [row.gmail_draft_id for row in second] == ["draft-2", "draft-0"]
+
+
 class TestPausedActionIsAudited:
     def test_a_manual_pause_records_an_action_row(self, service):
         conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")

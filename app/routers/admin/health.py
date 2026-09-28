@@ -66,6 +66,7 @@ async def admin_dashboard(
         ]
 
         from app.config import APPLICATION_VERSION
+        from app.services.email_bot.gates import ACCEPTANCE_GATES
 
         return templates.TemplateResponse(
             request,
@@ -77,6 +78,7 @@ async def admin_dashboard(
                 "emails": email_data,
                 "settings": settings,
                 "version": APPLICATION_VERSION,
+                "acceptance_gates": dict(ACCEPTANCE_GATES),
             },
         )
     except Exception as e:

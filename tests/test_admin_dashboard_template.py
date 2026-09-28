@@ -223,9 +223,10 @@ class TestPollInboxCronField:
 class TestAcceptanceAndAgreementOnTheCard:
     """The card says the same thing the design's gate does.
 
-    The two thresholds are rendered from a table in the page rather than
-    written into the prose, so the card and the design cannot drift into
-    stating different gates.
+    The gates come from one table, ``ACCEPTANCE_GATES``, which the card's
+    prose and the metrics endpoint both render, and which is held to the
+    design's Evaluation record here, so the card and the design cannot drift
+    into stating different gates.
     """
 
     def test_both_sections_are_present(self, admin_client, test_db):
@@ -237,11 +238,39 @@ class TestAcceptanceAndAgreementOnTheCard:
         html = admin_client.get("/admin/dashboard").text
         assert "/admin/email-bot/metrics" in html
 
-    def test_the_gates_match_the_design(self, admin_client, test_db):
+    def test_the_gate_table_matches_the_design(self):
+        from pathlib import Path
+
+        from app.services.email_bot.gates import ACCEPTANCE_GATES
+
+        design = (
+            Path(__file__).resolve().parents[1]
+            / "docs/superpowers/specs/2026-09-29-email-channel-design.md"
+        )
+        record = design.read_text().split("## Evaluation record", 1)[1]
+        rows = {
+            cells[0]: cells[2]
+            for line in record.splitlines()
+            if line.startswith("|")
+            and len(cells := [cell.strip() for cell in line.strip("|").split("|")]) >= 3
+        }
+
+        def gate(measurement: str) -> float:
+            found = re.fullmatch(r"at least (\d+) percent", rows[measurement])
+            assert found, rows[measurement]
+            return int(found.group(1)) / 100
+
+        assert {
+            "signup": gate("Sign-up drafts sent unchanged"),
+            "faq": gate("FAQ drafts sent unchanged"),
+        } == dict(ACCEPTANCE_GATES)
+
+    def test_the_prose_renders_the_gate_table(self, admin_client, test_db, monkeypatch):
+        from app.services.email_bot import gates
+
+        monkeypatch.setattr(gates, "ACCEPTANCE_GATES", {"signup": 0.75, "faq": 0.6})
         html = admin_client.get("/admin/dashboard").text
-        assert "ACCEPTANCE_GATES" in html
-        assert "signup: 0.9" in html
-        assert "faq: 0.8" in html
+        assert "the gate is 75% for sign-up drafts and 60% for FAQ drafts" in html
 
     def test_the_prose_states_what_the_measurement_is_for(self, admin_client, test_db):
         # An operator looking at this number has to know it is the thing that

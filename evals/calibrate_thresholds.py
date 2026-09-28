@@ -112,6 +112,30 @@ def sweep_answer_threshold(
     return rows
 
 
+def load_answer_similarities(payload: dict) -> list[tuple[str, float, bool]]:
+    """The sweep's input, from run_groundedness_eval.py --answers-out.
+
+    Raises on a malformed entry rather than skipping it: a sweep over a
+    silently shortened list would report a precision nobody measured.
+    """
+    answers = payload.get("answers")
+    if not isinstance(answers, list):
+        raise ValueError("expected an 'answers' list from run_groundedness_eval.py")
+
+    similarities: list[tuple[str, float, bool]] = []
+    for entry in answers:
+        if not isinstance(entry, dict):
+            raise ValueError("every answer must be an object")
+        similarity = entry.get("similarity")
+        passed = entry.get("passed")
+        if isinstance(similarity, bool) or not isinstance(similarity, int | float):
+            raise ValueError(f"answer {entry.get('id')!r} has no numeric similarity")
+        if not isinstance(passed, bool):
+            raise ValueError(f"answer {entry.get('id')!r} has no boolean verdict")
+        similarities.append((str(entry.get("id")), float(similarity), passed))
+    return similarities
+
+
 def report_triage(rows: list[dict[str, float]]) -> str:
     table = format_table(
         [
@@ -159,6 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--classifier", default="jev", choices=["jev", "litellm"])
     parser.add_argument("--model", default=None)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--answers",
+        type=Path,
+        default=None,
+        help="The file run_groundedness_eval.py --answers-out wrote; adds the "
+        "ANSWER_THRESHOLD sweep.",
+    )
     args = parser.parse_args(argv)
 
     from evals.run_triage_eval import build_classifier
@@ -175,14 +206,25 @@ def main(argv: list[str] | None = None) -> int:
         for error in errors:
             print(f"  - {error}")
 
-    print(
-        "\nANSWER_THRESHOLD needs the judged similarities from "
-        "run_groundedness_eval.py; run that and pass its JSON to "
-        "sweep_answer_threshold()."
-    )
+    answer_rows: list[dict[str, float]] = []
+    if args.answers:
+        similarities = load_answer_similarities(json.loads(args.answers.read_text()))
+        answer_rows = sweep_answer_threshold(similarities)
+        print("\n" + report_answer(answer_rows))
+    else:
+        print(
+            "\nANSWER_THRESHOLD needs the judged similarities: run "
+            "run_groundedness_eval.py --answers-out answers.json and pass "
+            "--answers answers.json here."
+        )
 
     if args.json:
-        print(json.dumps({"triage_sweep": rows, "errors": errors}, indent=2))
+        print(
+            json.dumps(
+                {"triage_sweep": rows, "answer_sweep": answer_rows, "errors": errors},
+                indent=2,
+            )
+        )
     return 0
 
 

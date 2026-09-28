@@ -282,6 +282,10 @@ class Message(Base):
     gmail_message_id_out = Column(String, nullable=True)
     gmail_draft_id = Column(String, nullable=True)
     draft_outcome = Column(String, nullable=True)
+    # When reconciliation last looked at this draft. Pending drafts are
+    # checked least recently first, so a pile of drafts nobody touches cannot
+    # crowd newer ones out of every run.
+    draft_checked_at = Column(DateTime, nullable=True)
 
     # When this inbound mail finished being handled: answered, escalated,
     # skipped or paused. NULL means the pipeline started on it and did not get

@@ -29,14 +29,16 @@ DRAFTED = (
 )
 
 
-def sent_from_inbox(text: str, message_id: str = "sent-1") -> RawMail:
+def sent_from_inbox(
+    text: str, message_id: str = "sent-1", label_ids: tuple[str, ...] = ("SENT",)
+) -> RawMail:
     return RawMail.from_resource(
         payloads.message(
             message_id=message_id,
             from_address=f"Vietnam Hearts <{payloads.TEST_INBOX}>",
             to_address=payloads.TEST_SENDER,
             text=text,
-            label_ids=("SENT",),
+            label_ids=label_ids,
         )
     )
 
@@ -113,6 +115,16 @@ class TestOnlyTheInboxCounts:
         )
         assert result.outcome == "sent_edited"
         assert result.sent_message_id == "sent-2"
+
+    def test_an_unsent_draft_from_the_inbox_is_not_a_send(self):
+        # The captain discarded the bot's draft and started a reply of their
+        # own, which Gmail autosaves into the thread as a DRAFT from the inbox.
+        own_draft = sent_from_inbox(
+            "Let me check and come back to you.", "captain-draft", ("DRAFT",)
+        )
+        result = reconcile(thread_messages=[inbound(), own_draft])
+        assert result.outcome == "deleted"
+        assert result.sent_message_id is None
 
     def test_a_display_name_does_not_prevent_the_match(self):
         result = reconcile(thread_messages=[sent_from_inbox(DRAFTED)])
@@ -325,6 +337,7 @@ class TestThePipelineReconcilesEachRun:
         test_db.refresh(row)
         assert row.draft_outcome == "pending"
         assert summary.reconciled == 0
+        assert row.draft_checked_at is not None
 
     def test_an_unreadable_thread_leaves_the_outcome_unknown(self, test_db):
         # The important negative: guessing would corrupt the metric the gate
@@ -385,3 +398,26 @@ class TestThePipelineReconcilesEachRun:
 
         # A busy run must not be the one that skips the measurement.
         assert order == ["reconcile", "list"]
+
+    def test_an_edited_send_is_not_recorded_as_the_bots_own(self, test_db):
+        # Indistinguishable from the captain discarding the draft and writing
+        # their own reply. Recording it as a bot id would hide that human from
+        # the next run's "never talk over a human" check.
+        from app.services.channels.mail_guards import human_replied
+        from tests.fixtures.email_bot import FakeTransport
+
+        captain = sent_from_inbox("Hi, I will answer this one myself.", "captain-1")
+        transport = FakeTransport(
+            mails=[], threads={"18f2a1b4c5d6e7f0": [captain.payload]}
+        )
+        transport.get_draft = lambda draft_id: None
+        service, conversation, row = self._drafted(test_db, transport)
+
+        self._run(self._pipeline(test_db, transport))
+
+        test_db.refresh(row)
+        assert row.draft_outcome == "sent_edited"
+        assert row.gmail_message_id_out is None
+        assert human_replied(
+            [captain], payloads.TEST_INBOX, service.bot_sent_message_ids(conversation)
+        )

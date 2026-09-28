@@ -487,6 +487,19 @@ class TestMetricsEndpoint:
         assert acceptance["signup"]["resolved"] == 10
         assert acceptance["faq"]["rate"] == 1.0
 
+    def test_each_kind_carries_its_gate_from_the_table(self, admin_client, test_db):
+        from app.services.email_bot.gates import ACCEPTANCE_GATES
+
+        self._drafted(test_db, "signup", "sent_unchanged", 0)
+        self._drafted(test_db, "donation", "deleted", 0)
+
+        body = admin_client.get("/admin/email-bot/metrics").json()
+
+        assert body["acceptance_gates"] == dict(ACCEPTANCE_GATES)
+        assert body["draft_acceptance"]["signup"]["gate"] == ACCEPTANCE_GATES["signup"]
+        # No gate is stated for this kind, and the card must not invent one.
+        assert body["draft_acceptance"]["donation"]["gate"] is None
+
     def test_an_unresolved_kind_reports_no_rate_rather_than_zero(
         self, admin_client, test_db
     ):

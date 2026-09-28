@@ -28,10 +28,11 @@ uv run python evals/run_triage_eval.py --classifier jev
 uv run python evals/run_triage_eval.py --classifier litellm
 
 # Are the answers grounded? Needs the knowledge base populated.
-uv run python evals/run_groundedness_eval.py
+# --answers-out keeps each answer's similarity and verdict for the sweep below.
+uv run python evals/run_groundedness_eval.py --answers-out answers.json
 
 # What should the thresholds be?
-uv run python evals/calibrate_thresholds.py --classifier jev
+uv run python evals/calibrate_thresholds.py --classifier jev --answers answers.json
 
 # What did the two classifiers disagree about on real mail?
 uv run python evals/shadow_report.py --since 2026-09-15
