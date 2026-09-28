@@ -79,8 +79,9 @@ def build(
     threads=None,
     sinks=None,
     notifier=None,
+    transport_class=FakeTransport,
 ):
-    transport = FakeTransport(mails=mails, threads=threads)
+    transport = transport_class(mails=mails, threads=threads)
     adapter = GmailAdapter(transport)
     pipeline = EmailBotPipeline(
         db=db,
@@ -336,6 +337,129 @@ class TestNeverTalkOverAHuman:
 
         assert LABEL_PAUSED not in transport.labels_for("18f2a1b4c5d6e8ab")
         assert summary.forwarded == 1
+
+    def test_the_bots_own_pending_draft_is_not_mistaken_for_a_human(self, test_db):
+        # threads.get returns unsent drafts as thread messages From the inbox,
+        # and the draft's message id is never recorded against the bot.
+        first = load_gmail("faq_en.json")
+        second = load_gmail("second_inbound.json")
+        run(
+            build(
+                test_db,
+                [first],
+                classifier=FakeClassifier(
+                    default=signals(category="faq", confidence=0.9)
+                ),
+            )[0]
+        )
+        pending_draft = payloads.message(
+            message_id="r-bot-draft",
+            thread_id=first["threadId"],
+            from_address=payloads.TEST_INBOX,
+            to_address=payloads.TEST_SENDER,
+            label_ids=("DRAFT",),
+        )
+
+        notifier = RecordingNotifier()
+        pipeline, transport = build(
+            test_db,
+            [second],
+            classifier=FakeClassifier(default=signals(category="faq", confidence=0.9)),
+            threads={first["threadId"]: [first, pending_draft, second]},
+            notifier=notifier,
+        )
+        summary = run(pipeline)
+
+        assert LABEL_PAUSED not in transport.labels_for(second["id"])
+        assert transport.deleted_drafts == []
+        assert summary.forwarded == 1
+        assert len(notifier.events) == 1
+
+
+class DraftFailingTransport(FakeTransport):
+    def create_draft(self, thread_id, mime):
+        raise RuntimeError("drafts.create quota exceeded")
+
+
+class TestADraftFailureNeverLosesTheMail:
+    """The inbound row is committed first, so the next run would dedupe it."""
+
+    def test_an_escalation_is_forwarded_when_the_holding_draft_fails(self, test_db):
+        notifier = RecordingNotifier()
+        pipeline, transport = build(
+            test_db,
+            [load_gmail("safeguarding_vi.json")],
+            classifier=FakeClassifier(
+                default=signals(
+                    category="safeguarding_legal", language="vi", confidence=0.9
+                )
+            ),
+            notifier=notifier,
+            transport_class=DraftFailingTransport,
+        )
+        summary = run(pipeline)
+
+        assert notifier.categories == ["safeguarding_legal"]
+        assert summary.forwarded == 1
+        assert summary.drafted == 0
+        assert summary.errors == 1
+        labels = transport.labels_for("18f2a1b4c5d6e878")
+        assert LABEL_ESCALATED in labels
+        assert LABEL_DRAFTED not in labels
+        assert labels[-1] == LABEL_SEEN
+        conversation = ConversationService(test_db).get_or_create(
+            "email", "18f2a1b4c5d6e878", "unused"
+        )
+        assert conversation.status == STATUS_PAUSED_HANDOFF
+
+    @pytest.mark.parametrize(
+        "fixture,category",
+        [("faq_en.json", "faq"), ("signup_en.json", "signup")],
+    )
+    def test_an_answer_that_cannot_be_drafted_goes_to_a_person(
+        self, test_db, fixture, category
+    ):
+        notifier = RecordingNotifier()
+        mail = load_gmail(fixture)
+        pipeline, transport = build(
+            test_db,
+            [mail],
+            classifier=FakeClassifier(
+                default=signals(category=category, confidence=0.9)
+            ),
+            bot_service=FakeBotService(
+                {"response": "A confident answer.", "confidence": 0.9}
+            ),
+            notifier=notifier,
+            transport_class=DraftFailingTransport,
+        )
+        summary = run(pipeline)
+
+        assert len(notifier.events) == 1
+        assert notifier.events[0].decision.tier == "needs_admin"
+        assert summary.errors == 1
+        assert outbound(test_db) == []
+        labels = transport.labels_for(mail["id"])
+        assert LABEL_ESCALATED in labels
+        assert labels[-1] == LABEL_SEEN
+
+    def test_an_answer_outage_that_trips_the_breaker_still_escalates(self, test_db):
+        mails = [
+            payloads.message(message_id=f"m-{index}", thread_id=f"t-{index}")
+            for index in range(CIRCUIT_BREAKER_THRESHOLD)
+        ]
+        notifier = RecordingNotifier()
+        pipeline, _ = build(
+            test_db,
+            mails,
+            classifier=FakeClassifier(default=signals(category="faq", confidence=0.9)),
+            bot_service=FakeBotService(error=GenerationUnavailable("quota")),
+            notifier=notifier,
+        )
+        summary = run(pipeline)
+
+        assert "consecutive" in summary.aborted_reason
+        assert len(notifier.events) == CIRCUIT_BREAKER_THRESHOLD
 
 
 class TestSignupAnswer:

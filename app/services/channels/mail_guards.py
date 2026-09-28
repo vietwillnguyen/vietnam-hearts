@@ -34,6 +34,8 @@ BULK_GMAIL_LABELS = frozenset(
     }
 )
 
+DRAFT_LABEL = "DRAFT"
+
 # RFC 3834 section 5: a responder must not reply to anything whose
 # Auto-Submitted is other than "no". RFC 2076 Precedence and the List-*
 # headers cover mailing lists, and X-Auto-Response-Suppress is Microsoft's
@@ -169,17 +171,22 @@ def human_replied(
     bot's own drafts count as a human reply, which is the intended reading:
     once he has touched the thread it is his, and the bot must not add to it.
 
+    An unsent draft is not a reply. ``threads.get`` returns drafts as thread
+    messages From the inbox, the bot's own pending draft included, and that
+    draft's message id is never recorded; without skipping ``DRAFT`` a
+    follow-up would read the bot's own draft as a person having answered.
+
     Fails closed on an unknown inbox address: with nothing to compare against,
     no message can be attributed to the bot, so the caller would rather pause
     a thread it could still have acted on than reply over somebody.
     """
     inbox = normalise_address(inbox_address)
     if not inbox:
-        return False
+        return True
 
     sent_by_bot = bot_message_ids or set()
     for raw in thread:
-        if raw.id in sent_by_bot:
+        if raw.id in sent_by_bot or DRAFT_LABEL in raw.label_ids:
             continue
         senders = {
             normalise_address(value)

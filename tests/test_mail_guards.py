@@ -153,11 +153,20 @@ class TestHumanReplied:
     def test_an_inbound_only_thread_has_no_human_reply(self):
         assert not human_replied([raw("faq_en.json")], payloads.TEST_INBOX, set())
 
-    def test_no_inbox_address_fails_closed_to_false(self):
+    def test_no_inbox_address_fails_closed_to_a_human_reply(self):
         # With nothing to compare against, no message can be attributed to the
-        # bot either, so claiming a human replied would pause every thread.
-        thread = load_gmail("thread_with_human_reply.json")["messages"]
-        assert not human_replied(self._thread(*thread), "", set())
+        # bot either, so the thread is paused rather than replied over.
+        assert human_replied([raw("faq_en.json")], "", set())
+        assert human_replied([raw("faq_en.json")], None, set())
+
+    def test_an_unsent_draft_from_the_inbox_is_not_a_reply(self):
+        draft = payloads.message(
+            message_id="r-draft",
+            from_address=payloads.TEST_INBOX,
+            label_ids=("DRAFT",),
+        )
+        thread = self._thread(load_gmail("faq_en.json"), draft)
+        assert not human_replied(thread, payloads.TEST_INBOX, set())
 
     def test_a_multi_recipient_from_header_still_matches(self):
         resource = payloads.message(

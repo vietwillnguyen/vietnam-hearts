@@ -434,7 +434,7 @@ class EmailBotPipeline:
                     reason_override="the sign-up template is not configured",
                 )
                 return
-            self._deliver_reply(
+            self._reply_or_escalate(
                 conversation, message, decision, text=text, kind="signup"
             )
             return
@@ -478,13 +478,13 @@ class EmailBotPipeline:
             )
             return
         except (EmbeddingsUnavailable, GenerationUnavailable) as exc:
-            self._note_failure(f"answering unavailable: {type(exc).__name__}")
             self._escalate(
                 conversation,
                 message,
                 decision.with_tier("needs_admin"),
                 reason_override="the answer service is unavailable",
             )
+            self._note_failure(f"answering unavailable: {type(exc).__name__}")
             return
 
         confidence = float(answer.get("confidence") or 0.0)
@@ -511,7 +511,7 @@ class EmailBotPipeline:
             )
             return
 
-        self._deliver_reply(
+        self._reply_or_escalate(
             conversation,
             message,
             decision,
@@ -529,28 +529,24 @@ class EmailBotPipeline:
         message: IncomingMessage,
         decision: TriageDecision,
         reason_override: str | None = None,
+        offer_holding: bool = True,
     ) -> None:
-        """Label, forward, post, pause - and give the sender the holding message.
+        """Forward, post, pause, label - and give the sender the holding message.
 
         The first four happen in every mode and whether or not the sender gets
         anything, because knowing about a safeguarding mail is not something a
         delivery switch should be able to turn off. Only the fifth is gated: a
         thread that already has its one bot reply gets no second one.
+
+        The forward goes out before the holding message is attempted, and a
+        holding message that cannot be drafted does not stop the rest. The
+        inbound row is already committed, so anything that raised here would
+        leave a mail the next run dedupes as done without a person ever
+        having seen it.
         """
         reason = reason_override or escalation_reason(
             decision, self.settings.triage_confidence_threshold
         )
-
-        delivered: DeliveryResult | None = None
-        if self.conversations.can_bot_reply(conversation):
-            delivered = self._deliver_reply(
-                conversation,
-                message,
-                decision,
-                text=render_holding_message(decision.language),
-                kind="holding",
-                label_after=False,
-            )
 
         summary = summarise_for_escalation(
             message.text, decision.language, self.gemini_client
@@ -566,6 +562,26 @@ class EmailBotPipeline:
         )
         self._summary.forwarded += 1
 
+        delivered: DeliveryResult | None = None
+        holding_error: Exception | None = None
+        if offer_holding and self.conversations.can_bot_reply(conversation):
+            try:
+                delivered = self._deliver_reply(
+                    conversation,
+                    message,
+                    decision,
+                    text=render_holding_message(decision.language),
+                    kind="holding",
+                    label_after=False,
+                )
+            except Exception as exc:
+                holding_error = exc
+                logger.error(
+                    "Holding message for %s failed: %s",
+                    message.provider_message_id,
+                    type(exc).__name__,
+                )
+
         self.conversations.pause(conversation, decision.tier, reason)
 
         labels = [LABEL_ESCALATED, category_label(decision.category)]
@@ -573,6 +589,41 @@ class EmailBotPipeline:
             labels.append(LABEL_SENT if delivered.action == "sent" else LABEL_DRAFTED)
         labels.append(LABEL_SEEN)
         self._label(message, labels)
+
+        if holding_error is not None:
+            self._note_failure(
+                f"holding message failed: {type(holding_error).__name__}"
+            )
+
+    def _reply_or_escalate(
+        self,
+        conversation: Any,
+        message: IncomingMessage,
+        decision: TriageDecision,
+        **reply: Any,
+    ) -> None:
+        """Deliver an answer, or hand the mail to a person if delivery fails.
+
+        By now the inbound row is committed, so a delivery error that simply
+        propagated would leave the mail deduped as done on the next run with no
+        reply and nobody told. Escalating instead means a person answers it.
+        """
+        try:
+            self._deliver_reply(conversation, message, decision, **reply)
+        except Exception as exc:
+            logger.error(
+                "Reply to %s could not be delivered: %s",
+                message.provider_message_id,
+                type(exc).__name__,
+            )
+            self._escalate(
+                conversation,
+                message,
+                decision.with_tier("needs_admin"),
+                reason_override="the reply could not be delivered",
+                offer_holding=False,
+            )
+            self._note_failure(f"reply delivery failed: {type(exc).__name__}")
 
     # ------------------------------------------------------------- delivery
 
