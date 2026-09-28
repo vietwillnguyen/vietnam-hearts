@@ -1974,9 +1974,7 @@ class TestAutoMode:
         assert summary.forwarded == 1
         assert len(notifier.events) == 1
 
-    def test_a_send_failure_leaves_the_thread_unpaused_and_unlabelled_sent(
-        self, test_db
-    ):
+    def test_a_send_failure_is_escalated_and_left_unlabelled_sent(self, test_db):
         # No retry loop: the run records it and a person picks it up. Labelling
         # it Sent would claim something that did not happen.
         pipeline, transport, notifier = self._auto(
@@ -1991,6 +1989,33 @@ class TestAutoMode:
         assert LABEL_SENT not in transport.labels_for("18f2a1b4c5d6e7f0")
         # The mail still reaches a person rather than being lost.
         assert summary.forwarded == 1
+        assert notifier.events[0].reason == "the reply could not be delivered"
+        conversation = ConversationService(test_db).get_or_create(
+            "email", "18f2a1b4c5d6e7f0", "unused"
+        )
+        assert conversation.status == STATUS_PAUSED_HANDOFF
+
+    def test_a_send_whose_audit_row_fails_is_counted_and_reported_as_sent(
+        self, test_db, monkeypatch
+    ):
+        # The reply did go out. Telling the captain it did not would invite a
+        # second answer to the same person.
+        pipeline, transport, notifier = self._auto(
+            test_db, "signup_en.json", signals(category="signup", confidence=0.94)
+        )
+
+        def explode(*args, **kwargs):
+            raise RuntimeError("the commit failed")
+
+        monkeypatch.setattr(pipeline.conversations, "record_outbound", explode)
+        summary = run(pipeline)
+
+        assert len(transport.sent) == 1
+        assert summary.sent == 1
+        assert summary.forwarded == 1
+        assert (
+            notifier.events[0].reason == "the reply was sent but could not be recorded"
+        )
 
     def test_a_language_outside_the_auto_list_is_drafted_not_sent(self, test_db):
         """Review Focus item 4."""
@@ -2004,6 +2029,7 @@ class TestAutoMode:
 
         assert summary.sent == 0
         assert summary.drafted == 1
+        assert summary.capped == 0
         assert transport.sent == []
         assert LABEL_DRAFTED in transport.labels_for("18f2a1b4c5d6e801")
 
@@ -2023,6 +2049,7 @@ class TestAutoMode:
 
         assert summary.sent == 0
         assert summary.drafted == 1
+        assert summary.capped == 1
         assert transport.sent == []
 
     def test_the_sent_message_id_is_recorded(self, test_db):

@@ -13,6 +13,7 @@ one function, and a reply that fails any of them is drafted rather than dropped.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -120,6 +121,7 @@ def choose_sink(
     auto_languages: frozenset[str],
     sinks: dict[str, ReplySink],
     sender_key: str = "",
+    on_capped: Callable[[CapDecision], None] | None = None,
 ) -> ReplySink | None:
     """Which sink may deliver this reply, or None for "deliver nothing".
 
@@ -132,6 +134,10 @@ def choose_sink(
     and it means the sender gets nothing at all - while the pipeline still
     labels and still escalates, because knowing about a safeguarding mail is not
     something a delivery switch should be able to turn off.
+
+    ``on_capped`` is told only when a cap is what turned a send into a draft,
+    so a run can count held-back replies apart from drafts the language gate
+    or a missing send path produced.
     """
     if mode is DeliveryMode.OFF:
         return None
@@ -161,6 +167,8 @@ def choose_sink(
                 decision.cap,
                 decision.reason,
             )
+            if on_capped is not None:
+                on_capped(decision)
             return draft
 
     return send

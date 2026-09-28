@@ -305,6 +305,26 @@ class TestTheCapsGate:
             is draft
         )
 
+    def test_only_a_reached_cap_is_reported_as_capped(self, adapter):
+        # The language gate also drafts in auto mode, but reporting it as a cap
+        # would show caps being hit on days when none was.
+        from app.services.email_bot.caps import CapsState
+        from app.services.email_bot.delivery import SendSink
+
+        send = SendSink(adapter, CapsState(daily_cap=1, per_sender_cap=2, sent_today=1))
+        sinks = {"draft": DraftSink(adapter), "send": send}
+        capped = []
+
+        choose_sink(
+            DeliveryMode.AUTO, "vi", EN_ONLY, sinks, "hash-a", on_capped=capped.append
+        )
+        assert capped == []
+
+        choose_sink(
+            DeliveryMode.AUTO, "en", EN_ONLY, sinks, "hash-a", on_capped=capped.append
+        )
+        assert [decision.cap for decision in capped] == ["daily"]
+
     def test_off_never_reaches_the_caps_at_all(self, adapter):
         from app.services.email_bot.caps import CapsState
         from app.services.email_bot.delivery import SendSink

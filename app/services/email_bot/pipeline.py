@@ -57,6 +57,7 @@ from app.services.conversation_service import (
     ConversationService,
 )
 from app.services.email_bot.bridge import run_coroutine
+from app.services.email_bot.caps import CapDecision
 from app.services.email_bot.delivery import (
     DeliveryMode,
     DeliveryResult,
@@ -104,6 +105,10 @@ STALE_RUN_AFTER = timedelta(minutes=30)
 ALREADY_RUNNING = "already_running"
 
 CLASSIFIER_UNAVAILABLE = "unavailable"
+
+
+class UnrecordedSendError(Exception):
+    """A reply went out but its audit row could not be written."""
 
 
 @dataclass
@@ -277,7 +282,7 @@ class EmailBotPipeline:
         try:
             address = self.adapter.inbox_address
         except Exception as exc:
-            return "the Gmail grant could not be read: " f"{type(exc).__name__}"
+            return f"the Gmail grant could not be read: {type(exc).__name__}"
         if not address:
             return "the Gmail grant reports no inbox address"
         return None
@@ -755,7 +760,11 @@ class EmailBotPipeline:
                 conversation,
                 message,
                 decision.with_tier("needs_admin"),
-                reason_override="the reply could not be delivered",
+                reason_override=(
+                    "the reply was sent but could not be recorded"
+                    if isinstance(exc, UnrecordedSendError)
+                    else "the reply could not be delivered"
+                ),
                 offer_holding=False,
             )
             self._note_failure(f"reply delivery failed: {type(exc).__name__}")
@@ -780,6 +789,7 @@ class EmailBotPipeline:
             self.settings.auto_languages,
             self.sinks,
             message.sender_key,
+            on_capped=self._count_capped,
         )
         if sink is None:
             return None
@@ -813,7 +823,7 @@ class EmailBotPipeline:
                 sources=sources,
                 kind=kind,
             )
-        except Exception:
+        except Exception as exc:
             # The draft already exists in Gmail and only its audit row is
             # missing, which is the worst of both: ``outstanding_draft`` reads
             # the rows, so nothing can ever find that draft again, and
@@ -825,17 +835,18 @@ class EmailBotPipeline:
             # session that still needs one, and its own ``pause()`` commit
             # raises too, which would re-open the lost-mail path this guards.
             self._discard_undone_delivery(result)
+            if result.action == "sent":
+                self._summary.sent += 1
+                raise UnrecordedSendError(
+                    f"reply to {message.provider_message_id} was sent but not "
+                    f"recorded: {type(exc).__name__}"
+                ) from exc
             raise
 
         if result.action == "sent":
             self._summary.sent += 1
         else:
             self._summary.drafted += 1
-            if self.mode is DeliveryMode.AUTO:
-                # Drafted while the mode says send: a cap was reached or the
-                # language is not signed off. Counted separately so the
-                # dashboard does not read it as a quiet day.
-                self._summary.capped += 1
 
         if label_after:
             # Terminal only for the answer paths. A holding message inside an
@@ -848,6 +859,11 @@ class EmailBotPipeline:
             )
 
         return result
+
+    def _count_capped(self, _decision: CapDecision) -> None:
+        # Drafted while the mode says send because a cap was reached. Counted
+        # separately so the dashboard does not read it as a quiet day.
+        self._summary.capped += 1
 
     def _discard_undone_delivery(self, result: DeliveryResult) -> None:
         """Roll the session back and remove a draft that was never recorded.
