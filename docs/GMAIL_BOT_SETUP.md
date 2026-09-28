@@ -219,7 +219,72 @@ What is already known and does not depend on E4:
 
 ## Canary and loop test
 
-*Added in phase E3, alongside the send path they exist to gate.*
+Both happen before production ever sends, in this order. The loop test is the
+cheaper and the more important of the two: it is the one that proves two
+machines cannot end up talking to each other.
+
+### The loop test, on the throwaway accounts
+
+Never on the real inbox.
+
+1. On the **throwaway sender**, turn on Gmail's vacation responder ("Vacation
+   responder" under Settings > General), set to reply to everyone.
+2. Seed exactly one sign-up mail from that account:
+
+   ```bash
+   uv run python scripts/seed_test_inbox.py        --corpus tests/fixtures/sample_corpus.yaml        --to <throwaway-inbox>@gmail.com        --from-address <throwaway-sender>@gmail.com        --i-confirm-this-is-a-throwaway-account
+   ```
+
+3. With the local instance in `auto` mode against the throwaway inbox, run
+   `POST /admin/email-bot/poll` **twice**, a minute apart.
+
+What has to be true afterwards, in the throwaway inbox's Gmail UI:
+
+- **Exactly one** bot reply in the sign-up thread. Not two, and not one per
+  poll.
+- The sender's vacation auto-reply carries `VH-Bot/Skipped` and got no reply of
+  its own.
+
+The second poll is the whole test. The first sends the sign-up reply; the
+vacation responder answers it; and the second poll must recognise that answer as
+machine-generated and stop, rather than sending a holding message and starting a
+cycle. Three separate controls have to hold for that: the `Auto-Submitted`
+header guard, the `automated` category as the second line of defence, and the
+one-reply-per-thread cap.
+
+If you see two bot replies, stop and do not proceed to the canary.
+
+Capture the vacation auto-reply's payload and commit it, anonymised, to
+`tests/fixtures/gmail_recorded/` so the guard tests carry a real one.
+
+### The canary week, on production
+
+Only after the loop test passes and the E2 evaluation gate is recorded.
+
+1. Set `EMAIL_BOT_DAILY_SEND_CAP` to **10** on the dashboard. Well below the
+   design's 30, so a week of a wrong decision is ten mails and not two hundred.
+2. Set `EMAIL_BOT_AUTO_LANGUAGES` per the sign-off. `en` alone unless a native
+   speaker has signed off the Vietnamese copy.
+3. Set `EMAIL_BOT_MODE` to `auto`.
+4. **Read the audit table every day** for a week. The Inbox Bot card shows
+   today's sending, the last run, and the open escalations; `GET
+   /admin/email-bot/runs` has the per-run counters.
+
+What to look for each day, and what it means:
+
+| Look at | Wrong if |
+|---|---|
+| The `sent` count against what arrived | The bot is answering things it should be escalating |
+| The `capped` count | Replies are being held back; either the cap is too low or something is looping |
+| Open escalations | They are piling up unread, which is the failure mode that makes the bot worse than nothing |
+| Any thread with more than one bot reply | The one-reply cap has failed. Set the mode to `off` immediately |
+| Any reply on a thread you had answered | The "never talk over a human" control has failed. Set the mode to `off` immediately |
+
+After a clean week, put `EMAIL_BOT_DAILY_SEND_CAP` back to 30.
+
+Setting `EMAIL_BOT_MODE` to `off` on the dashboard stops sending at the next
+run, with no deploy. That is the thing to reach for first if anything above
+looks wrong.
 
 ## Fallback: IMAP with the app password
 

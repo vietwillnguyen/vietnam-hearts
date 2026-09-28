@@ -307,6 +307,25 @@ def initialize_default_settings(db: Session) -> None:
             "value": "10:30",
             "description": "When a class ends, 24-hour HH:MM.",
         },
+        "EMAIL_BOT_DAILY_SEND_CAP": {
+            "value": "30",
+            "description": (
+                "Most replies the inbox bot will send in one day, counted on "
+                "the Vietnam-local day. Gmail's own 500-per-day limit is shared "
+                "with the weekly reminder blast, so a bot that ran away would "
+                "take the reminders down with it. A reached cap drafts the "
+                "reply instead of dropping it."
+            ),
+        },
+        "EMAIL_BOT_PER_SENDER_DAILY_CAP": {
+            "value": "2",
+            "description": (
+                "Most threads one sender can be replied to in a day. This is "
+                "the loop bound: a misbehaving auto-responder on the other side "
+                "cannot extract more than this many replies however many times "
+                "it writes. A reached cap drafts instead of dropping."
+            ),
+        },
     }
 
     for key, config in default_settings.items():

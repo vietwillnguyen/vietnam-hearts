@@ -286,6 +286,12 @@
                                         <span class="text-muted small">Loading...</span>
                                     </div>
 
+                                    <h6 class="text-muted mt-3">Today's sending</h6>
+                                    <p class="text-muted small mb-1">What auto mode has left today, counted on the Vietnam day. A reached cap drafts the reply rather than dropping it, so nothing is lost when this runs out.</p>
+                                    <div id="inbox-bot-caps">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+
                                     <h6 class="text-muted mt-3">Classifier agreement</h6>
                                     <p class="text-muted small mb-1">How often the deciding classifier and the one running in shadow agreed. A low figure is not itself a fault; it says the two disagree about this inbox and the golden set should be re-run.</p>
                                     <div id="inbox-bot-agreement">
@@ -3127,11 +3133,16 @@ async function loadInboxBotCard() {
             throw new Error('metrics request failed');
         }
         const metrics = await response.json();
+        renderCaps(metrics.caps || {});
         renderAcceptance(metrics.draft_acceptance || {});
         renderAgreement(metrics.shadow_agreement || {});
     } catch (error) {
         const acceptance = document.getElementById('inbox-bot-acceptance');
         const agreement = document.getElementById('inbox-bot-agreement');
+        const capsTarget = document.getElementById('inbox-bot-caps');
+        if (capsTarget) {
+            capsTarget.innerHTML = '<span class="text-muted small">Could not load send caps.</span>';
+        }
         if (acceptance) {
             acceptance.innerHTML = '<span class="text-muted small">Could not load draft acceptance.</span>';
         }
@@ -3221,6 +3232,25 @@ function renderAcceptance(acceptance) {
             }</span>
         </div>`;
     }).join('');
+}
+
+function renderCaps(caps) {
+    const target = document.getElementById('inbox-bot-caps');
+    if (!target) {
+        return;
+    }
+    if (caps.daily_cap === undefined) {
+        target.innerHTML = '<span class="text-muted small">Not available.</span>';
+        return;
+    }
+    const spent = caps.sent_today || 0;
+    const remaining = caps.remaining_today || 0;
+    const exhausted = remaining === 0;
+    target.innerHTML = `<div class="small">
+        <span class="${exhausted ? 'text-warning' : 'text-success'}">${spent} of ${caps.daily_cap} sent</span>
+        <span class="text-secondary">&middot; ${remaining} left today
+        &middot; ${caps.senders_today || 0} sender(s), at most ${caps.per_sender_cap} thread(s) each</span>
+    </div>`;
 }
 
 function renderAgreement(agreement) {

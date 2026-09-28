@@ -291,3 +291,31 @@ class TestAcceptanceAndAgreementOnTheCard:
     def test_the_rendered_values_are_escaped(self, admin_client, test_db):
         html = admin_client.get("/admin/dashboard").text
         assert "escapeHtml(kind)" in html
+
+
+class TestTodaysSendingOnTheCard:
+    """What auto mode has left today.
+
+    Shown even while the mode is off, because an operator about to turn it on
+    wants to know what it would be allowed to do before they do.
+    """
+
+    def test_the_section_is_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-caps"' in html
+
+    def test_it_says_a_reached_cap_drafts_rather_than_drops(
+        self, admin_client, test_db
+    ):
+        # The thing an operator most needs to know about a cap here: running
+        # out does not lose mail.
+        html = admin_client.get("/admin/dashboard").text
+        assert "A reached cap drafts the reply rather than dropping it" in html
+
+    def test_it_says_the_day_is_the_local_one(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Vietnam day" in html
+
+    def test_the_renderer_is_wired_up(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "renderCaps" in html

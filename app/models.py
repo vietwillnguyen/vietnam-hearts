@@ -341,6 +341,10 @@ class EmailBotRun(Base):
     # draft-acceptance metric: a run that reconciles nothing for a fortnight
     # means the metric the evaluation gate depends on is not being collected.
     reconciled = Column(Integer, nullable=False, default=0)
+    # Replies that were drafted while the mode said send, because a cap was
+    # reached or the language is not signed off for automatic sending. Its own
+    # counter so the dashboard does not read a capped run as a quiet one.
+    capped = Column(Integer, nullable=False, default=0)
     errors = Column(Integer, nullable=False, default=0)
 
     aborted_reason = Column(String, nullable=True)

@@ -126,6 +126,30 @@ def _default_timezone() -> timezone | ZoneInfo:
         return _FIXED_DEFAULT_OFFSET
 
 
+def local_now(timezone_name: str = DEFAULT_SCHEDULE_TIMEZONE) -> datetime:
+    """Now, in the organization's timezone.
+
+    The same reason ``current_week_monday`` exists and derives its own clock:
+    Cloud Run sets no TZ, so a naive clock reads UTC. The inbox bot's daily send
+    cap counts on the local day, and a UTC day would roll it over at 07:00
+    Vietnam time - in the middle of the morning poll.
+
+    Falls back to the fixed offset when the zone database is unavailable,
+    exactly as ``_default_timezone`` does, so a missing tzdata degrades rather
+    than raising.
+    """
+    try:
+        tz = ZoneInfo(timezone_name or DEFAULT_SCHEDULE_TIMEZONE)
+    except Exception:
+        logger.warning(
+            "Unknown timezone %r; falling back to %s",
+            timezone_name,
+            DEFAULT_SCHEDULE_TIMEZONE,
+        )
+        tz = _default_timezone()
+    return datetime.now(tz)
+
+
 def schedule_week_monday(now: datetime) -> datetime:
     """
     Midnight on the Monday of the schedule week ``now`` belongs to.

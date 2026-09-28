@@ -27,28 +27,32 @@ from tests.fixtures.email_bot import load_gmail
 
 
 class SendIsForbidden(AssertionError):
-    """Raised the moment anything touches a send-shaped attribute."""
+    """Raised the moment anything touches a send-shaped attribute we do not allow."""
 
 
 class GuardedMessages:
-    """A ``users().messages()`` stand-in that explodes on ``send``.
+    """A ``users().messages()`` stand-in that permits exactly one send path.
 
-    Deliberately not ``MagicMock(spec=...)``: a spec would only refuse a call
-    with the wrong signature, and this has to refuse the *attribute lookup*, so
-    that a future refactor reintroducing a send path fails here rather than in
-    production.
+    ``send`` is allowed and recorded, because E3 introduces it. Any *other*
+    send-shaped attribute still raises, so a second outbound path cannot appear
+    quietly - and it has to refuse the attribute *lookup* rather than a call
+    with the wrong signature, which is why this is not a ``MagicMock(spec=)``.
     """
+
+    ALLOWED_SEND = "send"
 
     def __init__(self, service) -> None:
         self._service = service
         self.list = service.list_calls
         self.get = service.get_calls
         self.modify = service.modify_calls
+        self.send = service.send_calls
 
     def __getattr__(self, name: str):
-        if "send" in name.lower():
+        if "send" in name.lower() and name != self.ALLOWED_SEND:
             raise SendIsForbidden(
-                f"users().messages().{name} must not exist before phase E3"
+                f"users().messages().{name} is a second outbound path; only "
+                f"{self.ALLOWED_SEND} is permitted"
             )
         raise AttributeError(name)
 
@@ -74,6 +78,7 @@ class FakeGmailService:
         self.modified: list[dict] = []
         self.created_drafts: list[dict] = []
         self.deleted_drafts: list[str] = []
+        self.sent: list[dict] = []
 
     # --- the users() chain -------------------------------------------------
 
@@ -96,6 +101,12 @@ class FakeGmailService:
     def modify_calls(self, userId, id, body):  # noqa: A002,N803
         self.modified.append({"id": id, "body": body})
         return _Executable({"id": id})
+
+    def send_calls(self, userId, body):  # noqa: N803
+        self.sent.append(body)
+        return _Executable(
+            {"id": f"sent-{len(self.sent)}", "threadId": body.get("threadId")}
+        )
 
     def threads(self):
         return _Threads(self)
@@ -171,23 +182,29 @@ def transport(service):
     return GmailTransport(service)
 
 
-class TestNothingCanSend:
-    def test_the_transport_has_no_send_method(self):
-        # The one assertion that makes "nothing can send while the mode is off
-        # or draft" a property of the code rather than of a setting.
-        assert not hasattr(GmailTransport, "send_reply")
-        assert not any(
-            "send" in name.lower() for name in dir(GmailTransport)
-        ), "a send-shaped method appeared on GmailTransport before phase E3"
+class TestThereIsExactlyOneSendPath:
+    """``send_reply`` is the only way mail reaches a member of the public.
 
-    def test_touching_users_messages_send_fails_the_test(self, service):
+    E1 asserted the absence of any send method. That absence is gone by
+    necessity, so what replaces it is the next strongest thing: exactly one
+    send-shaped name on the class, and exactly one Gmail method behind it. A
+    second outbound path cannot appear without failing here.
+    """
+
+    def test_send_reply_is_the_only_send_shaped_method(self):
+        send_shaped = {name for name in dir(GmailTransport) if "send" in name.lower()}
+        assert send_shaped == {"send_reply"}, (
+            "a second send-shaped method appeared on GmailTransport; every "
+            "outbound path must go through send_reply so the mode, the "
+            "language gate and the caps all apply to it"
+        )
+
+    def test_touching_any_other_send_shaped_attribute_fails_the_test(self, service):
         with pytest.raises(SendIsForbidden):
             # The attribute lookup itself is the assertion.
-            _ = service.users().messages().send
+            _ = service.users().messages().sendAs
 
-    def test_a_whole_listing_and_drafting_cycle_never_touches_send(
-        self, transport, service
-    ):
+    def test_a_listing_and_drafting_cycle_never_sends(self, transport, service):
         transport.ensure_labels(OUTCOME_LABELS)
         mails = transport.list_unprocessed(
             newer_than_days=7, exclude_label=LABEL_SEEN, limit=20
@@ -195,8 +212,65 @@ class TestNothingCanSend:
         for mail in mails:
             transport.add_labels(mail.id, ["Label_100"])
             transport.create_draft(mail.thread_id, b"From: x\r\n\r\nbody\r\n")
-        # No SendIsForbidden means the guarded chain was never reached.
+
         assert len(service.created_drafts) == len(mails)
+        # Drafting is not sending, and nothing above conflates them.
+        assert service.sent == []
+
+
+class TestSendReply:
+    def test_the_reply_is_sent_into_its_thread(self, transport, service):
+        mime = b"From: a@example.com\r\nSubject: Re: x\r\n\r\nbody\r\n"
+        message_id = transport.send_reply("thread-9", mime)
+
+        assert message_id == "sent-1"
+        body = service.sent[0]
+        # threadId is what keeps the reply in the conversation rather than
+        # starting a new one.
+        assert body["threadId"] == "thread-9"
+
+    def test_the_mime_is_base64url_encoded(self, transport, service):
+        mime = b"From: a@example.com\r\n\r\nb\xc3\xa0dy with diacritics\r\n"
+        transport.send_reply("thread-9", mime)
+        assert base64.urlsafe_b64decode(service.sent[0]["raw"]) == mime
+
+    def test_the_sent_message_id_is_returned(self, transport):
+        # It is what the audit row stores and what the next run subtracts so
+        # the bot does not pause its own thread.
+        assert transport.send_reply("t", b"x") == "sent-1"
+        assert transport.send_reply("t", b"x") == "sent-2"
+
+    def test_a_response_with_no_id_yields_an_empty_string(self, service):
+        service.send_calls = lambda userId, body: _Executable({})
+        assert GmailTransport(service).send_reply("t", b"x") == ""
+
+    def test_the_threading_and_auto_response_headers_survive_the_round_trip(
+        self, transport, service
+    ):
+        # The builder and this call are tested together because Gmail requires
+        # the headers to agree with threadId.
+        from app.services.channels.base import OutboundReply
+        from app.services.channels.mail_builder import build_reply
+
+        reply = OutboundReply(
+            thread_key="thread-9",
+            to_address=payloads.TEST_SENDER,
+            subject="Volunteering",
+            in_reply_to="<abc123@mail.example.com>",
+            references=("<root@x>",),
+            text="Thanks for writing.",
+            language="en",
+            kind="signup",
+        )
+        transport.send_reply(
+            "thread-9", build_reply(reply, from_address=payloads.TEST_INBOX)
+        )
+
+        mime = base64.urlsafe_b64decode(service.sent[0]["raw"]).decode("utf-8")
+        assert "In-Reply-To: <abc123@mail.example.com>" in mime
+        assert "References: <root@x> <abc123@mail.example.com>" in mime
+        assert "Auto-Submitted: auto-replied" in mime
+        assert "X-Auto-Response-Suppress: All" in mime
 
 
 class TestListing:

@@ -5,11 +5,13 @@ the ``MailTransport`` protocol, which is what lets the IMAP fallback the design
 documents drop in without anything else changing, and what lets every test
 above this layer run against a fake rather than a mocked Discovery client.
 
-There is deliberately no send method in this phase. The design's "draft mode by
-construction" control is exactly this absence: ``users().messages().send`` is
-not called anywhere in the codebase, so no flag, no settings mistake and no
-misrouted call can put mail in front of a member of the public before E3 adds
-``send_reply`` and ``SendSink`` as its only caller.
+``send_reply`` is the one method here that can put mail in front of a member of
+the public, and ``SendSink`` is its only caller. Everything that bounds it - the
+delivery mode, the per-language gate, the daily and per-sender caps, the
+one-reply-per-thread rule - is decided before this module is reached, because a
+transport is the wrong place to be making policy. The test for this file asserts
+that ``send_reply`` is the *only* send-shaped name on the class, so a second
+outbound path cannot appear quietly.
 """
 
 from __future__ import annotations
@@ -133,8 +135,8 @@ class MailTransport(Protocol):
 
     def delete_draft(self, draft_id: str) -> None: ...
 
-    # E3 adds, and SendSink is its only caller:
-    # def send_reply(self, thread_id: str, mime: bytes) -> str: ...
+    # SendSink is the only caller.
+    def send_reply(self, thread_id: str, mime: bytes) -> str: ...
 
 
 def build_gmail_service(
@@ -312,6 +314,30 @@ class GmailTransport:
             .execute()
         ) or {}
         return created.get("id", "")
+
+    def send_reply(self, thread_id: str, mime: bytes) -> str:
+        """Send a reply into its thread and return the sent Gmail message id.
+
+        The returned id is what the audit row stores, and what the next run's
+        "never talk over a human" check subtracts so the bot's own reply is not
+        mistaken for the captain's. A send whose id is lost would make the bot
+        pause its own thread.
+
+        ``threadId`` keeps the reply in the conversation rather than starting a
+        new one. Gmail also requires the ``In-Reply-To`` and ``References`` the
+        MIME already carries to agree with it, which is why the builder and this
+        call are tested together.
+        """
+        sent = (
+            self._service.users()
+            .messages()
+            .send(
+                userId="me",
+                body={"threadId": thread_id, "raw": _b64url(mime)},
+            )
+            .execute()
+        ) or {}
+        return sent.get("id", "")
 
     def get_draft(self, draft_id: str) -> RawMail | None:
         """The draft as it stands now, or None once it is gone.

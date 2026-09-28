@@ -24,6 +24,7 @@ from app.services.channels.gmail_transport import (
     LABEL_ESCALATED,
     LABEL_PAUSED,
     LABEL_SEEN,
+    LABEL_SENT,
     LABEL_SKIPPED,
 )
 from app.services.conversation_service import (
@@ -48,6 +49,7 @@ from tests.fixtures.email_bot import (
     FakeSendSink,
     FakeTransport,
     RecordingNotifier,
+    SendingFakeTransport,
     load_gmail,
     signals,
 )
@@ -1229,7 +1231,15 @@ class TestPreflightRefusals:
         assert transport.list_calls == []
 
 
-class TestNothingSendsInThisPhase:
+class TestDraftModeStillSendsNothing:
+    """What E1 established, re-asserted now that a send path exists.
+
+    These used to hold because the codebase had no way to send at all. They now
+    hold because ``choose_sink`` refuses, which is a weaker guarantee and so
+    worth testing harder: a send sink is present in the mapping below and must
+    still never be chosen.
+    """
+
     def test_a_full_run_over_every_fixture_never_reaches_a_send_sink(self, test_db):
         # The phase's headline acceptance criterion: everything drafts and
         # escalates, and a send sink present in the mapping is still never
@@ -1289,9 +1299,38 @@ class TestNothingSendsInThisPhase:
         assert summary.forwarded > 0
         assert summary.aborted_reason is None
 
-    def test_the_same_run_in_auto_mode_also_sends_nothing(self, test_db):
-        # Because the transport has no send method at all in this phase, auto is
-        # indistinguishable from draft.
+    def test_auto_mode_with_no_send_sink_in_the_mapping_drafts(self, test_db):
+        # A sink mapping assembled without a send sink has to degrade to
+        # drafting rather than raise or silently deliver nothing.
+        from app.services.channels.gmail import GmailAdapter
+        from app.services.email_bot.delivery import DraftSink
+
+        transport = FakeTransport(mails=[load_gmail("signup_en.json")])
+        adapter = GmailAdapter(transport)
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=adapter,
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(mode="auto"),
+            bot_service=FakeBotService(),
+            sinks={"draft": DraftSink(adapter)},
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 0
+        assert summary.drafted == 1
+
+    def test_auto_mode_against_a_transport_that_cannot_send_still_tells_a_person(
+        self, test_db
+    ):
+        # The mode says auto and the send sink exists, but the transport has no
+        # send path. The inbound row is already committed by then, so the mail
+        # would be deduped as done on the next run: it has to reach somebody
+        # now rather than be lost to a misconfiguration.
+        notifier = RecordingNotifier()
         pipeline, transport = build(
             test_db,
             [load_gmail("signup_en.json")],
@@ -1299,12 +1338,31 @@ class TestNothingSendsInThisPhase:
                 default=signals(category="signup", confidence=0.94)
             ),
             settings=bot_settings(mode="auto"),
+            notifier=notifier,
         )
         summary = run(pipeline)
 
         assert summary.sent == 0
-        assert summary.drafted == 1
+        assert summary.forwarded == 1
+        assert len(notifier.events) == 1
         assert not hasattr(transport, "send_reply")
+
+    def test_a_draft_mode_run_builds_nothing_that_can_send(self, test_db):
+        # The stronger property, still true: in draft mode the pipeline holds
+        # no object capable of sending, rather than holding one it declines to
+        # use.
+        from app.services.email_bot.delivery import SendSink
+
+        pipeline, _ = build(
+            test_db,
+            [load_gmail("signup_en.json")],
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+            settings=bot_settings(mode="draft"),
+        )
+        assert "send" not in pipeline.sinks
+        assert not any(isinstance(s, SendSink) for s in pipeline.sinks.values())
 
 
 class TestTheInboxAddressPreflight:
@@ -1784,3 +1842,238 @@ class TestNoInboundMailIsEverSilentlyDropped:
         expected = len(mails) - len(recorded_after_first)
         assert second_summary.drafted == expected
         assert all(row.handled_at is not None for row in inbound(test_db))
+
+
+class TestAutoMode:
+    """What actually goes out once EMAIL_BOT_MODE is auto.
+
+    The transport gains send_reply in this phase, so for the first time the
+    difference between draft and auto is observable. These tests are the
+    record of what that difference is.
+    """
+
+    def _auto(
+        self,
+        test_db,
+        fixture,
+        triage,
+        answer=None,
+        auto_languages=frozenset({"en", "vi"}),
+        caps=None,
+        send_fails=False,
+    ):
+        from app.services.email_bot.caps import CapsState
+        from app.services.email_bot.delivery import DraftSink, SendSink
+
+        transport = SendingFakeTransport(
+            mails=[load_gmail(fixture)], send_fails=send_fails
+        )
+        adapter = GmailAdapter(transport)
+        notifier = RecordingNotifier()
+        settings = bot_settings(mode="auto", auto_languages=auto_languages)
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=adapter,
+            classifier=FakeClassifier(default=triage),
+            notifier=notifier,
+            settings=settings,
+            bot_service=FakeBotService(answer) if answer else FakeBotService(),
+            sinks={
+                "draft": DraftSink(adapter),
+                "send": SendSink(
+                    adapter, caps or CapsState(daily_cap=30, per_sender_cap=2)
+                ),
+            },
+        )
+        return pipeline, transport, notifier
+
+    def test_a_signup_reply_is_sent(self, test_db):
+        pipeline, transport, _ = self._auto(
+            test_db, "signup_en.json", signals(category="signup", confidence=0.94)
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 1
+        assert summary.drafted == 0
+        assert len(transport.sent) == 1
+        assert LABEL_SENT in transport.labels_for("18f2a1b4c5d6e7f0")
+
+    def test_a_confident_faq_answer_is_sent(self, test_db):
+        pipeline, transport, _ = self._auto(
+            test_db,
+            "faq_en.json",
+            signals(category="faq", confidence=0.86),
+            answer={"response": "No certificate is needed.", "confidence": 0.82},
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 1
+        assert "No certificate is needed." in transport.sent_bodies()[0]
+
+    def test_an_faq_below_the_threshold_sends_the_holding_message_and_escalates(
+        self, test_db
+    ):
+        # The sender does get mail, and it is the holding message rather than
+        # the answer the model produced.
+        pipeline, transport, notifier = self._auto(
+            test_db,
+            "faq_en.json",
+            signals(category="faq", confidence=0.86),
+            answer={"response": "A guess.", "confidence": 0.2},
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 1
+        assert summary.forwarded == 1
+        body = transport.sent_bodies()[0]
+        assert "better answered by a person" in body
+        assert "A guess." not in body
+        assert len(notifier.events) == 1
+
+    def test_an_executive_mail_sends_the_holding_message_and_escalates(self, test_db):
+        pipeline, transport, notifier = self._auto(
+            test_db,
+            "safeguarding_vi.json",
+            signals(category="safeguarding_legal", language="vi", confidence=0.91),
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 1
+        assert summary.forwarded == 1
+        assert "trợ lý tự động" in transport.sent_bodies()[0]
+        assert notifier.events[0].decision.tier == "needs_executive"
+
+    def test_an_automated_mail_is_skipped_with_nothing_sent(self, test_db):
+        # The one outcome where auto and off are identical. A holding message
+        # here is how a two-machine loop starts.
+        pipeline, transport, notifier = self._auto(
+            test_db,
+            "vacation_autoreply.json",
+            signals(category="automated", confidence=0.2),
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 0
+        assert transport.sent == []
+        assert notifier.events == []
+
+    def test_a_second_inbound_on_a_replied_thread_gets_nothing_but_is_forwarded(
+        self, test_db
+    ):
+        triage = signals(category="faq", confidence=0.86)
+        first, first_transport, _ = self._auto(test_db, "faq_en.json", triage)
+        assert run(first).sent == 1
+
+        second, second_transport, notifier = self._auto(
+            test_db, "second_inbound.json", triage
+        )
+        summary = run(second)
+
+        assert summary.sent == 0
+        assert second_transport.sent == []
+        assert summary.forwarded == 1
+        assert len(notifier.events) == 1
+
+    def test_a_send_failure_leaves_the_thread_unpaused_and_unlabelled_sent(
+        self, test_db
+    ):
+        # No retry loop: the run records it and a person picks it up. Labelling
+        # it Sent would claim something that did not happen.
+        pipeline, transport, notifier = self._auto(
+            test_db,
+            "signup_en.json",
+            signals(category="signup", confidence=0.94),
+            send_fails=True,
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 0
+        assert LABEL_SENT not in transport.labels_for("18f2a1b4c5d6e7f0")
+        # The mail still reaches a person rather than being lost.
+        assert summary.forwarded == 1
+
+    def test_a_language_outside_the_auto_list_is_drafted_not_sent(self, test_db):
+        """Review Focus item 4."""
+        pipeline, transport, _ = self._auto(
+            test_db,
+            "signup_vi.json",
+            signals(category="signup", language="vi", confidence=0.89),
+            auto_languages=frozenset({"en"}),
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 0
+        assert summary.drafted == 1
+        assert transport.sent == []
+        assert LABEL_DRAFTED in transport.labels_for("18f2a1b4c5d6e801")
+
+    def test_a_reached_cap_drafts_rather_than_dropping_the_reply(self, test_db):
+        from app.services.email_bot.caps import CapsState
+
+        # A capacity limit must not become lost mail: the captain still has the
+        # reply one click away.
+        exhausted = CapsState(daily_cap=1, per_sender_cap=2, sent_today=1)
+        pipeline, transport, _ = self._auto(
+            test_db,
+            "signup_en.json",
+            signals(category="signup", confidence=0.94),
+            caps=exhausted,
+        )
+        summary = run(pipeline)
+
+        assert summary.sent == 0
+        assert summary.drafted == 1
+        assert transport.sent == []
+
+    def test_the_sent_message_id_is_recorded(self, test_db):
+        # So the next run's "never talk over a human" check can tell the bot's
+        # own reply apart from one the captain typed.
+        pipeline, _transport, _ = self._auto(
+            test_db, "signup_en.json", signals(category="signup", confidence=0.94)
+        )
+        run(pipeline)
+
+        row = [r for r in outbound(test_db) if r.action == "sent"][0]
+        assert row.gmail_message_id_out
+
+
+class TestOffAndDraftStillCannotSend:
+    """The controls E1 established, re-asserted now that sending exists.
+
+    A transport whose send_reply raises, so a send is not merely unasserted but
+    impossible to perform silently.
+    """
+
+    def _with_exploding_send(self, test_db, mode):
+        from app.services.email_bot.caps import CapsState
+        from app.services.email_bot.delivery import DraftSink, SendSink
+
+        transport = SendingFakeTransport(
+            mails=[load_gmail("signup_en.json")], send_fails=True, raise_on_send=True
+        )
+        adapter = GmailAdapter(transport)
+        return EmailBotPipeline(
+            db=test_db,
+            adapter=adapter,
+            classifier=FakeClassifier(
+                default=signals(category="signup", confidence=0.94)
+            ),
+            notifier=RecordingNotifier(),
+            settings=bot_settings(mode=mode),
+            bot_service=FakeBotService(),
+            sinks={
+                "draft": DraftSink(adapter),
+                "send": SendSink(adapter, CapsState()),
+            },
+        )
+
+    def test_draft_mode_never_reaches_the_send_sink(self, test_db):
+        summary = run(self._with_exploding_send(test_db, "draft"))
+        assert summary.sent == 0
+        assert summary.drafted == 1
+
+    def test_off_mode_sends_and_drafts_nothing(self, test_db):
+        summary = run(self._with_exploding_send(test_db, "off"))
+        assert summary.aborted_reason == "mode is off"
+        assert summary.sent == 0
+        assert summary.drafted == 0

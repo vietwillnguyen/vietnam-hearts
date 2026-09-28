@@ -204,9 +204,33 @@ class TestDrafting:
         adapter.delete_draft("draft-1")
         assert transport.deleted_drafts == ["draft-1"]
 
-    def test_the_adapter_cannot_send(self):
-        assert not hasattr(GmailAdapter, "send")
-        assert not any("send" in name.lower() for name in dir(GmailAdapter))
+    def test_send_is_the_only_send_shaped_method(self):
+        # E1 asserted the absence of any send path. That cannot survive the
+        # phase that introduces one, so what replaces it is an exact set: a
+        # second outbound path cannot be added without failing here.
+        send_shaped = {name for name in dir(GmailAdapter) if "send" in name.lower()}
+        assert send_shaped == {"send"}
+
+    def test_sending_goes_through_the_transports_one_send_method(
+        self, adapter, transport
+    ):
+        from tests.fixtures.email_bot import SendingFakeTransport
+
+        sending = SendingFakeTransport(mails=[load_gmail("signup_en.json")])
+        message_id = GmailAdapter(sending).send(self._reply())
+
+        assert message_id == "sent-1"
+        assert len(sending.sent) == 1
+
+    def test_the_sent_mime_carries_the_threading_headers(self):
+        from tests.fixtures.email_bot import SendingFakeTransport
+
+        sending = SendingFakeTransport(mails=[load_gmail("signup_en.json")])
+        GmailAdapter(sending).send(self._reply())
+
+        mime = sending.sent[0].decode("utf-8")
+        assert "In-Reply-To: <abc123@mail.example.com>" in mime
+        assert "Auto-Submitted: auto-replied" in mime
 
 
 def raw_from(resource):

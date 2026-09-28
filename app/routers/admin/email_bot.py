@@ -130,7 +130,17 @@ def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
     service = ConversationService(db)
     acceptance = service.draft_acceptance()
 
+    from app.services.email_bot.caps import CapsState
+    from app.utils.schedule_dates import local_now
+
+    settings = EmailBotSettings.load(db)
+    caps = CapsState.load(db, local_now(settings.timezone), settings)
+
     return {
+        # What auto mode has left today. Reported even while the mode is off,
+        # because an operator about to turn it on wants to know what it would
+        # be allowed to do.
+        "caps": caps.as_dict(),
         "draft_acceptance": {
             kind: {
                 "outcomes": outcomes,
@@ -231,6 +241,7 @@ def _run_as_dict(row: EmailBotRun) -> dict[str, Any]:
         "forwarded": row.forwarded,
         "skipped": row.skipped,
         "reconciled": row.reconciled,
+        "capped": row.capped,
         "errors": row.errors,
         "aborted_reason": row.aborted_reason,
     }

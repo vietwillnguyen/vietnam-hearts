@@ -118,6 +118,7 @@ class RunSummary:
     forwarded: int = 0
     skipped: int = 0
     reconciled: int = 0
+    capped: int = 0
     errors: int = 0
     aborted_reason: str | None = None
 
@@ -131,6 +132,7 @@ class RunSummary:
             "forwarded": self.forwarded,
             "skipped": self.skipped,
             "reconciled": self.reconciled,
+            "capped": self.capped,
             "errors": self.errors,
             "aborted_reason": self.aborted_reason,
         }
@@ -155,6 +157,7 @@ class EmailBotPipeline:
         gemini_client: Any = None,
         admin_emails: tuple[str, ...] = (),
         sinks: dict[str, ReplySink] | None = None,
+        caps: Any = None,
     ) -> None:
         self.db = db
         self.adapter = adapter
@@ -167,16 +170,38 @@ class EmailBotPipeline:
         self.mode = parse_mode(settings.mode)
         self.conversations = ConversationService(db)
 
+        self.caps = caps
         if sinks is None:
-            from app.services.email_bot.delivery import DraftSink
+            from app.services.email_bot.delivery import DraftSink, SendSink
 
             sinks = {"draft": DraftSink(adapter)}
+            if self.mode is DeliveryMode.AUTO:
+                # Only constructed when the mode could actually use it, so a
+                # draft-mode run holds no object capable of sending at all.
+                sinks["send"] = SendSink(adapter, self._caps())
         self.sinks = sinks
 
         self._summary = RunSummary(mode=self.mode)
         self._consecutive_failures = 0
         self._failed_this_message = False
         self._inbound_row: Any = None
+
+    def _caps(self):
+        """Today's send counts, read once and shared by every send this run.
+
+        "Today" is the organization's local day rather than UTC. Cloud Run sets
+        no timezone, so a naive clock would roll the daily cap over at 07:00
+        Vietnam time, in the middle of the morning poll - the same class of bug
+        the schedule week anchor exists to avoid.
+        """
+        if self.caps is None:
+            from app.services.email_bot.caps import CapsState
+            from app.utils.schedule_dates import local_now
+
+            self.caps = CapsState.load(
+                self.db, local_now(self.settings.timezone), self.settings
+            )
+        return self.caps
 
     # ------------------------------------------------------------------ run
 
@@ -750,7 +775,11 @@ class EmailBotPipeline:
         label_after: bool = True,
     ) -> DeliveryResult | None:
         sink = choose_sink(
-            self.mode, decision.language, self.settings.auto_languages, self.sinks
+            self.mode,
+            decision.language,
+            self.settings.auto_languages,
+            self.sinks,
+            message.sender_key,
         )
         if sink is None:
             return None
@@ -802,6 +831,11 @@ class EmailBotPipeline:
             self._summary.sent += 1
         else:
             self._summary.drafted += 1
+            if self.mode is DeliveryMode.AUTO:
+                # Drafted while the mode says send: a cap was reached or the
+                # language is not signed off. Counted separately so the
+                # dashboard does not read it as a quiet day.
+                self._summary.capped += 1
 
         if label_after:
             # Terminal only for the answer paths. A holding message inside an
@@ -952,6 +986,7 @@ class EmailBotPipeline:
         run_row.forwarded = self._summary.forwarded
         run_row.skipped = self._summary.skipped
         run_row.reconciled = self._summary.reconciled
+        run_row.capped = self._summary.capped
         run_row.errors = self._summary.errors
         run_row.aborted_reason = self._summary.aborted_reason
         self.db.commit()

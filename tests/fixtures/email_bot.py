@@ -242,3 +242,43 @@ def signals(
         mentions_money_or_commitment=money,
         classifier=classifier,
     )
+
+
+class SendingFakeTransport(FakeTransport):
+    """``FakeTransport`` plus the send path E3 introduces.
+
+    Separate from ``FakeTransport`` on purpose: every test written before this
+    phase asserts against a transport that *cannot* send, and that property is
+    worth keeping for them rather than quietly giving every fake a send method.
+    """
+
+    def __init__(
+        self, *args, send_fails: bool = False, raise_on_send: bool = False, **kwargs
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.sent: list[bytes] = []
+        self._send_fails = send_fails
+        self._raise_on_send = raise_on_send
+        self._next_sent = 0
+
+    def send_reply(self, thread_id: str, mime: bytes) -> str:
+        if self._raise_on_send:
+            raise AssertionError(
+                "send_reply must not be reached while the mode is off or draft"
+            )
+        if self._send_fails:
+            raise RuntimeError("Gmail refused messages.send")
+        self._next_sent += 1
+        self.sent.append(mime)
+        return f"sent-{self._next_sent}"
+
+    def sent_bodies(self) -> list[str]:
+        """Every sent body, decoded, for the same reason draft_bodies exists."""
+        from email import message_from_bytes
+
+        bodies = []
+        for mime in self.sent:
+            parsed = message_from_bytes(mime)
+            payload = parsed.get_payload(decode=True) or b""
+            bodies.append(payload.decode("utf-8", errors="replace"))
+        return bodies

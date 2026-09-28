@@ -52,6 +52,9 @@ EMAIL_BOT_DEFAULTS = {
     "VOLUNTEER_SIGNUP_FORM_LINK": "",
     "CLASS_START_TIME": "09:30",
     "CLASS_END_TIME": "10:30",
+    # From E3, with the send path they bound.
+    "EMAIL_BOT_DAILY_SEND_CAP": "30",
+    "EMAIL_BOT_PER_SENDER_DAILY_CAP": "2",
 }
 
 
@@ -261,13 +264,17 @@ class TestEmailBotDefaultSettings:
         initialize_default_settings(db)
         assert get_setting(db, "ESCALATION_OWNER_EMAIL") == ""
 
-    def test_the_e3_caps_are_not_created_yet(self, db):
-        # They arrive with the send path they bound. Creating them early would
-        # show an operator knobs that do nothing.
+    def test_the_send_caps_arrive_with_the_send_path(self, db):
+        # They bound what auto mode can put in front of people, so they exist
+        # from the same phase the send path does and not before: a knob that
+        # does nothing is worse than no knob.
+        initialize_default_settings(db)
+        assert get_setting(db, "EMAIL_BOT_DAILY_SEND_CAP") == "30"
+        assert get_setting(db, "EMAIL_BOT_PER_SENDER_DAILY_CAP") == "2"
+
+    def test_the_e4_sync_cadence_is_not_created_yet(self, db):
         initialize_default_settings(db)
         keys = {setting.key for setting in get_all_settings(db)}
-        assert "EMAIL_BOT_DAILY_SEND_CAP" not in keys
-        assert "EMAIL_BOT_PER_SENDER_DAILY_CAP" not in keys
         assert "CRON_SYNC_KNOWLEDGE_BASE" not in keys
 
     @pytest.mark.parametrize("key", sorted(EMAIL_BOT_DEFAULTS))
@@ -418,3 +425,34 @@ class TestProductionValidationIgnoresTheNewEnvVars:
 
         monkeypatch.delenv("EMAIL_BOT_ENABLED", raising=False)
         importlib.reload(config)
+
+
+class TestTheSendCapsLoadIntoTheSettings:
+    def test_the_defaults_are_the_designs(self, db):
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        loaded = EmailBotSettings.load(db)
+
+        assert loaded.daily_send_cap == 30
+        assert loaded.per_sender_daily_cap == 2
+
+    def test_a_configured_cap_is_honoured(self, db):
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        set_setting(db, "EMAIL_BOT_DAILY_SEND_CAP", "10")
+        assert EmailBotSettings.load(db).daily_send_cap == 10
+
+    @pytest.mark.parametrize("bad", ["", "  ", "lots", "0", "-5", "2.5"])
+    def test_an_unusable_cap_falls_back_to_the_design_default(self, db, bad):
+        # A blank or mistyped cap must not read as "no limit".
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        set_setting(db, "EMAIL_BOT_DAILY_SEND_CAP", bad)
+        set_setting(db, "EMAIL_BOT_PER_SENDER_DAILY_CAP", bad)
+        loaded = EmailBotSettings.load(db)
+
+        assert loaded.daily_send_cap == 30
+        assert loaded.per_sender_daily_cap == 2

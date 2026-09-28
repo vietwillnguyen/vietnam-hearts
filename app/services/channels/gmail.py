@@ -29,7 +29,12 @@ GMAIL_THREAD_URL = "https://mail.google.com/mail/u/0/#inbox/{thread_id}"
 
 
 class GmailAdapter:
-    """Lists, parses, labels and drafts. Sending arrives in E3."""
+    """Lists, parses, labels, drafts and sends.
+
+    It never forwards: the escalation forward is a notifier concern over the
+    existing SMTP path, so the Gmail grant is never the thing that puts an
+    escalation in front of the captain.
+    """
 
     channel = EMAIL_CHANNEL
 
@@ -114,6 +119,19 @@ class GmailAdapter:
             reply, from_address=self.inbox_address, from_name=self._from_name
         )
         return self._transport.create_draft(reply.thread_key, mime)
+
+    def send(self, reply: OutboundReply) -> str:
+        """Send the reply in-thread; return the sent Gmail message id.
+
+        Reached only through ``SendSink``, which is reached only when the mode
+        is ``auto``, the language is cleared for automatic sending, and the caps
+        allow it. This method asks none of those questions, which is why they
+        are all answered before it.
+        """
+        mime = build_reply(
+            reply, from_address=self.inbox_address, from_name=self._from_name
+        )
+        return self._transport.send_reply(reply.thread_key, mime)
 
     def delete_draft(self, draft_id: str) -> None:
         self._transport.delete_draft(draft_id)

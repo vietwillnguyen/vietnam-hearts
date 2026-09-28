@@ -33,6 +33,8 @@ SETTING_TRIAGE_FALLBACK_MODEL = "TRIAGE_FALLBACK_MODEL"
 SETTING_TRIAGE_CONFIDENCE_THRESHOLD = "TRIAGE_CONFIDENCE_THRESHOLD"
 SETTING_ANSWER_THRESHOLD = "ANSWER_THRESHOLD"
 SETTING_PER_RUN_CAP = "EMAIL_BOT_PER_RUN_CAP"
+SETTING_DAILY_SEND_CAP = "EMAIL_BOT_DAILY_SEND_CAP"
+SETTING_PER_SENDER_DAILY_CAP = "EMAIL_BOT_PER_SENDER_DAILY_CAP"
 SETTING_SIGNUP_FORM_LINK = "VOLUNTEER_SIGNUP_FORM_LINK"
 SETTING_CLASS_START_TIME = "CLASS_START_TIME"
 SETTING_CLASS_END_TIME = "CLASS_END_TIME"
@@ -57,6 +59,8 @@ class EmailBotSettings:
     triage_confidence_threshold: float = 0.6
     answer_threshold: float = 0.5
     per_run_cap: int = 20
+    daily_send_cap: int = 30
+    per_sender_daily_cap: int = 2
     signup_form_link: str = ""
     class_start_time: str = "09:30"
     class_end_time: str = "10:30"
@@ -89,6 +93,14 @@ class EmailBotSettings:
             ),
             per_run_cap=_parse_positive_int(
                 text(SETTING_PER_RUN_CAP, "20"), 20, SETTING_PER_RUN_CAP
+            ),
+            daily_send_cap=_parse_positive_int(
+                text(SETTING_DAILY_SEND_CAP, "30"), 30, SETTING_DAILY_SEND_CAP
+            ),
+            per_sender_daily_cap=_parse_positive_int(
+                text(SETTING_PER_SENDER_DAILY_CAP, "2"),
+                2,
+                SETTING_PER_SENDER_DAILY_CAP,
             ),
             signup_form_link=text(SETTING_SIGNUP_FORM_LINK, "").strip(),
             class_start_time=text(SETTING_CLASS_START_TIME, "09:30").strip(),

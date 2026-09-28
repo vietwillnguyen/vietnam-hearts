@@ -67,6 +67,19 @@ pipeline skips on. The row itself is still committed before any side effect so a
 crash cannot draft twice, which is why the two facts need separate names. Never
 make the skip decision on `is_duplicate`; that is the silent-drop bug.
 
+## Timestamps in the database are naive UTC
+
+`messages.created_at` and friends are plain `DateTime` columns written from
+`datetime.now(UTC)`, so they read back **naive**. Any query bound compared
+against them must be converted to naive UTC first
+(`app/services/email_bot/caps.py::_as_naive_utc`), and any test fixture must
+write in that frame too. An aware local bound matches nothing and fails silently:
+it made every send cap read as untouched, which would have let auto mode send
+without limit while the dashboard showed zero.
+
+Decide windows in the organization's timezone with
+`schedule_dates.local_now`, then convert to naive UTC to query.
+
 ## Capturing logs in tests
 
 `app/utils/logging_config.py` sets `propagate = False`, and pytest's `caplog` installs its

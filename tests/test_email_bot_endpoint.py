@@ -622,3 +622,60 @@ class TestMetricsEndpoint:
 
         runs = admin_client.get("/admin/email-bot/runs").json()["runs"]
         assert runs[0]["reconciled"] == 4
+
+
+class TestCapsOnTheMetricsEndpoint:
+    def test_the_caps_are_reported(self, admin_client, test_db):
+        body = admin_client.get("/admin/email-bot/metrics").json()
+        caps = body["caps"]
+
+        assert caps["daily_cap"] == 30
+        assert caps["per_sender_cap"] == 2
+        assert caps["sent_today"] == 0
+        assert caps["remaining_today"] == 30
+
+    def test_a_send_today_is_counted(self, admin_client, test_db):
+        from datetime import UTC, datetime
+
+        from app.models import Conversation, Message
+
+        conversation = Conversation(
+            channel="email",
+            thread_key="t-1",
+            sender_key="hash-a",
+            status="bot",
+            bot_reply_count=1,
+        )
+        test_db.add(conversation)
+        test_db.commit()
+        test_db.refresh(conversation)
+        test_db.add(
+            Message(
+                conversation_id=conversation.id,
+                direction="outbound",
+                action="sent",
+                language="en",
+                text="a reply",
+                gmail_message_id_out="sent-1",
+                created_at=datetime.now(UTC),
+            )
+        )
+        test_db.commit()
+
+        caps = admin_client.get("/admin/email-bot/metrics").json()["caps"]
+        assert caps["sent_today"] == 1
+        assert caps["remaining_today"] == 29
+
+    def test_a_configured_cap_is_reflected(self, admin_client, test_db):
+        from app.services.settings_service import set_setting
+
+        # The canary week runs at 10, so the card has to show that rather than
+        # the design default.
+        set_setting(test_db, "EMAIL_BOT_DAILY_SEND_CAP", "10")
+        caps = admin_client.get("/admin/email-bot/metrics").json()["caps"]
+        assert caps["daily_cap"] == 10
+
+    def test_the_caps_carry_no_sender(self, admin_client, test_db):
+        body = admin_client.get("/admin/email-bot/metrics").text
+        assert "sent_today_by_sender" not in body
+        assert "@" not in body
