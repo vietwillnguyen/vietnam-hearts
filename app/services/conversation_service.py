@@ -351,17 +351,26 @@ class ConversationService:
         return row
 
     def bot_sent_message_ids(self, conversation: Conversation) -> set[str]:
-        """Gmail ids of everything the bot itself put in this thread.
+        """Gmail ids of messages the bot itself sent in this thread.
 
         The "never talk over a human" guard subtracts these from the messages
         the thread shows as coming from the inbox address. Without it the bot's
         own reply would read as a human reply and pause every thread it
         answered.
+
+        Only rows whose action is ``sent``, which is the load-bearing part. A
+        ``drafted`` row also carries a ``gmail_message_id_out`` once
+        reconciliation finds the draft was sent unchanged - but that send was
+        the captain's, not the bot's, and the design is explicit that it counts
+        as a human reply: "a captain sending a bot draft counts as a human
+        reply", because once he has touched the thread it is his. Selecting on
+        the id alone attributed his send to the bot and left the thread open.
         """
         rows = (
             self.db.query(Message.gmail_message_id_out)
             .filter(
                 Message.conversation_id == conversation.id,
+                Message.action == ACTION_SENT,
                 Message.gmail_message_id_out.isnot(None),
             )
             .all()

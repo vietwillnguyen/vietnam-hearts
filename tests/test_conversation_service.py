@@ -19,6 +19,7 @@ from app.services.conversation_service import (
     ACTION_SENT,
     ACTION_SKIPPED,
     DRAFT_PENDING,
+    DRAFT_SENT_UNCHANGED,
     MAX_BOT_REPLIES_PER_THREAD,
     STATUS_BOT,
     STATUS_PAUSED_HANDOFF,
@@ -528,3 +529,126 @@ class TestDedupeMeansHandledNotMerelySeen:
         assert not service.is_handled("msg-1")
         assert not service.can_bot_reply(conversation)
         assert row.handled_at is None
+
+
+class TestACaptainsSendOfABotDraftCountsAsAHumanReply:
+    """The design's words, made true.
+
+    > Any message from the inbox address that is not one the bot sent (by
+    > recorded id) moves the thread to `paused_manual` [...] A captain sending
+    > a bot draft counts as a human reply
+
+    Reconciliation records the captain's sent message id on the drafted row, so
+    that a draft can be linked to what actually went out. That id must not make
+    the send look like the bot's: the bot drafted it, he sent it, and once he
+    has touched the thread it is his.
+    """
+
+    def _thread_with(self, service, conversation, *, bot_sent=None, captain_sent=None):
+        if bot_sent:
+            service.record_outbound(
+                conversation,
+                text="the bot's own reply",
+                action=ACTION_SENT,
+                language="en",
+                gmail_message_id_out=bot_sent,
+            )
+        if captain_sent:
+            row = service.record_outbound(
+                conversation,
+                text="a drafted reply",
+                action=ACTION_DRAFTED,
+                language="en",
+                gmail_draft_id="draft-1",
+                kind="signup",
+            )
+            # What reconciliation does when it finds the draft went out
+            # unchanged.
+            service.set_draft_outcome(row, DRAFT_SENT_UNCHANGED, captain_sent)
+
+    def test_the_bots_own_send_is_attributed_to_the_bot(self, service):
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        self._thread_with(service, conversation, bot_sent="bot-sent-1")
+
+        assert service.bot_sent_message_ids(conversation) == {"bot-sent-1"}
+
+    def test_a_captains_send_of_a_draft_is_not_attributed_to_the_bot(self, service):
+        # The bug: it used to be, so human_replied subtracted it and the thread
+        # stayed open to the bot.
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        self._thread_with(service, conversation, captain_sent="captain-sent-1")
+
+        assert service.bot_sent_message_ids(conversation) == set()
+
+    def test_the_id_is_still_recorded_for_the_audit(self, service):
+        # The link between a draft and what went out is what the acceptance
+        # discussion needs; only its attribution was wrong.
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        self._thread_with(service, conversation, captain_sent="captain-sent-1")
+
+        drafted = [row for row in conversation.messages if row.action == ACTION_DRAFTED]
+        assert drafted[0].gmail_message_id_out == "captain-sent-1"
+
+    def test_both_together_attribute_only_the_bots(self, service):
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        self._thread_with(
+            service,
+            conversation,
+            bot_sent="bot-sent-1",
+            captain_sent="captain-sent-1",
+        )
+
+        assert service.bot_sent_message_ids(conversation) == {"bot-sent-1"}
+
+    def test_the_guard_then_sees_the_captains_send_as_a_human_reply(self, service):
+        from app.services.channels.gmail_transport import RawMail
+        from app.services.channels.mail_guards import human_replied
+        from tests.fixtures import gmail_payloads as payloads
+
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        self._thread_with(service, conversation, captain_sent="captain-sent-1")
+
+        thread = [
+            RawMail.from_resource(
+                payloads.message(
+                    message_id="captain-sent-1",
+                    from_address=f"Vietnam Hearts <{payloads.TEST_INBOX}>",
+                    to_address=payloads.TEST_SENDER,
+                    text="the reply he sent",
+                    label_ids=("SENT",),
+                )
+            )
+        ]
+
+        assert human_replied(
+            thread,
+            payloads.TEST_INBOX,
+            service.bot_sent_message_ids(conversation),
+        )
+
+    def test_the_guard_still_does_not_pause_on_the_bots_own_send(self, service):
+        from app.services.channels.gmail_transport import RawMail
+        from app.services.channels.mail_guards import human_replied
+        from tests.fixtures import gmail_payloads as payloads
+
+        conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
+        self._thread_with(service, conversation, bot_sent="bot-sent-1")
+
+        thread = [
+            RawMail.from_resource(
+                payloads.message(
+                    message_id="bot-sent-1",
+                    from_address=f"Vietnam Hearts <{payloads.TEST_INBOX}>",
+                    to_address=payloads.TEST_SENDER,
+                    text="the bot's own reply",
+                    label_ids=("SENT",),
+                )
+            )
+        ]
+
+        # Otherwise every thread the bot answered would pause itself.
+        assert not human_replied(
+            thread,
+            payloads.TEST_INBOX,
+            service.bot_sent_message_ids(conversation),
+        )
