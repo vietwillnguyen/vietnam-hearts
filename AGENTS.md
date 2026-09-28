@@ -28,6 +28,14 @@ forward to the coming Monday from Friday 00:00 local so volunteers can sign up f
 week early. Derive dates from that function rather than recomputing `now.weekday()` at
 the call site.
 
+## Inbound channels (QnA bot)
+
+The approved design for the Messenger and email bot is `docs/superpowers/specs/2026-07-28-qna-bot-design.md`;
+read its "Amendment 2026-09-29" section before trusting D6 or the rollout table.
+The email channel's own design and phase plan are `docs/superpowers/specs/2026-09-29-email-channel-design.md`
+and `docs/superpowers/plans/2026-09-29-email-channel-implementation.md`.
+Only rollout phase 0 (`app/routers/webhooks.py`) has shipped; the shared engine those documents describe does not exist yet.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
