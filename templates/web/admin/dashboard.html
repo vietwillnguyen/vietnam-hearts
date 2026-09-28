@@ -217,7 +217,7 @@
                         <div class="col-md-5">
                             <div class="card border-primary">
                                 <div class="card-body">
-                                    <h5 class="card-title">🤖 AI Review — Pending Submissions</h5>
+                                    <h5 class="card-title">🤖 AI Review - Pending Submissions</h5>
                                     <p class="card-text">Use Gemini to screen pending applicants: checks identity docs, social link, and free-form answers for safeguarding concerns. Writes summary + rating to the signups sheet.</p>
                                     <div class="d-flex align-items-center gap-2 mb-2">
                                         <label for="judgeBatchSize" class="form-label mb-0 me-1">Batch size:</label>
@@ -1658,7 +1658,7 @@
                                 ${result.errors > 0 ? `<li>Errors: <strong class="text-warning">${result.errors}</strong></li>` : ''}
                             </ul>
                             ${result.remaining > 0 ? `<li class="text-muted">Remaining (unprocessed): <strong>${result.remaining}</strong></li>` : ''}
-                            ${!dryRun && result.processed > 0 ? '<small class="text-muted mt-1 d-block">Verdicts written to sheet — run "Sync Volunteers" to import newly accepted applicants.</small>' : ''}
+                            ${!dryRun && result.processed > 0 ? '<small class="text-muted mt-1 d-block">Verdicts written to sheet - run "Sync Volunteers" to import newly accepted applicants.</small>' : ''}
                         </div>`;
                     resultDiv.style.display = 'block';
                 } else {
@@ -3095,7 +3095,7 @@ async function loadInboxBotCard() {
                 : '';
             lastRun.innerHTML = `
                 <div class="small">
-                    <span class="text-muted">${escapeHtml(run.started_at || 'unknown')}</span>
+                    <span class="text-muted">${escapeHtml(run.started_at ? new Date(run.started_at).toLocaleString() : 'unknown')}</span>
                     <span class="badge bg-secondary ms-1">${escapeHtml(run.mode || '')}</span>
                 </div>
                 <div class="small mt-1">
@@ -3119,14 +3119,22 @@ async function loadInboxBotCard() {
             escalations.innerHTML = '<span class="text-muted small">Nothing waiting.</span>';
             return;
         }
+        // The pause reason is written as "<tier>: <why>", so drop that prefix
+        // rather than show the tier twice on the row.
+        const reasonOf = (item) => {
+            const reason = item.pause_reason || '';
+            const prefix = `${item.tier}: `;
+            return item.tier && reason.startsWith(prefix) ? reason.slice(prefix.length) : reason;
+        };
         escalations.innerHTML = open.map((item) => `
             <div class="d-flex align-items-center gap-2 small mb-1">
-                <a href="https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(item.thread_key)}"
+                <a class="text-nowrap flex-shrink-0"
+                   href="https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(item.thread_key)}"
                    target="_blank" rel="noopener">Open in Gmail</a>
-                <span class="badge bg-light text-dark">${escapeHtml(item.category || 'unknown')}</span>
-                <span class="text-muted">${escapeHtml(item.tier || '')}</span>
-                <span class="text-muted">${escapeHtml(item.pause_reason || '')}</span>
-                <button type="button" class="btn btn-outline-secondary btn-sm"
+                <span class="badge bg-light text-dark flex-shrink-0">${escapeHtml(item.category || 'unknown')}</span>
+                <span class="text-muted text-nowrap flex-shrink-0">${escapeHtml(item.tier || '')}</span>
+                <span class="text-muted text-truncate flex-grow-1" style="min-width: 0;">${escapeHtml(reasonOf(item))}</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap flex-shrink-0"
                         onclick="resumeInboxConversation(${item.id})">Resume bot</button>
             </div>`).join('');
     } catch (error) {

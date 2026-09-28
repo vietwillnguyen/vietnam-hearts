@@ -11,6 +11,7 @@ it is an ``async def`` that awaits directly rather than paying for a thread.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -133,7 +134,7 @@ def list_escalations(limit: int = 50, db: Session = Depends(get_db)) -> dict[str
                 "category": row.last_category,
                 "tier": row.last_tier,
                 "bot_reply_count": row.bot_reply_count,
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "updated_at": _utc_iso(row.updated_at),
             }
             for row in conversations
         ]
@@ -160,11 +161,24 @@ def resume_conversation(
     return {"status": "success", "conversation_id": conversation.id, "state": "bot"}
 
 
+def _utc_iso(value: datetime | None) -> str | None:
+    """ISO 8601 with an explicit offset, so a browser reads it as UTC.
+
+    The columns are written in UTC but come back naive, and a naive ISO string
+    is parsed as local time: a captain in Vietnam would see a run seven hours off.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat()
+
+
 def _run_as_dict(row: EmailBotRun) -> dict[str, Any]:
     return {
         "id": row.id,
-        "started_at": row.started_at.isoformat() if row.started_at else None,
-        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        "started_at": _utc_iso(row.started_at),
+        "finished_at": _utc_iso(row.finished_at),
         "mode": row.mode,
         "listed": row.listed,
         "processed": row.processed,

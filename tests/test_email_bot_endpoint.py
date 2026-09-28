@@ -277,6 +277,28 @@ class TestRunHistory:
         runs = admin_client.get("/admin/email-bot/runs").json()["runs"]
         assert [run["listed"] for run in runs] == [0, 1, 2]
 
+    def test_timestamps_carry_an_explicit_utc_offset(self, admin_client, test_db):
+        started = datetime(2026, 9, 28, 21, 25, 5)
+        test_db.add(
+            EmailBotRun(
+                started_at=started,
+                finished_at=started + timedelta(minutes=1),
+                mode="draft",
+                listed=0,
+                processed=0,
+                drafted=0,
+                sent=0,
+                forwarded=0,
+                skipped=0,
+                errors=0,
+            )
+        )
+        test_db.commit()
+
+        run = admin_client.get("/admin/email-bot/runs").json()["runs"][0]
+        assert datetime.fromisoformat(run["started_at"]) == started.replace(tzinfo=UTC)
+        assert datetime.fromisoformat(run["finished_at"]).utcoffset() == timedelta(0)
+
     def test_the_limit_is_clamped(self, admin_client, test_db):
         assert admin_client.get("/admin/email-bot/runs?limit=9999").status_code == 200
         assert admin_client.get("/admin/email-bot/runs?limit=0").status_code == 200

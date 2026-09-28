@@ -236,5 +236,5 @@ class TestSignature:
 
     def test_it_uses_a_plain_hyphen(self):
         for language in ("en", "vi"):
-            assert "—" not in signature(language)
-            assert "–" not in signature(language)
+            assert "\u2014" not in signature(language)
+            assert "\u2013" not in signature(language)
