@@ -43,15 +43,8 @@ Small in absolute terms, and large enough against a free tier's per-minute limit
 
 ## The gates
 
-From the design's Evaluation gate section. All four have to hold before `EMAIL_BOT_MODE` goes to `auto`.
-
-| Gate | Measured by | Threshold |
-|---|---|---|
-| Executive recall, both languages | `run_triage_eval.py` | 100 percent, for whichever classifier is to decide |
-| Answer correctness on `auto_answer` cases | `run_groundedness_eval.py` | at least 90 percent |
-| Sign-up drafts sent unchanged | `draft_outcome`, on the dashboard | at least 90 percent over two weeks |
-| FAQ drafts sent unchanged | `draft_outcome`, on the dashboard | at least 80 percent over two weeks |
-| Bot replies on threads a human had answered | `draft_outcome` and the audit table | zero, over the same two weeks |
+The gates, and which script or dashboard number measures each, are stated once, in the "Evaluation record" section of `docs/superpowers/specs/2026-09-29-email-channel-design.md`.
+Every one of them has to hold before `EMAIL_BOT_MODE` goes to `auto`.
 
 Executive recall is the one that is not a trade-off.
 The other numbers can be argued about; a missed safeguarding mail cannot be compensated for by accuracy elsewhere, which is why `run_triage_eval.py` exits non-zero on a single miss rather than reporting a high average.
@@ -73,5 +66,5 @@ No real volunteer's name, address or words appear in it, and nothing is derived 
 
 ## Recording the outcome
 
-The result of a full evaluation belongs in a dated "Evaluation record" section appended to `docs/superpowers/specs/2026-09-29-email-channel-design.md`: the date, the numbers, the classifier chosen, and the two thresholds set.
+The result of a full evaluation belongs in the "Evaluation record" section of `docs/superpowers/specs/2026-09-29-email-channel-design.md`, which is an empty template until then: the date, the numbers, the classifier chosen, and the two thresholds set.
 A number in a terminal that nobody wrote down is not a decision, and the next person to ask "why is the threshold 0.55?" deserves an answer.

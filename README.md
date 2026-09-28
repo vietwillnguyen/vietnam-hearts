@@ -310,6 +310,7 @@ vietnam-hearts/
 │   └── utils/             # Utility functions
 ├── alembic/                # Database schema migrations (Postgres/Supabase)
 ├── docs/                  # Extended documentation
+├── evals/                 # On-demand inbox bot evaluation harness (see evals/README.md)
 ├── scripts/               # Deployment and setup scripts
 │   ├── create-or-update-scheduler-jobs.sh          # Cloud Scheduler job setup
 │   ├── deploy.config      # Non-secret deployment settings (GCP, Docker)

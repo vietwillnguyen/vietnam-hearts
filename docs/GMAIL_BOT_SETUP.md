@@ -184,7 +184,7 @@ Watch the **Inbox Bot** card on the dashboard after the next scheduled run.
 ## Running it day to day
 
 **Reviewing drafts.** Open the thread in Gmail and send, edit, or delete the draft.
-All three are useful: phase E2 measures how often drafts are sent unchanged, and that number is what decides whether automatic sending is ever turned on.
+All three are useful: the **Inbox Bot** card shows how often drafts are sent unchanged, per answer path, and that number is what decides whether automatic sending is ever turned on.
 
 **Taking over a thread.** Just reply by hand. The bot notices at the next poll, moves the thread to `paused_manual`, and deletes its own outstanding draft.
 Only the **Resume bot** button on the dashboard hands the thread back.
