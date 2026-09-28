@@ -249,7 +249,7 @@
                             <div class="card border-secondary" id="inbox-bot-card">
                                 <div class="card-body">
                                     <h5 class="card-title">📬 Inbox Bot</h5>
-                                    <p class="card-text">Triages the volunteer inbox twice a day: labels every new mail, leaves answers as Gmail drafts, forwards anything for a person. Change <code>EMAIL_BOT_MODE</code> under Settings to start or stop it - it takes effect at the next poll, with no deploy.</p>
+                                    <p class="card-text">Triages the volunteer inbox twice a day: labels every new mail, answers what it can (Gmail drafts in draft mode, in-thread replies in auto mode), forwards anything for a person. Change <code>EMAIL_BOT_MODE</code> under Settings to start or stop it - it takes effect at the next poll, with no deploy.</p>
 
                                     {% if email_bot_last_error %}
                                     <div class="alert alert-warning" id="inbox-bot-banner" role="alert">
@@ -3120,7 +3120,7 @@ async function loadInboxBotCard() {
                     listed ${run.listed} &middot; processed ${run.processed} &middot;
                     drafted ${run.drafted} &middot; sent ${run.sent} &middot;
                     forwarded ${run.forwarded} &middot; skipped ${run.skipped} &middot;
-                    errors ${run.errors}
+                    capped ${run.capped ?? 0} &middot; errors ${run.errors}
                 </div>${aborted}`;
         }
     } catch (error) {
