@@ -905,3 +905,28 @@ class TestWeeklyLiveSampling:
         assert any(
             f"{failing} failed: ConnectionError" in item for item in metrics.failures
         )
+
+    def test_an_empty_week_does_not_report_a_groundedness_figure(self):
+        # In draft mode nothing is sent, and a report that says 100 percent
+        # would vouch for answers nobody judged.
+        from evals.metrics import GroundednessMetrics
+        from evals.sample_live_answers import report
+
+        text = report(GroundednessMetrics(), days=7)
+
+        assert "Groundedness: n/a (nothing sent in the window)" in text
+        assert "100" not in text
+        assert "fetched from Gmail" not in text
+
+    def test_a_judged_week_reports_the_figure(self):
+        from evals.metrics import GroundednessMetrics
+        from evals.sample_live_answers import report
+
+        metrics = GroundednessMetrics()
+        metrics.record("msg-1", True)
+        metrics.record("msg-2", False, "invented a date")
+
+        text = report(metrics, days=7)
+
+        assert "Groundedness: 50.0%" in text
+        assert "fetched from Gmail for this run and discarded" in text

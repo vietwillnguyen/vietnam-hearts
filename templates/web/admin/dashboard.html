@@ -3277,7 +3277,7 @@ function renderKnowledgeBase(kb) {
             '<span class="text-warning small">Never synced. The bot cannot answer any FAQ question until it has read the doc.</span>';
         return;
     }
-    const when = escapeHtml(kb.last_sync);
+    const when = escapeHtml(new Date(kb.last_sync).toLocaleString());
     const chunks = kb.chunks === null || kb.chunks === undefined ? 'unknown' : kb.chunks;
     if (kb.stale) {
         target.innerHTML = `<span class="text-warning small">

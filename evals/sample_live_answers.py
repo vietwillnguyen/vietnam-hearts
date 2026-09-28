@@ -178,7 +178,10 @@ def report(metrics: GroundednessMetrics, days: int) -> str:
             ("", "count"),
         ),
         "",
-        f"Groundedness: {percentage(metrics.correctness)}",
+        # correctness is 1.0 over no cases, and in draft mode nothing is sent.
+        "Groundedness: n/a (nothing sent in the window)"
+        if metrics.total == 0
+        else f"Groundedness: {percentage(metrics.correctness)}",
     ]
     if metrics.ungrounded:
         lines += ["", "Answers worth reading:"]
@@ -188,7 +191,9 @@ def report(metrics: GroundednessMetrics, days: int) -> str:
         lines += [f"  - {item}" for item in metrics.failures]
     lines += [
         "",
-        "Nothing above was written to the database. The inbound text was "
+        "Nothing above was written to the database."
+        if metrics.total == 0
+        else "Nothing above was written to the database. The inbound text was "
         "fetched from Gmail for this run and discarded.",
     ]
     return "\n".join(lines)
