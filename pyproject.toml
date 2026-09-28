@@ -22,7 +22,12 @@ dependencies = [
     "jinja2>=3.1.3,<4",
     "psycopg2-binary>=2.9.9,<3",
     "supabase>=2.2.0,<3",
-    "tenacity>=8.2.3,<9",
+    # Widened past the original <9 ceiling because typesafe-sdk (the Jev
+    # client) requires tenacity>=9. Nothing here depends on 8.x behaviour:
+    # app/utils/retry_utils.py uses only retry, stop_after_attempt,
+    # retry_if_exception_type, the log callbacks and wait_exponential_jitter,
+    # all of which 9.x keeps unchanged.
+    "tenacity>=8.2.3,<10",
     "httpx==0.28.1",
     "pyjwt>=2.8.0,<3",
     "google-genai>=2.0.0,<3",
@@ -33,6 +38,11 @@ dependencies = [
     # the base image carrying /usr/share/zoneinfo. No upper bound: tzdata is
     # calendar-versioned data, so any ceiling would expire on its own.
     "tzdata>=2024.1",
+    # The triage classifier pair: typesafe-sdk is the Jev vendor SDK that
+    # decides, litellm is the structured-output shadow classifier.
+    # docs/superpowers/specs/2026-09-29-email-channel-design.md, decision 2.
+    "litellm>=1.77.0,<2",
+    "typesafe-sdk>=0.7.2,<1",
 ]
 
 [dependency-groups]

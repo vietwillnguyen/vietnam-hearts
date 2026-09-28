@@ -1,0 +1,55 @@
+{
+  "id": "18f2a1b4c5d6e889",
+  "threadId": "18f2a1b4c5d6e889",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Dear Vietnam Hearts,\n\nOur company would like to sponsor your programme and can c",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "partnerships@company.example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Corporate sponsorship proposal"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 228,
+      "data": "RGVhciBWaWV0bmFtIEhlYXJ0cywKCk91ciBjb21wYW55IHdvdWxkIGxpa2UgdG8gc3BvbnNvciB5b3VyIHByb2dyYW1tZSBhbmQgY2FuIGNvbW1pdCBhIGJ1ZGdldCBmb3IgdGhlIGNvbWluZyB5ZWFyLiBXaG8gc2hvdWxkIHdlIHNwZWFrIHRvIGFib3V0IGEgY29udHJhY3Q_CgpLaW5kIHJlZ2FyZHM="
+    }
+  }
+}

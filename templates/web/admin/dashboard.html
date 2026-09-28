@@ -217,7 +217,7 @@
                         <div class="col-md-5">
                             <div class="card border-primary">
                                 <div class="card-body">
-                                    <h5 class="card-title">🤖 AI Review — Pending Submissions</h5>
+                                    <h5 class="card-title">🤖 AI Review - Pending Submissions</h5>
                                     <p class="card-text">Use Gemini to screen pending applicants: checks identity docs, social link, and free-form answers for safeguarding concerns. Writes summary + rating to the signups sheet.</p>
                                     <div class="d-flex align-items-center gap-2 mb-2">
                                         <label for="judgeBatchSize" class="form-label mb-0 me-1">Batch size:</label>
@@ -232,6 +232,59 @@
                                         <span id="judgeStatusBadge" class="badge" style="display:none;"></span>
                                     </div>
                                     <div id="judgeResult" class="mt-3" style="display:none;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Inbox Bot Row -->
+                    {# Mode, last run and open escalations for the volunteer inbox bot.
+                       Rendered from the settings already in context so the card is
+                       correct on first paint; the counters and the escalation list are
+                       fetched from /admin/email-bot/* because they change per run. #}
+                    {% set email_bot_mode = settings | selectattr("key", "equalto", "EMAIL_BOT_MODE") | map(attribute="value") | first | default("off", true) %}
+                    {% set email_bot_last_error = settings | selectattr("key", "equalto", "EMAIL_BOT_LAST_ERROR") | map(attribute="value") | first | default("", true) %}
+                    <div class="row mb-4">
+                        <div class="col-md-8">
+                            <div class="card border-secondary" id="inbox-bot-card">
+                                <div class="card-body">
+                                    <h5 class="card-title">📬 Inbox Bot</h5>
+                                    <p class="card-text">Triages the volunteer inbox twice a day: labels every new mail, leaves answers as Gmail drafts, forwards anything for a person. Change <code>EMAIL_BOT_MODE</code> under Settings to start or stop it - it takes effect at the next poll, with no deploy.</p>
+
+                                    {% if email_bot_last_error %}
+                                    <div class="alert alert-warning" id="inbox-bot-banner" role="alert">
+                                        <i class="fas fa-triangle-exclamation"></i>
+                                        <strong>Last run reported a problem:</strong>
+                                        <span id="inbox-bot-last-error">{{ email_bot_last_error }}</span>
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="d-flex align-items-center gap-2 mb-3">
+                                        <span class="text-muted">Mode:</span>
+                                        <span id="inbox-bot-mode"
+                                              class="badge {% if email_bot_mode == 'auto' %}bg-danger{% elif email_bot_mode == 'draft' %}bg-info{% else %}bg-secondary{% endif %}">{{ email_bot_mode }}</span>
+                                        {% if email_bot_mode == 'off' %}
+                                        <span class="text-muted small">Nothing is read, labelled, or drafted while the mode is off.</span>
+                                        {% elif email_bot_mode == 'draft' %}
+                                        <span class="text-muted small">Answers wait as drafts for review. Nothing is sent.</span>
+                                        {% endif %}
+                                    </div>
+
+                                    <h6 class="text-muted">Last run</h6>
+                                    <div id="inbox-bot-last-run" class="mb-3">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+
+                                    <h6 class="text-muted">Open escalations</h6>
+                                    <div id="inbox-bot-escalations">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadInboxBotCard()">
+                                            <i class="fas fa-rotate"></i> Refresh
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -558,6 +611,12 @@
                                 "label": "Rotate Schedule",
                                 "description": "Reconcile the visible schedule sheets to the current week. Idempotent, so it is safe to run often.",
                                 "example": "0 * * * *  →  Every hour"
+                            },
+                            {
+                                "key": "CRON_POLL_INBOX",
+                                "label": "Poll Volunteer Inbox",
+                                "description": "Triage new mail in the volunteer inbox: label everything, draft answers where the bot can, forward escalations. Does nothing while the Inbox bot mode below is off.",
+                                "example": "0 8,18 * * *  →  08:00 and 18:00"
                             }
                         ] %}
 
@@ -1599,7 +1658,7 @@
                                 ${result.errors > 0 ? `<li>Errors: <strong class="text-warning">${result.errors}</strong></li>` : ''}
                             </ul>
                             ${result.remaining > 0 ? `<li class="text-muted">Remaining (unprocessed): <strong>${result.remaining}</strong></li>` : ''}
-                            ${!dryRun && result.processed > 0 ? '<small class="text-muted mt-1 d-block">Verdicts written to sheet — run "Sync Volunteers" to import newly accepted applicants.</small>' : ''}
+                            ${!dryRun && result.processed > 0 ? '<small class="text-muted mt-1 d-block">Verdicts written to sheet - run "Sync Volunteers" to import newly accepted applicants.</small>' : ''}
                         </div>`;
                     resultDiv.style.display = 'block';
                 } else {
@@ -3008,6 +3067,102 @@
             const checkbox = document.getElementById('logsAutoRefresh');
             if (checkbox) checkbox.checked = false;
         }
-    </script>
+    
+// ---------------------------------------------------------------- inbox bot
+//
+// Read-only. The card never triggers a poll: polling is the scheduler's job,
+// and a button that ran the bot on click would make "twice a day" untrue and
+// give the run lock something to refuse.
+async function loadInboxBotCard() {
+    const lastRun = document.getElementById('inbox-bot-last-run');
+    const escalations = document.getElementById('inbox-bot-escalations');
+    if (!lastRun || !escalations) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/admin/email-bot/runs?limit=1');
+        if (!response.ok) {
+            throw new Error('runs request failed');
+        }
+        const runs = (await response.json()).runs || [];
+        if (runs.length === 0) {
+            lastRun.innerHTML = '<span class="text-muted small">No runs recorded yet.</span>';
+        } else {
+            const run = runs[0];
+            const aborted = run.aborted_reason
+                ? `<div class="text-warning small mt-1">Aborted: ${escapeHtml(run.aborted_reason)}</div>`
+                : '';
+            lastRun.innerHTML = `
+                <div class="small">
+                    <span class="text-muted">${escapeHtml(run.started_at ? new Date(run.started_at).toLocaleString() : 'unknown')}</span>
+                    <span class="badge bg-secondary ms-1">${escapeHtml(run.mode || '')}</span>
+                </div>
+                <div class="small mt-1">
+                    listed ${run.listed} &middot; processed ${run.processed} &middot;
+                    drafted ${run.drafted} &middot; sent ${run.sent} &middot;
+                    forwarded ${run.forwarded} &middot; skipped ${run.skipped} &middot;
+                    errors ${run.errors}
+                </div>${aborted}`;
+        }
+    } catch (error) {
+        lastRun.innerHTML = '<span class="text-muted small">Could not load the last run.</span>';
+    }
+
+    try {
+        const response = await fetch('/admin/email-bot/escalations?limit=20');
+        if (!response.ok) {
+            throw new Error('escalations request failed');
+        }
+        const open = (await response.json()).escalations || [];
+        if (open.length === 0) {
+            escalations.innerHTML = '<span class="text-muted small">Nothing waiting.</span>';
+            return;
+        }
+        // The pause reason is written as "<tier>: <why>", so drop that prefix
+        // rather than show the tier twice on the row.
+        const reasonOf = (item) => {
+            const reason = item.pause_reason || '';
+            const prefix = `${item.tier}: `;
+            return item.tier && reason.startsWith(prefix) ? reason.slice(prefix.length) : reason;
+        };
+        escalations.innerHTML = open.map((item) => `
+            <div class="d-flex align-items-center gap-2 small mb-1">
+                <a class="text-nowrap flex-shrink-0"
+                   href="https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(item.thread_key)}"
+                   target="_blank" rel="noopener">Open in Gmail</a>
+                <span class="badge bg-light text-dark flex-shrink-0">${escapeHtml(item.category || 'unknown')}</span>
+                <span class="text-muted text-nowrap flex-shrink-0">${escapeHtml(item.tier || '')}</span>
+                <span class="text-muted text-truncate flex-grow-1" style="min-width: 0;">${escapeHtml(reasonOf(item))}</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap flex-shrink-0"
+                        onclick="resumeInboxConversation(${item.id})">Resume bot</button>
+            </div>`).join('');
+    } catch (error) {
+        escalations.innerHTML = '<span class="text-muted small">Could not load escalations.</span>';
+    }
+}
+
+async function resumeInboxConversation(conversationId) {
+    try {
+        const response = await fetch(
+            `/admin/email-bot/conversations/${conversationId}/resume`,
+            { method: 'POST' }
+        );
+        if (!response.ok) {
+            throw new Error('resume failed');
+        }
+    } finally {
+        loadInboxBotCard();
+    }
+}
+
+function escapeHtml(value) {
+    const element = document.createElement('div');
+    element.textContent = value === null || value === undefined ? '' : String(value);
+    return element.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', loadInboxBotCard);
+</script>
 </body>
 </html> 

@@ -1,0 +1,55 @@
+{
+  "id": "18f2a1b4c5d6e89a",
+  "threadId": "18f2a1b4c5d6e89a",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Hello,\n\nWhat time do the classes start? Also, my company would like to donate so",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Class times, and a donation"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 164,
+      "data": "SGVsbG8sCgpXaGF0IHRpbWUgZG8gdGhlIGNsYXNzZXMgc3RhcnQ_IEFsc28sIG15IGNvbXBhbnkgd291bGQgbGlrZSB0byBkb25hdGUgc29tZSBtb25leSB0byBzdXBwb3J0IHRoZSBwcm9ncmFtbWUuCgpUaGFua3M="
+    }
+  }
+}
