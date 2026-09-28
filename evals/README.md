@@ -36,6 +36,9 @@ uv run python evals/calibrate_thresholds.py --classifier jev --answers answers.j
 
 # What did the two classifiers disagree about on real mail?
 uv run python evals/shadow_report.py --since 2026-09-15
+
+# Weekly: judge the FAQ answers that were actually sent, and store nothing.
+uv run python evals/sample_live_answers.py --days 7
 ```
 
 Rough cost of a full pass over the 92 golden cases: one classifier call per case for the triage run, and one answer plus one judge call per answerable case for the groundedness run.
@@ -63,6 +66,26 @@ Every case is written for the file.
 No real volunteer's name, address or words appear in it, and nothing is derived from the signup responses sheet, which holds passport numbers and dates of birth and is never a retrieval source for anything.
 
 **Adding a case:** add it, and let the loader tell you if it is wrong. Do not hand-compute `expected_tier`; write what you believe and the validation will say what `derive_tier` actually returns. An `auto_answer` case needs at least one `must_mention` fact or the groundedness judge has nothing to judge against.
+
+## The weekly live sampling
+
+`sample_live_answers.py` is the one runner that looks at production rather than
+at the golden set, and it is the only measurement that can notice a question
+nobody anticipated being answered badly.
+
+It judges **only what was sent**, not what was drafted: a draft the captain
+corrected before sending was never a customer-visible answer, and the
+draft-acceptance rate measures those instead. And it judges against the harm
+list rather than against per-case facts, because real mail has no
+`must_mention`.
+
+It stores nothing. The inbound body is fetched from Gmail by id at run time
+precisely so that it never has to be in the database, and it is discarded when
+the run ends. `tests/test_evals_runners.py` asserts that no row is written.
+
+Run it from a laptop with the production token, weekly. If it reports a problem,
+the fix is almost always the knowledge-base doc rather than the code: see
+`docs/KNOWLEDGE_BASE_EDITING.md`.
 
 ## Recording the outcome
 

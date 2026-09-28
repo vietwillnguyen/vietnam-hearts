@@ -319,3 +319,41 @@ class TestTodaysSendingOnTheCard:
     def test_the_renderer_is_wired_up(self, admin_client, test_db):
         html = admin_client.get("/admin/dashboard").text
         assert "renderCaps" in html
+
+
+class TestTheKnowledgeBaseSectionOnTheCard:
+    def test_the_section_is_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-knowledge-base"' in html
+
+    def test_it_points_at_the_editor_guide(self, admin_client, test_db):
+        # The people who edit the doc are coordinators, not engineers, so the
+        # card has to tell them where the guide is.
+        html = admin_client.get("/admin/dashboard").text
+        assert "KNOWLEDGE_BASE_EDITING.md" in html
+
+    def test_never_synced_is_worded_differently_from_stale(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Never synced" in html
+        assert "daily sync has probably stopped" in html
+
+    def test_the_renderer_is_wired_up(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "renderKnowledgeBase" in html
+        assert "/admin/email-bot/metrics" in html
+
+
+class TestTheBannerNamesTheRunbookForARevokedGrant:
+    def test_a_revoked_grant_banner_shows_the_reason(self, admin_client, test_db):
+        set_setting(
+            test_db,
+            "EMAIL_BOT_LAST_ERROR",
+            "the Gmail refresh token no longer works; re-consent by the runbook "
+            "in docs/GMAIL_BOT_SETUP.md",
+        )
+        html = admin_client.get("/admin/dashboard").text
+
+        assert 'id="inbox-bot-banner"' in html
+        # The reason the pipeline writes already names the runbook, so an
+        # operator reading the banner knows where to go.
+        assert "GMAIL_BOT_SETUP.md" in html

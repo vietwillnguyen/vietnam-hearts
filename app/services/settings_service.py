@@ -317,6 +317,33 @@ def initialize_default_settings(db: Session) -> None:
                 "reply instead of dropping it."
             ),
         },
+        "CRON_SYNC_KNOWLEDGE_BASE": {
+            "value": "0 5 * * *",
+            "description": (
+                "Cron schedule for re-reading the curated knowledge-base doc "
+                "(default: 05:00 Vietnam time). Early enough that the 08:00 "
+                "inbox poll answers from a freshly synced base, so an edit a "
+                "coordinator makes today is in use by tomorrow morning with "
+                "nobody deploying or clicking anything."
+            ),
+        },
+        "KNOWLEDGE_BASE_LAST_SYNC": {
+            "value": "",
+            "description": (
+                "When the knowledge base was last read successfully, written by "
+                "the sync itself. Only a successful sync updates it, so "
+                "'last synced two days ago' stays true rather than being "
+                "overwritten with a time at which nothing was ingested."
+            ),
+        },
+        "KNOWLEDGE_BASE_CHUNKS": {
+            "value": "",
+            "description": (
+                "How many chunks the last successful sync produced. Zero would "
+                "mean the doc is empty, which turns FAQ answers off entirely, "
+                "so the sync reports that as a failure rather than a success."
+            ),
+        },
         "EMAIL_BOT_PER_SENDER_DAILY_CAP": {
             "value": "2",
             "description": (

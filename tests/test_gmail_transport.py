@@ -464,3 +464,117 @@ class TestRawMail:
         mail = RawMail.from_resource(load_gmail("newsletter.json"))
         assert isinstance(mail.label_ids, tuple)
         assert "CATEGORY_UPDATES" in mail.label_ids
+
+
+class TestARevokedGrantIsTranslated:
+    """``invalid_grant`` becomes ``GmailAuthRevoked``, and nothing else does.
+
+    There is no refresh step to wrap: googleapiclient refreshes the access
+    token lazily inside whichever request happens to be first, so the
+    translation lives in one helper every call goes through. In practice the
+    first call is ``users.getProfile``, because the pipeline's pre-flight reads
+    the inbox address before touching any mail.
+    """
+
+    def _failing(self, error):
+        service = FakeGmailService(messages=[load_gmail("signup_en.json")])
+        service.getProfile = lambda userId: _Raising(error)
+        service.list_calls = lambda userId, q, maxResults: _Raising(error)
+        return GmailTransport(service)
+
+    def test_invalid_grant_on_the_profile_call_is_translated(self):
+        from google.auth.exceptions import RefreshError
+
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        transport = self._failing(
+            RefreshError("('invalid_grant: Token has been expired or revoked.')")
+        )
+        with pytest.raises(GmailAuthRevoked, match="re-consent"):
+            _ = transport.inbox_address
+
+    def test_invalid_grant_on_any_other_call_is_translated(self):
+        from google.auth.exceptions import RefreshError
+
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        transport = self._failing(RefreshError("invalid_grant"))
+        with pytest.raises(GmailAuthRevoked):
+            transport.list_unprocessed(
+                newer_than_days=7, exclude_label=LABEL_SEEN, limit=5
+            )
+
+    def test_the_message_points_at_the_runbook(self):
+        from google.auth.exceptions import RefreshError
+
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        transport = self._failing(RefreshError("invalid_grant"))
+        with pytest.raises(GmailAuthRevoked) as raised:
+            _ = transport.inbox_address
+        assert "GMAIL_BOT_SETUP.md" in str(raised.value)
+
+    def test_a_refresh_error_that_is_not_invalid_grant_is_not_translated(self):
+        from google.auth.exceptions import RefreshError
+
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        # A transient failure must not flip the mode to off and take the bot
+        # down until somebody notices; the next poll should just succeed.
+        transport = self._failing(RefreshError("Failed to retrieve token: 503"))
+        with pytest.raises(RefreshError):
+            _ = transport.inbox_address
+        try:
+            _ = transport.inbox_address
+        except GmailAuthRevoked:  # pragma: no cover - would be the bug
+            pytest.fail("a 503 was translated into a revoked grant")
+        except RefreshError:
+            pass
+
+    def test_an_http_error_is_not_translated(self):
+        from googleapiclient.errors import HttpError
+
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        transport = self._failing(HttpError(MagicMock(status=503), b"unavailable"))
+        with pytest.raises(HttpError):
+            _ = transport.inbox_address
+        assert GmailAuthRevoked is not HttpError
+
+
+class TestGetMessage:
+    def test_a_present_message_is_returned(self, transport):
+        mail = transport.get_message("18f2a1b4c5d6e7f0")
+        assert mail is not None
+        assert mail.id == "18f2a1b4c5d6e7f0"
+
+    def test_a_deleted_message_reads_as_none(self, service):
+        from googleapiclient.errors import HttpError
+
+        # A thread deleted since the reply went out is ordinary, not an error:
+        # the weekly sampling fetches by id precisely so nothing is stored.
+        def missing(userId, id, format):  # noqa: A002,N803
+            raise HttpError(MagicMock(status=404), b"not found")
+
+        service.get_calls = missing
+        assert GmailTransport(service).get_message("gone") is None
+
+    def test_a_non_404_error_propagates(self, service):
+        from googleapiclient.errors import HttpError
+
+        def broken(userId, id, format):  # noqa: A002,N803
+            raise HttpError(MagicMock(status=500), b"server error")
+
+        service.get_calls = broken
+        with pytest.raises(HttpError):
+            GmailTransport(service).get_message("x")
+
+
+class _Raising:
+    """A request whose ``execute`` raises, so the helper's translation is hit."""
+
+    def __init__(self, error) -> None:
+        self._error = error
+
+    def execute(self):
+        raise self._error

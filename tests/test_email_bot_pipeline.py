@@ -82,8 +82,9 @@ def build(
     sinks=None,
     notifier=None,
     transport_class=FakeTransport,
+    drafts=None,
 ):
-    transport = transport_class(mails=mails, threads=threads)
+    transport = transport_class(mails=mails, threads=threads, drafts=drafts)
     adapter = GmailAdapter(transport)
     pipeline = EmailBotPipeline(
         db=db,
@@ -304,10 +305,14 @@ class TestNeverTalkOverAHuman:
         run(pipeline)
         assert transport.drafts, "expected a draft from the first poll"
 
+        # The second poll sees the draft Gmail still holds, as a real second
+        # poll would. A fresh transport with no memory of it would report the
+        # draft as gone, and reconciliation would believe that.
         second_pipeline, second_transport = build(
             test_db,
             [load_gmail("second_inbound.json")],
             threads={thread_id: messages},
+            drafts=dict(transport.drafts),
         )
         run(second_pipeline)
 
@@ -2104,3 +2109,131 @@ class TestOffAndDraftStillCannotSend:
         assert summary.aborted_reason == "mode is off"
         assert summary.sent == 0
         assert summary.drafted == 0
+
+
+class TestARevokedGrantTurnsTheBotOff:
+    """Not retryable and not survivable, so the bot stops and says so.
+
+    Every later poll would fail the same way, twice a day, and a failing poll
+    looks exactly like a quiet inbox. Turning the mode off is what makes the
+    dashboard say otherwise.
+    """
+
+    def _revoked(self, test_db, *, on_preflight: bool):
+        from app.services.channels.gmail_transport import GmailAuthRevoked
+
+        revoked = GmailAuthRevoked("the Gmail refresh token no longer works")
+
+        class Revoked(FakeTransport):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                if on_preflight:
+                    type(self).inbox_address = property(
+                        lambda _self: (_ for _ in ()).throw(revoked)
+                    )
+
+            def list_unprocessed(self, **kwargs):
+                if not on_preflight:
+                    raise revoked
+                return []
+
+        notifier = RecordingAlertNotifier()
+        transport = Revoked(mails=[load_gmail("signup_en.json")])
+        pipeline = EmailBotPipeline(
+            db=test_db,
+            adapter=GmailAdapter(transport),
+            classifier=FakeClassifier(default=signals()),
+            notifier=notifier,
+            settings=bot_settings(),
+            bot_service=FakeBotService(),
+        )
+        return pipeline, transport, notifier
+
+    @pytest.mark.parametrize("on_preflight", [True, False])
+    def test_the_run_aborts_and_says_why(self, test_db, on_preflight):
+        pipeline, _transport, _notifier = self._revoked(
+            test_db, on_preflight=on_preflight
+        )
+        summary = run(pipeline)
+
+        assert "revoked" in summary.aborted_reason
+
+    @pytest.mark.parametrize("on_preflight", [True, False])
+    def test_the_mode_is_set_to_off(self, test_db, on_preflight):
+        from app.services.email_bot.settings import SETTING_MODE
+        from app.services.settings_service import get_setting
+
+        pipeline, _t, _n = self._revoked(test_db, on_preflight=on_preflight)
+        run(pipeline)
+
+        assert get_setting(test_db, SETTING_MODE) == "off"
+
+    def test_the_banner_setting_is_written(self, test_db):
+        from app.services.email_bot.settings import SETTING_LAST_ERROR
+        from app.services.settings_service import get_setting
+
+        pipeline, _t, _n = self._revoked(test_db, on_preflight=True)
+        run(pipeline)
+
+        assert "refresh token" in (get_setting(test_db, SETTING_LAST_ERROR) or "")
+
+    def test_an_urgent_alert_is_sent(self, test_db):
+        pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
+        run(pipeline)
+
+        assert len(notifier.alerts) == 1
+        assert notifier.alerts[0].urgent is True
+        assert "revoked" in notifier.alerts[0].subject
+
+    def test_the_alert_names_the_gap_mail_can_fall_into(self, test_db):
+        # The one place mail is silently missed: anything left unlabelled for
+        # longer than the listing window is never picked up by the bot at all.
+        pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
+        run(pipeline)
+
+        detail = notifier.alerts[0].detail
+        assert "older_than" in detail
+        assert "VH-Bot/Seen" in detail
+
+    def test_the_alert_carries_no_mail_content(self, test_db):
+        pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
+        run(pipeline)
+
+        alert = notifier.alerts[0]
+        assert "@" not in alert.subject
+        assert "sender@example.com" not in alert.detail
+
+    def test_no_mail_is_marked_handled(self, test_db):
+        # Nothing was answered and nothing was escalated, so nothing may look
+        # dealt with.
+        pipeline, _t, _n = self._revoked(test_db, on_preflight=False)
+        run(pipeline)
+
+        assert all(row.handled_at is None for row in inbound(test_db))
+
+    def test_a_failing_alert_does_not_stop_the_mode_being_turned_off(self, test_db):
+        # Turning the bot off is the more important of the two, so it happens
+        # first and an alert failure cannot undo it.
+        from app.services.email_bot.settings import SETTING_MODE
+        from app.services.settings_service import get_setting
+
+        pipeline, _t, notifier = self._revoked(test_db, on_preflight=True)
+        notifier.fail = True
+        summary = run(pipeline)
+
+        assert get_setting(test_db, SETTING_MODE) == "off"
+        assert "revoked" in summary.aborted_reason
+
+
+class RecordingAlertNotifier(RecordingNotifier):
+    """A notifier that records operational alerts as well as escalations."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.alerts: list = []
+        self.fail = False
+
+    def alert(self, alert) -> None:
+        if self.fail:
+            raise RuntimeError("the alert channel is down too")
+        self.alerts.append(alert)

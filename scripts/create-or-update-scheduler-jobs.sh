@@ -169,6 +169,20 @@ create_or_update_job \
     "Triage the volunteer inbox: label every new mail, draft answers, forward escalations (twice daily)" \
     "600s"
 
+# Re-read the curated knowledge-base doc once a day, before the morning poll,
+# so an edit a coordinator makes today is answerable tomorrow without anyone
+# deploying or clicking anything. Bootstrap cadence only: the live value is the
+# CRON_SYNC_KNOWLEDGE_BASE setting, applied by POST /admin/sync-cron-schedules.
+#
+# A shorter deadline than the poll because the work is bounded and known: one
+# document fetch, a chunk pass and an embed pass.
+create_or_update_job \
+    "sync-knowledge-base" \
+    "0 5 * * *" \
+    "/admin/email-bot/sync-knowledge-base" \
+    "Re-read the curated knowledge-base doc the inbox bot answers FAQ questions from (daily)" \
+    "300s"
+
 if [ ${#FAILED_JOBS[@]} -gt 0 ]; then
     echo -e "${RED}❌ ${#FAILED_JOBS[@]} job(s) failed: ${FAILED_JOBS[*]}${NC}"
     echo -e "${YELLOW}Final job status:${NC}"

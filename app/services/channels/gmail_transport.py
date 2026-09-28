@@ -133,6 +133,8 @@ class MailTransport(Protocol):
 
     def get_draft(self, draft_id: str) -> RawMail | None: ...
 
+    def get_message(self, message_id: str) -> RawMail | None: ...
+
     def delete_draft(self, draft_id: str) -> None: ...
 
     # SendSink is the only caller.
@@ -201,7 +203,7 @@ class GmailTransport:
         "is this us?" guard compares against whatever this actually is.
         """
         if not self._inbox_address:
-            profile = self._service.users().getProfile(userId="me").execute()
+            profile = self._execute(self._service.users().getProfile(userId="me"))
             self._inbox_address = (profile or {}).get("emailAddress", "")
         return self._inbox_address
 
@@ -222,11 +224,13 @@ class GmailTransport:
         """
         query = f"in:inbox newer_than:{newer_than_days}d -label:{exclude_label}"
         listed = (
-            self._service.users()
-            .messages()
-            .list(userId="me", q=query, maxResults=limit)
-            .execute()
-        ) or {}
+            self._execute(
+                self._service.users()
+                .messages()
+                .list(userId="me", q=query, maxResults=limit)
+            )
+            or {}
+        )
 
         mails: list[RawMail] = []
         for stub in (listed.get("messages") or [])[:limit]:
@@ -244,11 +248,13 @@ class GmailTransport:
         sent by hand exists only in Gmail.
         """
         thread = (
-            self._service.users()
-            .threads()
-            .get(userId="me", id=thread_id, format="full")
-            .execute()
-        ) or {}
+            self._execute(
+                self._service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format="full")
+            )
+            or {}
+        )
         return [
             RawMail.from_resource(resource) for resource in thread.get("messages") or []
         ]
@@ -287,9 +293,11 @@ class GmailTransport:
         ids = [label_id for label_id in label_ids if label_id]
         if not ids:
             return
-        self._service.users().messages().modify(
-            userId="me", id=message_id, body={"addLabelIds": ids}
-        ).execute()
+        self._execute(
+            self._service.users()
+            .messages()
+            .modify(userId="me", id=message_id, body={"addLabelIds": ids})
+        )
 
     def create_draft(self, thread_id: str, mime: bytes) -> str:
         """Save a reply as a draft inside the thread and return its draft id.
@@ -300,19 +308,21 @@ class GmailTransport:
         it, which is why the builder and this call are tested together.
         """
         created = (
-            self._service.users()
-            .drafts()
-            .create(
-                userId="me",
-                body={
-                    "message": {
-                        "threadId": thread_id,
-                        "raw": _b64url(mime),
-                    }
-                },
+            self._execute(
+                self._service.users()
+                .drafts()
+                .create(
+                    userId="me",
+                    body={
+                        "message": {
+                            "threadId": thread_id,
+                            "raw": _b64url(mime),
+                        }
+                    },
+                )
             )
-            .execute()
-        ) or {}
+            or {}
+        )
         return created.get("id", "")
 
     def send_reply(self, thread_id: str, mime: bytes) -> str:
@@ -329,14 +339,16 @@ class GmailTransport:
         call are tested together.
         """
         sent = (
-            self._service.users()
-            .messages()
-            .send(
-                userId="me",
-                body={"threadId": thread_id, "raw": _b64url(mime)},
+            self._execute(
+                self._service.users()
+                .messages()
+                .send(
+                    userId="me",
+                    body={"threadId": thread_id, "raw": _b64url(mime)},
+                )
             )
-            .execute()
-        ) or {}
+            or {}
+        )
         return sent.get("id", "")
 
     def get_draft(self, draft_id: str) -> RawMail | None:
@@ -350,11 +362,13 @@ class GmailTransport:
 
         try:
             draft = (
-                self._service.users()
-                .drafts()
-                .get(userId="me", id=draft_id, format="full")
-                .execute()
-            ) or {}
+                self._execute(
+                    self._service.users()
+                    .drafts()
+                    .get(userId="me", id=draft_id, format="full")
+                )
+                or {}
+            )
         except HttpError as exc:
             if getattr(exc, "status_code", None) == 404 or "404" in str(exc):
                 return None
@@ -374,23 +388,71 @@ class GmailTransport:
         from googleapiclient.errors import HttpError
 
         try:
-            self._service.users().drafts().delete(userId="me", id=draft_id).execute()
+            self._execute(
+                self._service.users().drafts().delete(userId="me", id=draft_id)
+            )
         except HttpError as exc:
             if getattr(exc, "status_code", None) == 404 or "404" in str(exc):
                 return
             raise
 
+    def _execute(self, request):
+        """Run one Gmail request, translating a dead grant into our own error.
+
+        Every call in this class goes through here, because there is no single
+        refresh step to wrap: ``googleapiclient`` refreshes the access token
+        lazily inside whichever request happens to be first, so ``invalid_grant``
+        can surface from any of them. In practice it is usually
+        ``users.getProfile``, since the pipeline's pre-flight reads the inbox
+        address before touching any mail.
+
+        Only ``invalid_grant`` becomes ``GmailAuthRevoked``. A network blip, a
+        503, or a token that is expired but still refreshable are all transient,
+        and flipping the mode to ``off`` for one of those would take the bot
+        down until somebody noticed - strictly worse than letting the next poll
+        succeed.
+        """
+        from google.auth.exceptions import RefreshError
+
+        try:
+            return request.execute()
+        except RefreshError as exc:
+            if "invalid_grant" in str(exc).lower():
+                raise GmailAuthRevoked(
+                    "the Gmail refresh token no longer works; re-consent by the "
+                    "runbook in docs/GMAIL_BOT_SETUP.md"
+                ) from exc
+            raise
+
+    def get_message(self, message_id: str) -> RawMail | None:
+        """One message by id, or None once it is gone.
+
+        The weekly sampling script fetches an inbound body by id at run time
+        precisely so that it never has to be stored, and a thread deleted since
+        the reply went out is ordinary rather than an error.
+        """
+        from googleapiclient.errors import HttpError
+
+        try:
+            return self._get_message(message_id)
+        except HttpError as exc:
+            if getattr(exc, "status_code", None) == 404 or "404" in str(exc):
+                return None
+            raise
+
     def _get_message(self, message_id: str) -> RawMail:
         resource = (
-            self._service.users()
-            .messages()
-            .get(userId="me", id=message_id, format="full")
-            .execute()
-        ) or {}
+            self._execute(
+                self._service.users()
+                .messages()
+                .get(userId="me", id=message_id, format="full")
+            )
+            or {}
+        )
         return RawMail.from_resource(resource)
 
     def _list_labels(self) -> dict[str, str]:
-        listed = self._service.users().labels().list(userId="me").execute() or {}
+        listed = self._execute(self._service.users().labels().list(userId="me")) or {}
         return {
             label.get("name", ""): label.get("id", "")
             for label in listed.get("labels") or []
@@ -402,18 +464,20 @@ class GmailTransport:
 
         try:
             created = (
-                self._service.users()
-                .labels()
-                .create(
-                    userId="me",
-                    body={
-                        "name": name,
-                        "labelListVisibility": "labelShow",
-                        "messageListVisibility": "show",
-                    },
+                self._execute(
+                    self._service.users()
+                    .labels()
+                    .create(
+                        userId="me",
+                        body={
+                            "name": name,
+                            "labelListVisibility": "labelShow",
+                            "messageListVisibility": "show",
+                        },
+                    )
                 )
-                .execute()
-            ) or {}
+                or {}
+            )
         except HttpError as exc:
             if getattr(exc, "status_code", None) == 409 or "409" in str(exc):
                 return None

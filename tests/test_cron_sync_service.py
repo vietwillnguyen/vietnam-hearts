@@ -59,6 +59,7 @@ def settings_db():
         "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
         "CRON_ROTATE_SCHEDULE": "0 * * * *",
         "CRON_POLL_INBOX": "0 8,18 * * *",
+        "CRON_SYNC_KNOWLEDGE_BASE": "0 5 * * *",
         "SCHEDULE_TIMEZONE": "Asia/Ho_Chi_Minh",
     }
 
@@ -108,6 +109,7 @@ class TestSyncCronSchedules:
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",  # stale weekly value
                 "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -130,6 +132,7 @@ class TestSyncCronSchedules:
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 * * * *",
                 "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -158,6 +161,7 @@ class TestSyncCronSchedules:
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",
                 "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -189,6 +193,7 @@ class TestSyncCronSchedules:
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",  # stale, and about to stay stale
                 "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -209,6 +214,7 @@ class TestSyncCronSchedules:
                 "send-weekly-reminders": "0 0 1 1 *",
                 "rotate-schedule": "0 17 * * 5",
                 "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -229,6 +235,7 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 0 1 1 *",
                 "send-weekly-reminders": "0 0 1 1 *",
                 "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
                 # rotate-schedule absent entirely -> get() raises
             }
         )
@@ -362,6 +369,7 @@ class TestPollInboxJobMapping:
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 * * * *",
                 "poll-volunteer-inbox": "*/5 * * * *",  # a far too frequent poll
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -388,3 +396,42 @@ class TestPollInboxJobMapping:
         ).read_text()
         assert "--attempt-deadline" in script
         assert '"600s"' in script
+
+
+class TestKnowledgeBaseSyncJobMapping:
+    def test_the_setting_maps_to_the_job(self):
+        assert CRON_SETTING_TO_JOB["CRON_SYNC_KNOWLEDGE_BASE"] == "sync-knowledge-base"
+
+    def test_the_job_targets_the_sync_endpoint(self):
+        from app.config import PROJECT_ROOT
+
+        script = (
+            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
+        ).read_text()
+        assert '"sync-knowledge-base"' in script
+        assert "/admin/email-bot/sync-knowledge-base" in script
+
+    def test_it_runs_before_the_morning_poll(self, settings_db):
+        # The point of the job: an edit made today is answerable tomorrow
+        # morning, which needs the sync to land before the 08:00 poll.
+        db, values = settings_db
+        sync_hour = int(values["CRON_SYNC_KNOWLEDGE_BASE"].split()[1])
+        first_poll_hour = int(values["CRON_POLL_INBOX"].split()[1].split(",")[0])
+        assert sync_hour < first_poll_hour
+
+    def test_a_drifted_sync_cadence_is_patched(self, settings_db):
+        db, _ = settings_db
+        client, jobs = make_client(
+            {
+                "sync-volunteers": "0 */2 * * *",
+                "send-weekly-reminders": "0 12 * * 0",
+                "rotate-schedule": "0 * * * *",
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 0 1 1 *",  # yearly, which is useless
+            }
+        )
+
+        result = sync_cron_schedules(db, client=client)
+
+        assert [job["job"] for job in result["synced"]] == ["sync-knowledge-base"]
+        assert jobs.patch.call_args.kwargs["body"]["schedule"] == "0 5 * * *"

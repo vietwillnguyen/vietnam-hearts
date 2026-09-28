@@ -269,3 +269,92 @@ class TestCompositeNotifier:
 
     def test_an_empty_composite_is_a_no_op(self):
         CompositeNotifier([]).notify(event())
+
+
+class TestTheOperationalAlertPath:
+    """An alert about the bot itself, which structurally carries no mail.
+
+    Its own type rather than a faked escalation: there is no IncomingMessage,
+    no category and no thread, so an alert cannot leak a body or an address
+    even by accident.
+    """
+
+    def _alert(self, urgent: bool = False):
+        from app.services.notifier import OperationalAlert
+
+        return OperationalAlert(
+            subject="the inbox bot's Gmail grant was revoked",
+            detail="EMAIL_BOT_MODE has been set to off. Re-consent by the runbook.",
+            urgent=urgent,
+        )
+
+    def test_the_forward_notifier_mails_the_one_recipient(self):
+        from app.services.notifier import EmailForwardNotifier
+
+        email_service = RecordingEmailService()
+        EmailForwardNotifier(email_service, OWNER).alert(self._alert())
+
+        assert email_service.sent[0]["to_email"] == OWNER
+        assert "revoked" in email_service.sent[0]["subject"]
+
+    def test_an_unset_recipient_mails_nothing(self):
+        from app.services.notifier import EmailForwardNotifier
+
+        email_service = RecordingEmailService()
+        EmailForwardNotifier(email_service, "").alert(self._alert())
+        assert email_service.sent == []
+
+    def test_the_discord_payload_carries_the_subject_and_detail(self):
+        from app.services.notifier import build_alert_payload
+
+        content = build_alert_payload(self._alert())["content"]
+        assert "revoked" in content
+        assert "set to off" in content
+
+    def test_an_urgent_alert_mentions_here(self):
+        from app.services.notifier import build_alert_payload
+
+        payload = build_alert_payload(self._alert(urgent=True))
+        assert "@here" in payload["content"]
+        assert payload["allowed_mentions"] == {"parse": ["everyone"]}
+
+    def test_an_ordinary_alert_does_not(self):
+        from app.services.notifier import build_alert_payload
+
+        payload = build_alert_payload(self._alert())
+        assert "@here" not in payload["content"]
+        assert "allowed_mentions" not in payload
+
+    def test_an_alert_cannot_carry_mail_content(self):
+        # Structural: the type has no field for it.
+        import dataclasses
+
+        from app.services.notifier import OperationalAlert
+
+        fields = {f.name for f in dataclasses.fields(OperationalAlert)}
+        assert fields == {"subject", "detail", "urgent"}
+
+    def test_the_composite_fans_out_and_isolates_failures(self):
+        from app.services.notifier import (
+            CompositeNotifier,
+            DiscordNotifier,
+            EmailForwardNotifier,
+        )
+
+        # An alert about the bot being broken is exactly when one of its own
+        # channels is most likely broken too.
+        email_service = RecordingEmailService()
+        http = RecordingHttp()
+        CompositeNotifier(
+            [
+                DiscordNotifier(
+                    "https://discord.example.com/hook",
+                    http=RecordingHttp(error=RuntimeError("503")),
+                ),
+                EmailForwardNotifier(email_service, OWNER),
+                DiscordNotifier("https://discord.example.com/hook", http=http),
+            ]
+        ).alert(self._alert(urgent=True))
+
+        assert len(email_service.sent) == 1
+        assert len(http.posts) == 1

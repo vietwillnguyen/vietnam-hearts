@@ -46,8 +46,27 @@ class EscalationEvent:
     gmail_thread_url: str
 
 
+@dataclass(frozen=True)
+class OperationalAlert:
+    """Something wrong with the bot itself, rather than with a piece of mail.
+
+    Its own type rather than a faked ``EscalationEvent``: there is no
+    ``IncomingMessage``, no category and no thread, and pretending otherwise
+    would make every notifier grow a "was there actually a message?" branch.
+
+    It also means an alert is structurally incapable of carrying mail content,
+    which is the right property for something that goes to a chat channel.
+    """
+
+    subject: str
+    detail: str
+    urgent: bool = False
+
+
 class Notifier(Protocol):
     def notify(self, event: EscalationEvent) -> None: ...
+
+    def alert(self, alert: OperationalAlert) -> None: ...
 
 
 class EmailForwardNotifier:
@@ -86,6 +105,36 @@ class EmailForwardNotifier:
             db=self._db,
             email_type="bot_escalation",
         )
+
+    def alert(self, alert: OperationalAlert) -> None:
+        """Mail an operational alert to the same single recipient.
+
+        Same address as the forwards and for the same reason: one configured
+        recipient, fixed at construction, is what makes "nothing here can reach
+        anybody else" checkable.
+        """
+        if not self._recipient:
+            logger.error(
+                "No ESCALATION_OWNER_EMAIL configured; cannot send the alert: %s",
+                alert.subject,
+            )
+            return
+
+        self._email_service.send_custom_email(
+            to_email=self._recipient,
+            subject=f"[VH bot] {alert.subject}",
+            html_body=_alert_body(alert),
+            db=self._db,
+            email_type="bot_alert",
+        )
+
+
+def _alert_body(alert: OperationalAlert) -> str:
+    return (
+        f"<p><b>{html.escape(alert.subject)}</b></p>"
+        f'<pre style="white-space: pre-wrap; font-family: inherit">'
+        f"{html.escape(alert.detail)}</pre>"
+    )
 
 
 def build_forward_body(event: EscalationEvent) -> str:
@@ -139,7 +188,19 @@ class DiscordNotifier:
             )
             return
 
-        payload = build_discord_payload(event)
+        self._post(build_discord_payload(event))
+
+    def alert(self, alert: OperationalAlert) -> None:
+        if not self._webhook_url:
+            logger.warning(
+                "No DISCORD_WEBHOOK_URL configured; skipping the alert: %s",
+                alert.subject,
+            )
+            return
+
+        self._post(build_alert_payload(alert))
+
+    def _post(self, payload: dict[str, Any]) -> None:
         client = self._http
         if client is None:
             import httpx
@@ -171,6 +232,22 @@ def build_discord_payload(event: EscalationEvent) -> dict[str, Any]:
     return payload
 
 
+def build_alert_payload(alert: OperationalAlert) -> dict[str, Any]:
+    """An operational alert as a Discord post.
+
+    Carries the subject and the detail and nothing else, because there is
+    nothing else: an ``OperationalAlert`` holds no mail.
+    """
+    lines = [
+        f"{'@here **URGENT**' if alert.urgent else '**Inbox bot**'} {alert.subject}",
+        alert.detail,
+    ]
+    payload: dict[str, Any] = {"content": "\n".join(lines)}
+    if alert.urgent:
+        payload["allowed_mentions"] = {"parse": ["everyone"]}
+    return payload
+
+
 class CompositeNotifier:
     """Fans one event out, and never lets one channel's failure lose another's.
 
@@ -192,6 +269,24 @@ class CompositeNotifier:
                     "Notifier %s failed for %s: %s",
                     type(notifier).__name__,
                     event.message.provider_message_id,
+                    type(exc).__name__,
+                    exc_info=True,
+                )
+
+    def alert(self, alert: OperationalAlert) -> None:
+        """Same fan-out and the same isolation as ``notify``.
+
+        An alert about the bot being broken is exactly the moment one of its
+        own channels is most likely to be broken too, so one failing must not
+        cost the others.
+        """
+        for notifier in self._notifiers:
+            try:
+                notifier.alert(alert)
+            except Exception as exc:
+                logger.error(
+                    "Notifier %s failed to alert: %s",
+                    type(notifier).__name__,
                     type(exc).__name__,
                     exc_info=True,
                 )

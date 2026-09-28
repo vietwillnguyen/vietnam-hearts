@@ -41,7 +41,14 @@ with the tier derived in `policy.py` and never by a model), `app/services/conver
 and `app/services/email_bot/` (per-run pipeline). Messenger still runs on the
 phase-0 webhook and has not been migrated onto it.
 
-Two properties of that code are load-bearing and easy to break:
+All four phases have shipped. The one place mail can still be silently missed is
+the listing window: the bot lists inbox mail from the last 7 days, so anything
+left unlabelled for longer than an outage lasted is never picked up. That is why
+the re-consent runbook in `docs/GMAIL_BOT_SETUP.md` ends with a hand triage of
+`in:inbox -label:VH-Bot/Seen older_than:7d`, and why a revoked grant turns the
+mode off and alerts rather than failing quietly twice a day.
+
+Three properties of that code are load-bearing and easy to break:
 
 - **There is exactly one way to send mail to the public.** `GmailTransport.send_reply` is
   the only send-shaped name on the transport and `SendSink` its only caller, reached only
@@ -51,6 +58,12 @@ Two properties of that code are load-bearing and easy to break:
   `tests/test_gmail_transport.py` fails on any other send-shaped attribute on the Gmail
   chain. The only other outbound path is `EmailForwardNotifier`, whose recipient is
   fixed at construction.
+- **Exactly one send path.** `GmailTransport.send_reply` is the only way mail
+  reaches the public and `SendSink` is its only caller, so the mode, the
+  per-language gate and the caps all apply to it.
+  `tests/test_gmail_transport.py` asserts the set of send-shaped names on the
+  class is exactly `{"send_reply"}` - an exact set, because "at most one"
+  would quietly permit a rename.
 - **Nothing derived from inbound mail may be logged or stored.** Log lines and exception
   messages carry Gmail ids, categories, tiers and actions only, because logs persist to the
   database and Sentry runs with `send_default_pii=True`. `tests/test_email_bot_privacy.py`

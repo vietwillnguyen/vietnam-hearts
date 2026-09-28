@@ -11,7 +11,7 @@ it is an ``async def`` that awaits directly rather than paying for a thread.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,7 +26,12 @@ from app.services.email_bot.delivery import DeliveryMode, parse_mode
 from app.services.email_bot.factory import EmailBotNotConfigured, build_pipeline
 from app.services.email_bot.gates import ACCEPTANCE_GATES
 from app.services.email_bot.pipeline import ALREADY_RUNNING
-from app.services.email_bot.settings import EmailBotSettings
+from app.services.email_bot.settings import (
+    SETTING_KB_CHUNKS,
+    SETTING_KB_LAST_SYNC,
+    EmailBotSettings,
+)
+from app.services.settings_service import get_setting, set_setting
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
@@ -100,6 +105,30 @@ async def sync_knowledge_base(
         # answering from a knowledge base nobody realises is stale.
         raise HTTPException(status_code=502, detail=result)
 
+    chunks = int(result.get("chunks") or 0)
+    if chunks == 0:
+        # sync_documents calls an emptied document a success, because nothing
+        # went wrong mechanically. But an empty knowledge base makes the bot
+        # refuse every FAQ question, which is a silent outage of the answer
+        # path rather than a successful sync.
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": (
+                    "the knowledge base synced to zero chunks; the document is "
+                    "empty, which turns FAQ answers off"
+                ),
+                "result": result,
+            },
+        )
+
+    # Written only on success, so "last synced two days ago" stays true rather
+    # than being overwritten with a time at which nothing was ingested. The
+    # dashboard warns when this goes stale, which is the part an operator
+    # actually reads.
+    set_setting(db, SETTING_KB_LAST_SYNC, datetime.now(UTC).isoformat())
+    set_setting(db, SETTING_KB_CHUNKS, str(chunks))
+
     return {"status": "success", "result": result}
 
 
@@ -158,6 +187,43 @@ def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
         },
         "acceptance_gates": dict(ACCEPTANCE_GATES),
         "shadow_agreement": service.shadow_agreement(),
+        "knowledge_base": _knowledge_base_health(db),
+    }
+
+
+# A daily job plus slack. Past this, the sync has almost certainly stopped
+# rather than merely run late, and the card says so.
+KB_STALE_AFTER = timedelta(hours=36)
+
+
+def _knowledge_base_health(db: Session) -> dict[str, Any]:
+    """When the knowledge base was last read, and whether that is worrying.
+
+    The staleness verdict is computed here rather than left to the page,
+    because "is a daily job still running" is the question an operator has, and
+    a bare timestamp is something nobody reads.
+    """
+    last_sync = get_setting(db, SETTING_KB_LAST_SYNC, "") or ""
+    chunks = get_setting(db, SETTING_KB_CHUNKS, "") or ""
+
+    stale = None
+    if last_sync:
+        try:
+            when = datetime.fromisoformat(last_sync)
+        except ValueError:
+            stale = True
+        else:
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=UTC)
+            stale = datetime.now(UTC) - when > KB_STALE_AFTER
+
+    return {
+        "last_sync": last_sync or None,
+        "chunks": int(chunks) if chunks.isdigit() else None,
+        # None while nothing has ever synced: "never synced" and "synced and
+        # now stale" are different problems and the card words them
+        # differently.
+        "stale": stale,
     }
 
 

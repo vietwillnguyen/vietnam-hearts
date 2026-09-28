@@ -36,6 +36,7 @@ CRON_SETTING_TO_JOB = {
     "CRON_SEND_WEEKLY_REMINDERS": "send-weekly-reminders",
     "CRON_ROTATE_SCHEDULE": "rotate-schedule",
     "CRON_POLL_INBOX": "poll-volunteer-inbox",
+    "CRON_SYNC_KNOWLEDGE_BASE": "sync-knowledge-base",
 }
 
 # Each field may contain digits, wildcards, steps, ranges, lists, and the

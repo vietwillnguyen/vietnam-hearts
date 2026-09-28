@@ -48,6 +48,7 @@ class FakeTransport:
         mails: Iterable[Mapping[str, Any]] = (),
         threads: Mapping[str, list[Mapping[str, Any]]] | None = None,
         inbox_address: str = payloads.TEST_INBOX,
+        drafts: dict[str, bytes] | None = None,
     ) -> None:
         self.inbox_address = inbox_address
         self._mails = [RawMail.from_resource(dict(mail)) for mail in mails]
@@ -57,10 +58,14 @@ class FakeTransport:
         }
         self.labels: dict[str, str] = {}
         self.applied: list[tuple[str, tuple[str, ...]]] = []
-        self.drafts: dict[str, bytes] = {}
+        # Carried over between polls in a test that runs more than one, because
+        # Gmail remembers a draft across requests and a fresh fake would
+        # otherwise report it as deleted - which reconciliation would believe.
+        self.drafts: dict[str, bytes] = dict(drafts or {})
         self.deleted_drafts: list[str] = []
         self.list_calls: list[dict[str, Any]] = []
-        self._next_draft = 0
+        self._next_draft = len(self.drafts)
+        self._draft_threads: dict[str, str] = dict.fromkeys(self.drafts, "thread-1")
 
     def list_unprocessed(
         self, *, newer_than_days: int, exclude_label: str, limit: int
@@ -94,16 +99,43 @@ class FakeTransport:
         self._next_draft += 1
         draft_id = f"draft-{self._next_draft}"
         self.drafts[draft_id] = mime
+        self._draft_threads[draft_id] = thread_id
         return draft_id
 
     def get_draft(self, draft_id: str) -> RawMail | None:
-        return (
-            None
-            if draft_id in self.deleted_drafts
-            else self._mails[0]
-            if self._mails
-            else None
+        """The draft as Gmail returns it: the message itself, DRAFT-labelled.
+
+        The earlier version of this handed back the first *inbound* mail as a
+        stand-in. It answered "is it still there" correctly and everything else
+        wrongly, and that is not a hypothetical objection: a fake that never
+        produced a DRAFT-labelled message From the inbox is exactly what hid
+        the bug where the bot read its own pending draft as a human reply.
+        """
+        if draft_id in self.deleted_drafts or draft_id not in self.drafts:
+            return None
+        return RawMail.from_resource(
+            payloads.message(
+                message_id=f"draft-msg-{draft_id}",
+                thread_id=self._draft_threads.get(draft_id, "thread-1"),
+                from_address=f"Vietnam Hearts <{self.inbox_address}>",
+                to_address=payloads.TEST_SENDER,
+                text=self._draft_body(draft_id),
+                label_ids=("DRAFT",),
+            )
         )
+
+    def get_message(self, message_id: str) -> RawMail | None:
+        for mail in self._mails:
+            if mail.id == message_id:
+                return mail
+        return None
+
+    def _draft_body(self, draft_id: str) -> str:
+        from email import message_from_bytes
+
+        parsed = message_from_bytes(self.drafts[draft_id])
+        payload = parsed.get_payload(decode=True) or b""
+        return payload.decode("utf-8", errors="replace")
 
     def delete_draft(self, draft_id: str) -> None:
         self.deleted_drafts.append(draft_id)

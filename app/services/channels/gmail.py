@@ -139,6 +139,10 @@ class GmailAdapter:
     def get_draft(self, draft_id: str) -> RawMail | None:
         return self._transport.get_draft(draft_id)
 
+    def get_message(self, message_id: str) -> RawMail | None:
+        """One message by id, for the weekly sampling that stores nothing."""
+        return self._transport.get_message(message_id)
+
     def thread_url(self, thread_id: str) -> str:
         return GMAIL_THREAD_URL.format(thread_id=thread_id)
 

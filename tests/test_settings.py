@@ -19,6 +19,7 @@ CRON_KEYS = [
     "CRON_SEND_WEEKLY_REMINDERS",
     "CRON_ROTATE_SCHEDULE",
     "CRON_POLL_INBOX",
+    "CRON_SYNC_KNOWLEDGE_BASE",
 ]
 
 EXPECTED_DEFAULTS = {
@@ -31,6 +32,7 @@ EXPECTED_DEFAULTS = {
     # waiting, so latency costs nothing and a rarer poll keeps both the model
     # spend and the blast radius of a bad run small.
     "CRON_POLL_INBOX": "0 8,18 * * *",
+    "CRON_SYNC_KNOWLEDGE_BASE": "0 5 * * *",
 }
 
 # Every setting the email channel design's Configuration table lists, with the
@@ -55,6 +57,9 @@ EMAIL_BOT_DEFAULTS = {
     # From E3, with the send path they bound.
     "EMAIL_BOT_DAILY_SEND_CAP": "30",
     "EMAIL_BOT_PER_SENDER_DAILY_CAP": "2",
+    # From E4, with the daily sync job.
+    "KNOWLEDGE_BASE_LAST_SYNC": "",
+    "KNOWLEDGE_BASE_CHUNKS": "",
 }
 
 
@@ -272,10 +277,45 @@ class TestEmailBotDefaultSettings:
         assert get_setting(db, "EMAIL_BOT_DAILY_SEND_CAP") == "30"
         assert get_setting(db, "EMAIL_BOT_PER_SENDER_DAILY_CAP") == "2"
 
-    def test_the_e4_sync_cadence_is_not_created_yet(self, db):
+    def test_the_sync_cadence_arrives_with_the_job(self, db):
+        # Every setting the design's Configuration table lists now exists.
+        initialize_default_settings(db)
+        assert get_setting(db, "CRON_SYNC_KNOWLEDGE_BASE") == "0 5 * * *"
+
+    def test_the_sync_freshness_fields_start_empty(self, db):
+        # Empty means "never synced", which the card words differently from
+        # "synced and now stale": the first says nobody set it up, the second
+        # says the daily job stopped.
+        initialize_default_settings(db)
+        assert get_setting(db, "KNOWLEDGE_BASE_LAST_SYNC") == ""
+        assert get_setting(db, "KNOWLEDGE_BASE_CHUNKS") == ""
+
+    def test_every_setting_the_design_lists_now_exists(self, db):
+        # The end of the four phases: nothing in the Configuration table is
+        # still pending.
         initialize_default_settings(db)
         keys = {setting.key for setting in get_all_settings(db)}
-        assert "CRON_SYNC_KNOWLEDGE_BASE" not in keys
+        for key in (
+            "EMAIL_BOT_MODE",
+            "EMAIL_BOT_AUTO_LANGUAGES",
+            "EMAIL_BOT_LAST_ERROR",
+            "CRON_POLL_INBOX",
+            "CRON_SYNC_KNOWLEDGE_BASE",
+            "KNOWLEDGE_BASE_DOC_ID",
+            "ESCALATION_OWNER_EMAIL",
+            "TRIAGE_CLASSIFIER",
+            "TRIAGE_FALLBACK_MODEL",
+            "TRIAGE_CONFIDENCE_THRESHOLD",
+            "ANSWER_THRESHOLD",
+            "EMAIL_BOT_PER_RUN_CAP",
+            "EMAIL_BOT_DAILY_SEND_CAP",
+            "EMAIL_BOT_PER_SENDER_DAILY_CAP",
+            "VOLUNTEER_SIGNUP_FORM_LINK",
+            "CLASS_START_TIME",
+            "CLASS_END_TIME",
+            "SCHEDULE_TEACHING_DAYS",
+        ):
+            assert key in keys, key
 
     @pytest.mark.parametrize("key", sorted(EMAIL_BOT_DEFAULTS))
     def test_every_key_has_a_description(self, db, key):

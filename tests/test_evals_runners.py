@@ -701,3 +701,144 @@ class TestFormatting:
         assert len(lines) == 4
         assert len({len(line.rstrip()) for line in lines}) >= 1
         assert "safeguarding_legal" in table
+
+
+class TestWeeklyLiveSampling:
+    """Judges what was actually sent, and stores nothing.
+
+    The golden set says what the bot does on cases somebody thought of. This
+    says what it did to real questions, which is the only measurement that can
+    notice a question nobody anticipated being answered badly.
+    """
+
+    def _conversation(self, db, thread="t-1"):
+        from app.models import Conversation
+
+        conversation = Conversation(
+            channel="email",
+            thread_key=thread,
+            sender_key="hash",
+            status="bot",
+            bot_reply_count=1,
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+        return conversation
+
+    def _row(self, db, conversation, **kwargs):
+        from datetime import UTC, datetime
+
+        from app.models import Message
+
+        values = {
+            "conversation_id": conversation.id,
+            "direction": "outbound",
+            "action": "sent",
+            "category": "faq",
+            "language": "en",
+            "text": "No certificate is needed.",
+            "created_at": datetime.now(UTC),
+        }
+        values.update(kwargs)
+        row = Message(**values)
+        db.add(row)
+        db.commit()
+        return row
+
+    def test_only_sent_faq_rows_in_the_window_are_picked(self, test_db):
+        from datetime import UTC, datetime, timedelta
+
+        from evals.sample_live_answers import sent_faq_rows
+
+        conversation = self._conversation(test_db)
+        wanted = self._row(test_db, conversation)
+        # A draft is measured by the acceptance rate instead: a draft the
+        # captain corrected before sending is not a customer-visible answer.
+        self._row(test_db, conversation, action="drafted", gmail_draft_id="d-1")
+        # The sign-up template and the holding message are fixed strings and
+        # cannot be ungrounded.
+        self._row(test_db, conversation, category="signup")
+        self._row(test_db, conversation, category="holding")
+        # Outside the window.
+        self._row(
+            test_db,
+            conversation,
+            created_at=datetime.now(UTC) - timedelta(days=30),
+        )
+
+        until = datetime.now(UTC) + timedelta(minutes=1)
+        since = until - timedelta(days=7)
+        picked = sent_faq_rows(test_db, since, until)
+
+        assert [row.id for row in picked] == [wanted.id]
+
+    def test_an_empty_window_picks_nothing(self, test_db):
+        from datetime import UTC, datetime, timedelta
+
+        from evals.sample_live_answers import sent_faq_rows
+
+        conversation = self._conversation(test_db)
+        self._row(test_db, conversation)
+
+        until = datetime.now(UTC) - timedelta(days=10)
+        assert sent_faq_rows(test_db, until - timedelta(days=7), until) == []
+
+    def test_the_prohibitions_it_judges_against_are_the_designs(self):
+        from evals.sample_live_answers import LIVE_PROHIBITIONS
+
+        joined = " ".join(LIVE_PROHIBITIONS)
+        for harm in ("acceptance", "money", "phone", "when someone will reply"):
+            assert harm in joined
+
+    def test_it_judges_without_writing_anything(self, test_db):
+        import asyncio
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        from evals.sample_live_answers import evaluate, sent_faq_rows
+
+        conversation = self._conversation(test_db)
+        self._row(
+            test_db,
+            conversation,
+            direction="inbound",
+            action="labelled",
+            provider_message_id="msg-1",
+            text=None,
+            created_at=datetime.now(UTC) - timedelta(minutes=5),
+        )
+        self._row(test_db, conversation)
+
+        from app.models import Message
+
+        before = test_db.query(Message).count()
+
+        adapter = MagicMock()
+        adapter.get_message.return_value = MagicMock(
+            payload={"payload": {"mimeType": "text/plain", "body": {}}}
+        )
+        bot = MagicMock()
+
+        async def search(question, limit=3):
+            return [{"content": "context", "similarity": 0.8}]
+
+        bot.knowledge_service.similarity_search = search
+        bot._build_context = lambda chunks: "context"
+
+        judge = MagicMock()
+        judge.models.generate_content.return_value = MagicMock(
+            text='{"mentions": {}, "grounded": true, "violations": []}'
+        )
+
+        until = datetime.now(UTC) + timedelta(minutes=1)
+        rows = sent_faq_rows(test_db, until - timedelta(days=7), until)
+        asyncio.run(evaluate(test_db, adapter, bot, judge, rows))
+
+        # The whole point: the inbound body was fetched from Gmail for this run
+        # and discarded. Nothing new is in the database.
+        assert test_db.query(Message).count() == before
+        assert all(
+            row.text is None
+            for row in test_db.query(Message).filter(Message.direction == "inbound")
+        )

@@ -421,7 +421,7 @@ class EmailBotPipeline:
 
 - [ ] **Task E3.3: Pipeline in auto**
   - Modify: `app/services/email_bot/pipeline.py`, `app/routers/admin/email_bot.py`, `templates/web/admin/dashboard.html`
-  - Test: `tests/test_email_bot_pipeline.py` extended (in `auto`: sign-up sent, FAQ above threshold sent, FAQ below threshold gets a sent holding message and an escalation, executive gets a sent holding message and an escalation, second inbound on a replied thread gets no second reply but is still forwarded and posted to Discord, `automated` at low confidence is skipped with no holding message, a send failure leaves the thread unpaused and unlabelled `Sent`).
+  - Test: `tests/test_email_bot_pipeline.py` extended (in `auto`: sign-up sent, FAQ above threshold sent, FAQ below threshold gets a sent holding message and an escalation, executive gets a sent holding message and an escalation, second inbound on a replied thread gets no second reply but is still forwarded and posted to Discord, `automated` at low confidence is skipped with no holding message, a send failure escalates the mail and leaves the thread paused and unlabelled `Sent` (amended 2026-09-29; see the design's Error handling amendment)).
 
 - [ ] **Task E3.4: Canary and loop test**
   - Modify: `docs/GMAIL_BOT_SETUP.md`

@@ -203,19 +203,65 @@ A warning banner means the last run recorded a problem; it clears itself on the 
 
 ## Re-consent
 
-*Completed in phase E4, which adds the `invalid_grant` detection and alert this procedure responds to.*
+### How you will find out
 
-What is already known and does not depend on E4:
+The bot tells you. When a poll gets `invalid_grant` back from Google it does
+three things, in this order:
 
-- The most likely cause of a revoked grant is a **password change on the volunteer inbox account**, which invalidates existing refresh tokens. A token also dies if it goes six months unused or if the grant is revoked by hand.
-- The repair is steps 2, 3 and 4 of this document again: confirm the consent screen is still published, re-run the consent script signed in as the volunteer inbox, replace `GMAIL_OAUTH_REFRESH_TOKEN` in Secret Manager, and confirm with `--check`.
-- **The re-consent is not finished until the gap has been triaged by hand.** The bot lists inbox mail from the last 7 days only, so anything that stayed unlabelled for longer than the outage lasted is never triaged or escalated by the bot at all. Search the inbox for:
+1. Sets `EMAIL_BOT_MODE` to **off**. This is the only thing the bot ever changes
+   about its own configuration, and it is justified because the alternative is
+   failing twice a day in silence: a poll that always fails looks exactly like a
+   quiet inbox.
+2. Writes the reason to `EMAIL_BOT_LAST_ERROR`, which the dashboard shows as a
+   banner on the Inbox Bot card.
+3. Sends an **urgent** alert to Discord and to `ESCALATION_OWNER_EMAIL`, naming
+   the hand-triage search below.
 
-  ```
-  in:inbox -label:VH-Bot/Seen older_than:7d
-  ```
+Only `invalid_grant` does this. A network blip or a 503 from Google is transient
+and the next poll simply succeeds, because turning the bot off for one of those
+would take it down until somebody noticed.
 
-  and deal with those by hand. This is the one failure mode where mail can be silently missed, and the search above is the whole remedy.
+### The most likely cause
+
+A **password change on the volunteer inbox account**, which invalidates every
+existing refresh token. A token also dies if it goes six months unused, or if
+the grant is revoked by hand at
+[myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+### The repair
+
+Steps 2, 3 and 4 of this document again:
+
+1. Confirm the consent screen is still **External and published**, not back in
+   Testing.
+2. Re-run `scripts/gmail_oauth_consent.py`, signed in as the volunteer inbox.
+   If Google returns no refresh token, revoke the app at
+   myaccount.google.com/permissions first: it only issues one on a first
+   consent.
+3. Replace `GMAIL_OAUTH_REFRESH_TOKEN` in Secret Manager.
+4. Confirm with `--check`, which prints the address the grant belongs to.
+5. Set `EMAIL_BOT_MODE` back to `draft` (or `auto`, if it was in `auto` and the
+   canary has already passed). The bot turned it off; it will not turn it back
+   on by itself.
+
+### It is not finished until you have triaged the gap by hand
+
+**This is the one failure mode in the whole design where mail is silently
+missed, and this search is the whole remedy.**
+
+The bot lists inbox mail from the last 7 days only. That window is what makes a
+half-finished run self-healing, but it also means anything that stayed
+unlabelled for longer than the outage lasted is never triaged, never answered
+and never escalated by the bot at all. It just sits in the inbox.
+
+So after re-consenting, search the inbox for:
+
+```
+in:inbox -label:VH-Bot/Seen older_than:7d
+```
+
+and deal with those by hand. Nothing else in this document will do it for you,
+and no later poll will pick them up.
 
 ## Canary and loop test
 

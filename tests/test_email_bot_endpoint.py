@@ -679,3 +679,99 @@ class TestCapsOnTheMetricsEndpoint:
         body = admin_client.get("/admin/email-bot/metrics").text
         assert "sent_today_by_sender" not in body
         assert "@" not in body
+
+
+class TestSyncFreshnessIsRecordedAndSurfaced:
+    """A daily job that silently stopped looks exactly like a quiet day.
+
+    So the sync records when it last succeeded and how much it read, and the
+    metrics endpoint says whether that has gone stale. The staleness verdict is
+    the feature; a bare timestamp is something nobody reads.
+    """
+
+    def _bot(self, chunks: int, status: str = "success"):
+        bot = MagicMock()
+        bot.sync_documents = AsyncMock(
+            return_value={"status": status, "chunks": chunks, "embeddings": chunks}
+        )
+        return bot
+
+    def _sync(self, admin_client, bot):
+        from app.dependencies.services import get_bot_service
+        from app.main import app
+
+        app.dependency_overrides[get_bot_service] = lambda: bot
+        try:
+            return admin_client.post(SYNC)
+        finally:
+            app.dependency_overrides.pop(get_bot_service, None)
+
+    def test_a_successful_sync_records_when_and_how_much(self, admin_client, test_db):
+        from app.services.settings_service import get_setting
+
+        set_setting(test_db, "KNOWLEDGE_BASE_DOC_ID", "doc-123")
+        assert self._sync(admin_client, self._bot(12)).status_code == 200
+
+        assert get_setting(test_db, "KNOWLEDGE_BASE_CHUNKS") == "12"
+        assert get_setting(test_db, "KNOWLEDGE_BASE_LAST_SYNC")
+
+    def test_a_failed_sync_records_nothing(self, admin_client, test_db):
+        # "Last synced two days ago" has to stay true rather than being
+        # overwritten with a time at which nothing was ingested.
+        from app.services.settings_service import get_setting
+
+        set_setting(test_db, "KNOWLEDGE_BASE_DOC_ID", "doc-123")
+        set_setting(test_db, "KNOWLEDGE_BASE_LAST_SYNC", "2026-09-27T05:00:00+00:00")
+
+        assert self._sync(admin_client, self._bot(0, "error")).status_code == 502
+        assert (
+            get_setting(test_db, "KNOWLEDGE_BASE_LAST_SYNC")
+            == "2026-09-27T05:00:00+00:00"
+        )
+
+    def test_zero_chunks_is_a_failure_not_a_sync(self, admin_client, test_db):
+        # sync_documents calls an emptied doc a success because nothing went
+        # wrong mechanically, but an empty knowledge base makes the bot refuse
+        # every FAQ question: a silent outage of the answer path.
+        from app.services.settings_service import get_setting
+
+        set_setting(test_db, "KNOWLEDGE_BASE_DOC_ID", "doc-123")
+        response = self._sync(admin_client, self._bot(0))
+
+        assert response.status_code == 502
+        assert "turns FAQ answers off" in str(response.json()["detail"])
+        assert get_setting(test_db, "KNOWLEDGE_BASE_LAST_SYNC") == ""
+
+    def test_never_synced_reads_as_none_rather_than_stale(self, admin_client, test_db):
+        # "Never synced" and "synced and now stale" are different problems and
+        # the card words them differently.
+        kb = admin_client.get("/admin/email-bot/metrics").json()["knowledge_base"]
+        assert kb["last_sync"] is None
+        assert kb["stale"] is None
+
+    def test_a_recent_sync_is_not_stale(self, admin_client, test_db):
+        from datetime import UTC, datetime
+
+        set_setting(test_db, "KNOWLEDGE_BASE_LAST_SYNC", datetime.now(UTC).isoformat())
+        set_setting(test_db, "KNOWLEDGE_BASE_CHUNKS", "12")
+
+        kb = admin_client.get("/admin/email-bot/metrics").json()["knowledge_base"]
+        assert kb["stale"] is False
+        assert kb["chunks"] == 12
+
+    def test_a_sync_older_than_the_window_is_stale(self, admin_client, test_db):
+        from datetime import UTC, datetime, timedelta
+
+        set_setting(
+            test_db,
+            "KNOWLEDGE_BASE_LAST_SYNC",
+            (datetime.now(UTC) - timedelta(days=3)).isoformat(),
+        )
+        kb = admin_client.get("/admin/email-bot/metrics").json()["knowledge_base"]
+        assert kb["stale"] is True
+
+    def test_an_unparseable_timestamp_reads_as_stale(self, admin_client, test_db):
+        # Fail towards telling somebody, rather than towards silence.
+        set_setting(test_db, "KNOWLEDGE_BASE_LAST_SYNC", "whenever")
+        kb = admin_client.get("/admin/email-bot/metrics").json()["knowledge_base"]
+        assert kb["stale"] is True

@@ -292,6 +292,12 @@
                                         <span class="text-muted small">Loading...</span>
                                     </div>
 
+                                    <h6 class="text-muted mt-3">Knowledge base</h6>
+                                    <p class="text-muted small mb-1">The bot answers FAQ questions only from the curated doc, re-read once a day. Editing guide: <code>docs/KNOWLEDGE_BASE_EDITING.md</code>.</p>
+                                    <div id="inbox-bot-knowledge-base">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+
                                     <h6 class="text-muted mt-3">Classifier agreement</h6>
                                     <p class="text-muted small mb-1">How often the deciding classifier and the one running in shadow agreed. A low figure is not itself a fault; it says the two disagree about this inbox and the golden set should be re-run.</p>
                                     <div id="inbox-bot-agreement">
@@ -3134,11 +3140,16 @@ async function loadInboxBotCard() {
         }
         const metrics = await response.json();
         renderCaps(metrics.caps || {});
+        renderKnowledgeBase(metrics.knowledge_base || {});
         renderAcceptance(metrics.draft_acceptance || {});
         renderAgreement(metrics.shadow_agreement || {});
     } catch (error) {
         const acceptance = document.getElementById('inbox-bot-acceptance');
         const agreement = document.getElementById('inbox-bot-agreement');
+        const kbTarget = document.getElementById('inbox-bot-knowledge-base');
+        if (kbTarget) {
+            kbTarget.innerHTML = '<span class="text-muted small">Could not load the knowledge base status.</span>';
+        }
         const capsTarget = document.getElementById('inbox-bot-caps');
         if (capsTarget) {
             capsTarget.innerHTML = '<span class="text-muted small">Could not load send caps.</span>';
@@ -3250,6 +3261,34 @@ function renderCaps(caps) {
         <span class="${exhausted ? 'text-warning' : 'text-success'}">${spent} of ${caps.daily_cap} sent</span>
         <span class="text-secondary">&middot; ${remaining} left today
         &middot; ${caps.senders_today || 0} sender(s), at most ${caps.per_sender_cap} thread(s) each</span>
+    </div>`;
+}
+
+function renderKnowledgeBase(kb) {
+    const target = document.getElementById('inbox-bot-knowledge-base');
+    if (!target) {
+        return;
+    }
+    // "Never synced" and "synced and now stale" are different problems and
+    // read differently: the first means nobody has set it up, the second means
+    // the daily job has stopped.
+    if (!kb.last_sync) {
+        target.innerHTML =
+            '<span class="text-warning small">Never synced. The bot cannot answer any FAQ question until it has read the doc.</span>';
+        return;
+    }
+    const when = escapeHtml(kb.last_sync);
+    const chunks = kb.chunks === null || kb.chunks === undefined ? 'unknown' : kb.chunks;
+    if (kb.stale) {
+        target.innerHTML = `<span class="text-warning small">
+            Last synced ${when} (${chunks} chunks). That is more than a day ago,
+            so the daily sync has probably stopped and the bot is answering from
+            an old copy.</span>`;
+        return;
+    }
+    target.innerHTML = `<div class="small">
+        <span class="text-success">Synced</span>
+        <span class="text-secondary">${when} &middot; ${chunks} chunks</span>
     </div>`;
 }
 

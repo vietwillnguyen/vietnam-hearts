@@ -379,8 +379,28 @@ Keys are environment variables because they are secrets.
 | Embeddings, retrieval or generation unavailable | `needs_admin`, no fallback (parent spec D9); counts toward the circuit breaker |
 | Summary generation fails | Forward and Discord post go out without the summary |
 | Discord webhook fails | Logged and reported; the forward is the durable record, so the escalation is not lost |
-| Send fails in `auto` | Logged and reported, no retry loop; the thread stays unpaused and the mail is not relabelled `Sent` |
+| Send fails in `auto` | Logged and reported, no retry loop; the mail is escalated to a person and the thread is paused for handoff; never relabelled `Sent` (amended 2026-09-29, below) |
 | Caps reached | Remaining answerable mail is drafted instead of sent, and the run records it |
+
+### Amendment 2026-09-29: a failed send pauses the thread
+
+This table originally said the thread stayed unpaused after a failed send in
+`auto`, so that a later run could try again. Two decisions taken since make that
+wording wrong rather than merely different.
+
+The completed-action marker, `messages.handled_at`, means an escalated mail is
+marked handled and is never re-processed. So "stays unpaused" no longer produces
+a retry: it only leaves a thread open to the bot after a person has been handed
+it.
+
+And the "never talk over a human" control says a thread a person owns is theirs.
+If the bot retried after the captain had already answered the forward, the
+sender would receive the reply twice.
+
+A failed send therefore takes the same path as any other failure after the
+inbound row is committed: the mail is forwarded to `ESCALATION_OWNER_EMAIL`,
+posted to Discord, and the thread is paused for handoff. What has not changed is
+that the mail is never relabelled `Sent`, because nothing was sent.
 
 ## Evaluation gate
 

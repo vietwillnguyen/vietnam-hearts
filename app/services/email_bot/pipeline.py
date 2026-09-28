@@ -43,6 +43,7 @@ from app.services.channels.gmail_transport import (
     LABEL_SENT,
     LABEL_SKIPPED,
     OUTCOME_LABELS,
+    GmailAuthRevoked,
     category_label,
 )
 from app.services.channels.mail_guards import (
@@ -229,7 +230,12 @@ class EmailBotPipeline:
             logger.error("Refusing to poll: ESCALATION_OWNER_EMAIL is not set")
             return self._summary
 
-        inbox_refusal = self._inbox_address_refusal()
+        try:
+            inbox_refusal = self._inbox_address_refusal()
+        except GmailAuthRevoked as revoked:
+            self._handle_revoked_grant(revoked)
+            return self._summary
+
         if inbox_refusal is not None:
             self._summary.aborted_reason = inbox_refusal
             self._record_last_error(inbox_refusal)
@@ -243,6 +249,8 @@ class EmailBotPipeline:
 
         try:
             self._poll()
+        except GmailAuthRevoked as revoked:
+            self._handle_revoked_grant(revoked)
         except _CircuitOpen as stop:
             self._summary.aborted_reason = str(stop)
             self._record_last_error(str(stop))
@@ -281,6 +289,11 @@ class EmailBotPipeline:
         """
         try:
             address = self.adapter.inbox_address
+        except GmailAuthRevoked:
+            # Not a read failure. A revoked grant flips the mode and alerts, so
+            # it has to reach run()'s handler rather than becoming a refusal
+            # string here.
+            raise
         except Exception as exc:
             return f"the Gmail grant could not be read: {type(exc).__name__}"
         if not address:
@@ -1006,6 +1019,57 @@ class EmailBotPipeline:
         run_row.errors = self._summary.errors
         run_row.aborted_reason = self._summary.aborted_reason
         self.db.commit()
+
+    def _handle_revoked_grant(self, revoked: Exception) -> None:
+        """Stop, say so loudly, and turn the bot off.
+
+        A revoked grant is neither retryable nor survivable: every later poll
+        fails the same way, twice a day, and a failing poll looks exactly like a
+        quiet inbox. Turning the mode off is what makes the dashboard say
+        otherwise, and it is the only place the bot changes its own
+        configuration - justified because the alternative is failing silently
+        until somebody happens to look.
+
+        The alert names the gap as well as the cause: mail left unlabelled for
+        more than the listing window is never picked up by the bot at all, so
+        the re-consent runbook ends with a hand triage.
+        """
+        from app.services.notifier import OperationalAlert
+
+        reason = f"the Gmail grant was revoked: {revoked}"
+        self._summary.aborted_reason = reason
+        self._record_last_error(str(revoked))
+        logger.error("Refusing to poll: %s", reason)
+
+        self._disable_mode()
+
+        try:
+            self.notifier.alert(
+                OperationalAlert(
+                    subject="the inbox bot's Gmail grant was revoked",
+                    detail=(
+                        f"{revoked}\n\n"
+                        "EMAIL_BOT_MODE has been set to off, so no mail is "
+                        "being triaged. Anything that stays unlabelled for more "
+                        f"than {LISTING_WINDOW_DAYS} days is never picked up by "
+                        "the bot, so after re-consenting, hand triage "
+                        "in:inbox -label:VH-Bot/Seen older_than:"
+                        f"{LISTING_WINDOW_DAYS}d"
+                    ),
+                    urgent=True,
+                )
+            )
+        except Exception:
+            logger.error("Could not send the revoked-grant alert", exc_info=True)
+
+    def _disable_mode(self) -> None:
+        """Set ``EMAIL_BOT_MODE`` to off. The one thing the bot changes itself."""
+        from app.services.email_bot.settings import SETTING_MODE
+
+        try:
+            set_setting(self.db, SETTING_MODE, "off")
+        except Exception:
+            logger.error("Could not set EMAIL_BOT_MODE to off", exc_info=True)
 
     def _record_last_error(self, reason: str) -> None:
         try:
