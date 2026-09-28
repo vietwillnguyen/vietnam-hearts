@@ -437,3 +437,175 @@ class TestAuthentication:
     def test_no_endpoint_answers_an_unauthenticated_call(self, client, method, path):
         response = getattr(client, method)(path.replace("{conversation_id}", "1"))
         assert response.status_code != 200
+
+
+class TestMetricsEndpoint:
+    """The two numbers the evaluation gate is argued from.
+
+    Both are grouped and reported the way the design states the gate, so the
+    card and the design cannot drift into saying different things.
+    """
+
+    def _drafted(self, db, kind: str, outcome: str | None, index: int):
+        from app.models import Conversation, Message
+
+        conversation = Conversation(
+            channel="email",
+            thread_key=f"thread-{kind}-{index}",
+            sender_key="hash",
+            status="bot",
+            bot_reply_count=1,
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                direction="outbound",
+                action="drafted",
+                language="en",
+                text="a reply",
+                category=kind,
+                gmail_draft_id=f"draft-{kind}-{index}",
+                draft_outcome=outcome,
+            )
+        )
+        db.commit()
+
+    def test_acceptance_is_grouped_by_the_answer_path(self, admin_client, test_db):
+        # The gate is stated per kind, so one aggregate would not answer it.
+        for index in range(9):
+            self._drafted(test_db, "signup", "sent_unchanged", index)
+        self._drafted(test_db, "signup", "sent_edited", 99)
+        self._drafted(test_db, "faq", "sent_unchanged", 0)
+
+        body = admin_client.get("/admin/email-bot/metrics").json()
+        acceptance = body["draft_acceptance"]
+
+        assert acceptance["signup"]["rate"] == pytest.approx(0.9)
+        assert acceptance["signup"]["resolved"] == 10
+        assert acceptance["faq"]["rate"] == 1.0
+
+    def test_an_unresolved_kind_reports_no_rate_rather_than_zero(
+        self, admin_client, test_db
+    ):
+        # A rate of 0 and "not measured yet" must not look the same: the gate
+        # needs two weeks of the latter before it means anything.
+        self._drafted(test_db, "faq", "pending", 0)
+
+        body = admin_client.get("/admin/email-bot/metrics").json()
+        assert body["draft_acceptance"]["faq"]["rate"] is None
+
+    def test_pending_drafts_are_not_counted_as_resolved(self, admin_client, test_db):
+        self._drafted(test_db, "signup", "sent_unchanged", 0)
+        self._drafted(test_db, "signup", "pending", 1)
+
+        body = admin_client.get("/admin/email-bot/metrics").json()
+        assert body["draft_acceptance"]["signup"]["resolved"] == 1
+        assert body["draft_acceptance"]["signup"]["rate"] == 1.0
+
+    def test_no_drafts_is_an_empty_acceptance_summary(self, admin_client, test_db):
+        body = admin_client.get("/admin/email-bot/metrics").json()
+        assert body["draft_acceptance"] == {}
+
+    def test_shadow_agreement_is_reported_per_field(self, admin_client, test_db):
+        from app.models import Conversation, Message
+
+        conversation = Conversation(
+            channel="email",
+            thread_key="t-1",
+            sender_key="hash",
+            status="bot",
+            bot_reply_count=0,
+        )
+        test_db.add(conversation)
+        test_db.commit()
+        test_db.refresh(conversation)
+
+        for index, (category, shadow_category) in enumerate(
+            [("faq", "faq"), ("donation", "faq")]
+        ):
+            test_db.add(
+                Message(
+                    conversation_id=conversation.id,
+                    direction="inbound",
+                    provider_message_id=f"m-{index}",
+                    action="labelled",
+                    category=category,
+                    language="en",
+                    classifier="jev",
+                    triage_shadow={
+                        "category": shadow_category,
+                        "language": "en",
+                        "classifier": "litellm:gemini",
+                    },
+                )
+            )
+        test_db.commit()
+
+        agreement = admin_client.get("/admin/email-bot/metrics").json()[
+            "shadow_agreement"
+        ]
+        assert agreement["compared"] == 2
+        assert agreement["category_agreement"] == pytest.approx(0.5)
+        assert agreement["language_agreement"] == 1.0
+
+    def test_confidence_is_not_compared(self, admin_client, test_db):
+        # Jev's probabilities are calibrated and a general model's self-report
+        # is not, so comparing the two numbers would manufacture disagreements.
+        body = admin_client.get("/admin/email-bot/metrics").json()
+        assert "confidence_agreement" not in body["shadow_agreement"]
+
+    def test_nothing_shadowed_reports_no_rate(self, admin_client, test_db):
+        agreement = admin_client.get("/admin/email-bot/metrics").json()[
+            "shadow_agreement"
+        ]
+        assert agreement["compared"] == 0
+        assert agreement["category_agreement"] is None
+
+    def test_the_response_carries_no_sender_or_mail_content(
+        self, admin_client, test_db
+    ):
+        self._drafted(test_db, "signup", "sent_unchanged", 0)
+        body = admin_client.get("/admin/email-bot/metrics").text
+        assert "@" not in body
+        assert "a reply" not in body
+
+    def test_the_endpoint_carries_the_admin_dependency(self):
+        from app.dependencies.auth import get_current_admin_user
+        from app.main import app
+
+        route = next(
+            r
+            for r in app.routes
+            if getattr(r, "path", None) == "/admin/email-bot/metrics"
+        )
+        assert get_current_admin_user in {
+            dependency.call for dependency in route.dependant.dependencies
+        }
+
+    def test_the_run_summary_reports_reconciled_drafts(self, admin_client, test_db):
+        from datetime import UTC, datetime
+
+        from app.models import EmailBotRun
+
+        test_db.add(
+            EmailBotRun(
+                started_at=datetime.now(UTC),
+                finished_at=datetime.now(UTC),
+                mode="draft",
+                listed=0,
+                processed=0,
+                drafted=0,
+                sent=0,
+                forwarded=0,
+                skipped=0,
+                reconciled=4,
+                errors=0,
+            )
+        )
+        test_db.commit()
+
+        runs = admin_client.get("/admin/email-bot/runs").json()["runs"]
+        assert runs[0]["reconciled"] == 4

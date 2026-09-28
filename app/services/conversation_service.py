@@ -301,6 +301,40 @@ class ConversationService:
             .first()
         )
 
+    def pending_drafts(self, limit: int = 50) -> list[Message]:
+        """Every draft the bot is still waiting on an answer about.
+
+        Ordered oldest first, because a draft that has been pending for two
+        weeks is the one whose outcome the acceptance metric is missing.
+        """
+        return (
+            self.db.query(Message)
+            .filter(
+                Message.action == ACTION_DRAFTED,
+                Message.gmail_draft_id.isnot(None),
+                Message.draft_outcome == DRAFT_PENDING,
+            )
+            .order_by(Message.id)
+            .limit(limit)
+            .all()
+        )
+
+    def set_draft_outcome(
+        self, row: Message, outcome: str, sent_message_id: str | None = None
+    ) -> Message:
+        """Record what became of a draft.
+
+        ``sent_message_id`` is kept when the captain sent it, so the next run's
+        "never talk over a human" check can tell that message apart from a
+        reply he typed himself.
+        """
+        row.draft_outcome = outcome
+        if sent_message_id:
+            row.gmail_message_id_out = sent_message_id
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
     def bot_sent_message_ids(self, conversation: Conversation) -> set[str]:
         """Gmail ids of everything the bot itself put in this thread.
 
@@ -330,6 +364,40 @@ class ConversationService:
             .limit(limit)
             .all()
         )
+
+    def shadow_agreement(self) -> dict[str, object]:
+        """How often the deciding and shadow classifiers said the same thing.
+
+        Read off the rows the pipeline already wrote, so it costs nothing and
+        reports on the mail the bot actually saw rather than on the golden set.
+        Confidence is deliberately not compared: Jev's probabilities are
+        calibrated and a general model's self-report is not, so comparing the
+        two numbers would manufacture disagreements.
+        """
+        rows = (
+            self.db.query(Message.category, Message.language, Message.triage_shadow)
+            .filter(
+                Message.direction == "inbound",
+                Message.triage_shadow.isnot(None),
+            )
+            .all()
+        )
+
+        compared = 0
+        category_agreed = 0
+        language_agreed = 0
+        for category, language, shadow in rows:
+            if not isinstance(shadow, dict) or "category" not in shadow:
+                continue
+            compared += 1
+            category_agreed += category == shadow.get("category")
+            language_agreed += language == shadow.get("language")
+
+        return {
+            "compared": compared,
+            "category_agreement": (category_agreed / compared) if compared else None,
+            "language_agreement": (language_agreed / compared) if compared else None,
+        }
 
     def draft_acceptance(self) -> dict[str, dict[str, int]]:
         """Draft outcomes grouped by the answer path that produced them.

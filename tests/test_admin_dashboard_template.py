@@ -218,3 +218,47 @@ class TestPollInboxCronField:
     def test_it_is_labelled_for_a_human(self, admin_client, test_db):
         html = admin_client.get("/admin/dashboard").text
         assert "Poll Volunteer Inbox" in html
+
+
+class TestAcceptanceAndAgreementOnTheCard:
+    """The card says the same thing the design's gate does.
+
+    The two thresholds are rendered from a table in the page rather than
+    written into the prose, so the card and the design cannot drift into
+    stating different gates.
+    """
+
+    def test_both_sections_are_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-acceptance"' in html
+        assert 'id="inbox-bot-agreement"' in html
+
+    def test_the_card_reads_the_metrics_endpoint(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "/admin/email-bot/metrics" in html
+
+    def test_the_gates_match_the_design(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "ACCEPTANCE_GATES" in html
+        assert "signup: 0.9" in html
+        assert "faq: 0.8" in html
+
+    def test_the_prose_states_what_the_measurement_is_for(self, admin_client, test_db):
+        # An operator looking at this number has to know it is the thing that
+        # decides whether the bot ever sends.
+        html = admin_client.get("/admin/dashboard").text
+        assert "sent automatically" in html
+
+    def test_not_measured_yet_reads_differently_from_zero(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "not measured yet" in html
+
+    def test_a_low_agreement_is_not_presented_as_a_fault(self, admin_client, test_db):
+        # It means the two classifiers disagree about this inbox, which is
+        # information, not an error.
+        html = admin_client.get("/admin/dashboard").text
+        assert "not itself a fault" in html
+
+    def test_the_rendered_values_are_escaped(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "escapeHtml(kind)" in html

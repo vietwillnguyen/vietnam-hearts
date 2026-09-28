@@ -114,6 +114,46 @@ def list_runs(limit: int = 20, db: Session = Depends(get_db)) -> dict[str, Any]:
     return {"runs": [_run_as_dict(row) for row in rows]}
 
 
+@router.get("/metrics")
+def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """The two numbers the evaluation gate is argued from.
+
+    Draft acceptance is grouped by the answer path that produced the draft,
+    because the gate is stated per kind - 90 percent of sign-up drafts, 80
+    percent of FAQ drafts - so one aggregate would not answer it.
+
+    Both are computed from the audit rows, so this endpoint is cheap enough
+    for the dashboard to poll and carries nothing a row does not already hold.
+    """
+    service = ConversationService(db)
+    acceptance = service.draft_acceptance()
+
+    return {
+        "draft_acceptance": {
+            kind: {
+                "outcomes": outcomes,
+                "resolved": sum(
+                    count for outcome, count in outcomes.items() if outcome != "pending"
+                ),
+                "sent_unchanged": outcomes.get("sent_unchanged", 0),
+                # None rather than 0 while nothing has resolved: a rate of zero
+                # and "not measured yet" would otherwise look the same, and the
+                # gate needs two weeks of the latter before it means anything.
+                "rate": _acceptance_rate(outcomes),
+            }
+            for kind, outcomes in acceptance.items()
+        },
+        "shadow_agreement": service.shadow_agreement(),
+    }
+
+
+def _acceptance_rate(outcomes: dict[str, int]) -> float | None:
+    resolved = sum(count for outcome, count in outcomes.items() if outcome != "pending")
+    if resolved == 0:
+        return None
+    return outcomes.get("sent_unchanged", 0) / resolved
+
+
 @router.get("/escalations")
 def list_escalations(limit: int = 50, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Threads the bot handed over and nobody has resumed.
@@ -186,6 +226,7 @@ def _run_as_dict(row: EmailBotRun) -> dict[str, Any]:
         "sent": row.sent,
         "forwarded": row.forwarded,
         "skipped": row.skipped,
+        "reconciled": row.reconciled,
         "errors": row.errors,
         "aborted_reason": row.aborted_reason,
     }

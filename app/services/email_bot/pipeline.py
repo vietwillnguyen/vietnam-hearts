@@ -53,6 +53,7 @@ from app.services.channels.mail_guards import (
 from app.services.conversation_service import (
     ACTION_PAUSED,
     ACTION_SKIPPED,
+    DRAFT_PENDING,
     ConversationService,
 )
 from app.services.email_bot.bridge import run_coroutine
@@ -63,6 +64,7 @@ from app.services.email_bot.delivery import (
     choose_sink,
     parse_mode,
 )
+from app.services.email_bot.reconciliation import reconcile_draft
 from app.services.email_bot.replies import (
     SignupFacts,
     SignupReplyUnavailable,
@@ -115,6 +117,7 @@ class RunSummary:
     sent: int = 0
     forwarded: int = 0
     skipped: int = 0
+    reconciled: int = 0
     errors: int = 0
     aborted_reason: str | None = None
 
@@ -127,6 +130,7 @@ class RunSummary:
             "sent": self.sent,
             "forwarded": self.forwarded,
             "skipped": self.skipped,
+            "reconciled": self.reconciled,
             "errors": self.errors,
             "aborted_reason": self.aborted_reason,
         }
@@ -256,6 +260,12 @@ class EmailBotPipeline:
     def _poll(self) -> None:
         self.adapter.ensure_labels(self._label_names())
 
+        # Before listing anything new. This is how the draft-acceptance metric
+        # is measured, and that metric is what decides whether automatic
+        # sending is ever turned on, so it must not be the thing that gets
+        # skipped when a run is busy.
+        self._reconcile_drafts()
+
         mails = self.adapter.list_new(
             limit=self.settings.per_run_cap, newer_than_days=LISTING_WINDOW_DAYS
         )
@@ -263,6 +273,50 @@ class EmailBotPipeline:
 
         for raw in mails[: self.settings.per_run_cap]:
             self._process(raw)
+
+    def _reconcile_drafts(self) -> None:
+        """Decide what became of every draft still waiting on an answer.
+
+        Answered from what Gmail shows now rather than from anything the bot
+        was told: whether the captain sent a draft unchanged is only knowable
+        by looking at the thread afterwards.
+
+        Per-draft failures are counted and skipped rather than raised. A draft
+        whose thread cannot be read stays ``pending`` and is asked about again
+        next run, which is the right outcome - an unknown outcome is not a
+        deleted one, and guessing would corrupt the metric the E2 gate reads.
+        """
+        for row in self.conversations.pending_drafts():
+            try:
+                self._reconcile_one(row)
+            except Exception as exc:
+                self._summary.errors += 1
+                logger.warning(
+                    "Could not reconcile draft %s: %s",
+                    row.gmail_draft_id,
+                    type(exc).__name__,
+                )
+
+    def _reconcile_one(self, row: Any) -> None:
+        still_there = self.adapter.get_draft(row.gmail_draft_id) is not None
+        conversation = row.conversation
+
+        result = reconcile_draft(
+            draft_still_exists=still_there,
+            drafted_text=row.text or "",
+            thread_messages=self.adapter.get_thread(row.gmail_thread_id),
+            inbox_address=self.adapter.inbox_address,
+            bot_message_ids=self.conversations.bot_sent_message_ids(conversation),
+        )
+
+        if result.outcome == DRAFT_PENDING:
+            return
+
+        self.conversations.set_draft_outcome(
+            row, result.outcome, result.sent_message_id
+        )
+        self._summary.reconciled += 1
+        logger.info("Draft %s resolved as %s", row.gmail_draft_id, result.outcome)
 
     # -------------------------------------------------------------- per mail
 
@@ -895,6 +949,7 @@ class EmailBotPipeline:
         run_row.sent = self._summary.sent
         run_row.forwarded = self._summary.forwarded
         run_row.skipped = self._summary.skipped
+        run_row.reconciled = self._summary.reconciled
         run_row.errors = self._summary.errors
         run_row.aborted_reason = self._summary.aborted_reason
         self.db.commit()

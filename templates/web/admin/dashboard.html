@@ -280,6 +280,18 @@
                                         <span class="text-muted small">Loading...</span>
                                     </div>
 
+                                    <h6 class="text-muted mt-3">Draft acceptance</h6>
+                                    <p class="text-muted small mb-1">How often a draft was sent unchanged. This is what decides whether replies are ever sent automatically: the gate is 90% for sign-up drafts and 80% for FAQ drafts, over two weeks.</p>
+                                    <div id="inbox-bot-acceptance">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+
+                                    <h6 class="text-muted mt-3">Classifier agreement</h6>
+                                    <p class="text-muted small mb-1">How often the deciding classifier and the one running in shadow agreed. A low figure is not itself a fault; it says the two disagree about this inbox and the golden set should be re-run.</p>
+                                    <div id="inbox-bot-agreement">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+
                                     <div class="mt-3">
                                         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadInboxBotCard()">
                                             <i class="fas fa-rotate"></i> Refresh
@@ -3110,6 +3122,25 @@ async function loadInboxBotCard() {
     }
 
     try {
+        const response = await fetch('/admin/email-bot/metrics');
+        if (!response.ok) {
+            throw new Error('metrics request failed');
+        }
+        const metrics = await response.json();
+        renderAcceptance(metrics.draft_acceptance || {});
+        renderAgreement(metrics.shadow_agreement || {});
+    } catch (error) {
+        const acceptance = document.getElementById('inbox-bot-acceptance');
+        const agreement = document.getElementById('inbox-bot-agreement');
+        if (acceptance) {
+            acceptance.innerHTML = '<span class="text-muted small">Could not load draft acceptance.</span>';
+        }
+        if (agreement) {
+            agreement.innerHTML = '<span class="text-muted small">Could not load classifier agreement.</span>';
+        }
+    }
+
+    try {
         const response = await fetch('/admin/email-bot/escalations?limit=20');
         if (!response.ok) {
             throw new Error('escalations request failed');
@@ -3154,6 +3185,63 @@ async function resumeInboxConversation(conversationId) {
     } finally {
         loadInboxBotCard();
     }
+}
+
+// The gate per answer path, so the card says the same thing the design does.
+const ACCEPTANCE_GATES = { signup: 0.9, faq: 0.8 };
+
+function renderAcceptance(acceptance) {
+    const target = document.getElementById('inbox-bot-acceptance');
+    if (!target) {
+        return;
+    }
+    const kinds = Object.keys(acceptance);
+    if (kinds.length === 0) {
+        target.innerHTML = '<span class="text-muted small">No drafts yet.</span>';
+        return;
+    }
+    target.innerHTML = kinds.map((kind) => {
+        const row = acceptance[kind] || {};
+        const gate = ACCEPTANCE_GATES[kind];
+        // null means nothing has resolved yet, which is different from 0% and
+        // has to read differently or two weeks of no data looks like failure.
+        if (row.rate === null || row.rate === undefined) {
+            return `<div class="small">
+                <span class="badge bg-light text-dark">${escapeHtml(kind)}</span>
+                <span class="text-muted">not measured yet</span>
+                <span class="text-secondary">(${row.resolved || 0} of ${
+                    (row.resolved || 0) + ((row.outcomes || {}).pending || 0)
+                } drafts resolved)</span>
+            </div>`;
+        }
+        const pct = (row.rate * 100).toFixed(0);
+        const meets = gate === undefined || row.rate >= gate;
+        return `<div class="small">
+            <span class="badge bg-light text-dark">${escapeHtml(kind)}</span>
+            <span class="${meets ? 'text-success' : 'text-warning'}">${pct}% sent unchanged</span>
+            <span class="text-secondary">of ${row.resolved} resolved${
+                gate === undefined ? '' : `, gate ${(gate * 100).toFixed(0)}%`
+            }</span>
+        </div>`;
+    }).join('');
+}
+
+function renderAgreement(agreement) {
+    const target = document.getElementById('inbox-bot-agreement');
+    if (!target) {
+        return;
+    }
+    if (!agreement.compared) {
+        target.innerHTML = '<span class="text-muted small">No shadowed messages yet.</span>';
+        return;
+    }
+    const asPct = (value) =>
+        value === null || value === undefined ? 'n/a' : `${(value * 100).toFixed(0)}%`;
+    target.innerHTML = `<div class="small">
+        category ${asPct(agreement.category_agreement)} &middot;
+        language ${asPct(agreement.language_agreement)}
+        <span class="text-secondary">over ${agreement.compared} message(s)</span>
+    </div>`;
 }
 
 function escapeHtml(value) {

@@ -58,6 +58,11 @@ dev = [
     # the Dockerfile builds with `uv sync --no-dev` and never copies tools/.
     "requests>=2.31.0,<3",
     "pytest-asyncio>=0.24,<0.26",
+    # evals/loader.py reads the golden set, and tests/test_evals_loader.py
+    # validates it in CI. Dev group rather than runtime: nothing the
+    # application serves reads YAML, and the plan limits runtime additions
+    # to litellm and typesafe-sdk.
+    "pyyaml>=6.0,<7",
 ]
 
 [build-system]
@@ -87,7 +92,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+# evals/ is ours too, and without this ruff sorts it among the third-party
+# imports, which disagrees with how every runner reads.
+known-first-party = ["app", "evals"]
 
 [tool.ruff.lint.per-file-ignores]
 # app/routers/bot.py holds the bot chat/admin routers, which app/main.py leaves

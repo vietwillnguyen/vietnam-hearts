@@ -394,6 +394,43 @@ The parent spec's gate applies, with two additions from real use in draft mode.
 
 The harness runs on demand, not in blocking CI, because it consumes API calls.
 
+## Evaluation record
+
+*Not yet filled in.* The evaluation cannot be run: it needs the Jev and Gemini
+keys, which do not exist yet, and two calendar weeks of draft mode on the real
+inbox to measure draft acceptance. The harness that produces every number below
+is built and its arithmetic is tested in CI (`evals/`, `evals/README.md`).
+
+The numbers are deliberately absent rather than estimated. This section is what
+a future reader will use to answer "why is the threshold 0.55, and who decided
+that", so a plausible-looking guess here would be worse than a gap.
+
+Fill it in from one pass of the harness, on the date it was run:
+
+| Measurement | How | Gate | Result |
+|---|---|---|---|
+| Executive recall, `jev` | `evals/run_triage_eval.py --classifier jev` | 100 percent, both languages | |
+| Executive recall, `litellm` | `evals/run_triage_eval.py --classifier litellm` | 100 percent, both languages | |
+| Category accuracy, deciding classifier | same run | no gate, recorded | |
+| Language accuracy, deciding classifier | same run | no gate, recorded | |
+| Answer correctness on `auto_answer` | `evals/run_groundedness_eval.py` | at least 90 percent | |
+| Sign-up drafts sent unchanged | dashboard, over two weeks | at least 90 percent | |
+| FAQ drafts sent unchanged | dashboard, over two weeks | at least 80 percent | |
+| Bot replies on threads a human had answered | audit table, same two weeks | zero | |
+| Deciding and shadow agreement | `evals/shadow_report.py` | no gate, recorded | |
+
+And the decisions that follow from them:
+
+| Setting | Chosen value | Why |
+|---|---|---|
+| `TRIAGE_CLASSIFIER` | | |
+| `TRIAGE_CONFIDENCE_THRESHOLD` | | |
+| `ANSWER_THRESHOLD` | | |
+
+`evals/calibrate_thresholds.py` prints the trade-off table the two thresholds
+are chosen from. Read the "wrong" column of the `ANSWER_THRESHOLD` sweep first:
+every entry in it is a wrong answer that went to a member of the public.
+
 ## References
 
 - Parent spec: `docs/superpowers/specs/2026-07-28-qna-bot-design.md`

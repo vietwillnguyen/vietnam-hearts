@@ -53,6 +53,20 @@ Two properties of that code are load-bearing and easy to break:
   database and Sentry runs with `send_default_pii=True`. `tests/test_email_bot_privacy.py`
   sweeps the whole fixture corpus and fails on an `@` or a body phrase anywhere.
 
+## Evaluating the inbox bot
+
+`evals/` is on-demand and never in CI, because the runners spend real API calls.
+What *is* in CI is the part that can be wrong for free: `tests/test_evals_loader.py`
+validates the golden set, including that every `expected_tier` is what `derive_tier`
+actually returns, and `tests/test_evals_runners.py` checks the metric arithmetic.
+`evals/README.md` says how to run each script and what the gates are.
+
+Dedupe on the inbound side means **handled**, not seen: `messages.handled_at` is
+set only at a terminal state, and `ConversationService.is_handled` is what the
+pipeline skips on. The row itself is still committed before any side effect so a
+crash cannot draft twice, which is why the two facts need separate names. Never
+make the skip decision on `is_duplicate`; that is the silent-drop bug.
+
 ## Capturing logs in tests
 
 `app/utils/logging_config.py` sets `propagate = False`, and pytest's `caplog` installs its

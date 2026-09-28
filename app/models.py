@@ -332,6 +332,11 @@ class EmailBotRun(Base):
     sent = Column(Integer, nullable=False, default=0)
     forwarded = Column(Integer, nullable=False, default=0)
     skipped = Column(Integer, nullable=False, default=0)
+    # Drafts whose outcome this run settled. Its own counter rather than folded
+    # into processed, because the dashboard card reads it as the health of the
+    # draft-acceptance metric: a run that reconciles nothing for a fortnight
+    # means the metric the evaluation gate depends on is not being collected.
+    reconciled = Column(Integer, nullable=False, default=0)
     errors = Column(Integer, nullable=False, default=0)
 
     aborted_reason = Column(String, nullable=True)
