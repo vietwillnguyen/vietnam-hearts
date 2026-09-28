@@ -1,0 +1,63 @@
+{
+  "id": "18f2a1b4c5d6e8ab",
+  "threadId": "18f2a1b4c5d6e812",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Sorry to chase - did you get my email?",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Re: Question about the classes"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<second@mail.example.com>"
+      },
+      {
+        "name": "References",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "In-Reply-To",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 52,
+      "data": "U29ycnkgdG8gY2hhc2UgLSBkaWQgeW91IGdldCBteSBlbWFpbD8="
+    }
+  }
+}

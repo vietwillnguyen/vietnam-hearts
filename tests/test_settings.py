@@ -18,6 +18,7 @@ CRON_KEYS = [
     "CRON_SYNC_VOLUNTEERS",
     "CRON_SEND_WEEKLY_REMINDERS",
     "CRON_ROTATE_SCHEDULE",
+    "CRON_POLL_INBOX",
 ]
 
 EXPECTED_DEFAULTS = {
@@ -26,6 +27,31 @@ EXPECTED_DEFAULTS = {
     # Reconciliation is idempotent, so it runs hourly rather than once a week -
     # a missed run or a week boundary self-corrects within the hour.
     "CRON_ROTATE_SCHEDULE": "0 * * * *",
+    # Twice a day in Vietnam time. The bot only replies to mail already
+    # waiting, so latency costs nothing and a rarer poll keeps both the model
+    # spend and the blast radius of a bad run small.
+    "CRON_POLL_INBOX": "0 8,18 * * *",
+}
+
+# Every setting the email channel design's Configuration table lists, with the
+# default it gives, except the two caps and the sync cadence that arrive in
+# later phases. Asserted exhaustively because a missing default means the
+# pipeline silently runs on a code fallback that the dashboard cannot show or
+# change.
+EMAIL_BOT_DEFAULTS = {
+    "EMAIL_BOT_MODE": "off",
+    "EMAIL_BOT_AUTO_LANGUAGES": "en",
+    "EMAIL_BOT_LAST_ERROR": "",
+    "EMAIL_BOT_PER_RUN_CAP": "20",
+    "ESCALATION_OWNER_EMAIL": "",
+    "KNOWLEDGE_BASE_DOC_ID": "",
+    "TRIAGE_CLASSIFIER": "jev",
+    "TRIAGE_FALLBACK_MODEL": "gemini/gemini-3.5-flash-lite",
+    "TRIAGE_CONFIDENCE_THRESHOLD": "0.6",
+    "ANSWER_THRESHOLD": "0.5",
+    "VOLUNTEER_SIGNUP_FORM_LINK": "",
+    "CLASS_START_TIME": "09:30",
+    "CLASS_END_TIME": "10:30",
 }
 
 
@@ -204,3 +230,191 @@ class TestScheduleTeachingDaysSetting:
         initialize_default_settings(db)
         set_setting(db, "SCHEDULE_TEACHING_DAYS", "")
         assert ConfigHelper.get_schedule_teaching_days(db) == {"tue", "thu"}
+
+
+class TestEmailBotDefaultSettings:
+    def test_every_email_bot_key_is_created(self, db):
+        initialize_default_settings(db)
+        keys = {setting.key for setting in get_all_settings(db)}
+        missing = sorted(set(EMAIL_BOT_DEFAULTS) - keys)
+        assert missing == [], f"missing after initialize_default_settings: {missing}"
+
+    @pytest.mark.parametrize("key,expected", sorted(EMAIL_BOT_DEFAULTS.items()))
+    def test_the_default_matches_the_design(self, db, key, expected):
+        initialize_default_settings(db)
+        assert get_setting(db, key) == expected
+
+    def test_the_bot_is_off_by_default(self, db):
+        # The single most important default in this table: a fresh deployment
+        # must not start answering a mailbox nobody has reviewed.
+        initialize_default_settings(db)
+        assert get_setting(db, "EMAIL_BOT_MODE") == "off"
+
+    def test_only_english_may_send_automatically_by_default(self, db):
+        # Vietnamese joins the list after native-speaker sign-off.
+        initialize_default_settings(db)
+        assert get_setting(db, "EMAIL_BOT_AUTO_LANGUAGES") == "en"
+
+    def test_the_forward_recipient_starts_unset(self, db):
+        # And the pipeline refuses to run while it is, rather than dropping
+        # escalations silently.
+        initialize_default_settings(db)
+        assert get_setting(db, "ESCALATION_OWNER_EMAIL") == ""
+
+    def test_the_e3_caps_are_not_created_yet(self, db):
+        # They arrive with the send path they bound. Creating them early would
+        # show an operator knobs that do nothing.
+        initialize_default_settings(db)
+        keys = {setting.key for setting in get_all_settings(db)}
+        assert "EMAIL_BOT_DAILY_SEND_CAP" not in keys
+        assert "EMAIL_BOT_PER_SENDER_DAILY_CAP" not in keys
+        assert "CRON_SYNC_KNOWLEDGE_BASE" not in keys
+
+    @pytest.mark.parametrize("key", sorted(EMAIL_BOT_DEFAULTS))
+    def test_every_key_has_a_description(self, db, key):
+        initialize_default_settings(db)
+        setting = db.query(Setting).filter(Setting.key == key).first()
+        assert setting.description
+        assert len(setting.description) > 20
+
+    def test_initialisation_stays_idempotent_with_the_new_keys(self, db):
+        initialize_default_settings(db)
+        set_setting(db, "EMAIL_BOT_MODE", "draft")
+        initialize_default_settings(db)
+        # A value an admin chose is never clobbered by a later startup.
+        assert get_setting(db, "EMAIL_BOT_MODE") == "draft"
+
+
+class TestEmailBotSettingsLoader:
+    def test_it_reads_the_seeded_defaults(self, db):
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        loaded = EmailBotSettings.load(db)
+
+        assert loaded.mode == "off"
+        assert loaded.auto_languages == frozenset({"en"})
+        assert loaded.triage_classifier == "jev"
+        assert loaded.triage_confidence_threshold == 0.6
+        assert loaded.answer_threshold == 0.5
+        assert loaded.per_run_cap == 20
+
+    def test_it_reads_fresh_every_time(self, db):
+        # The kill switch is worthless if the value is cached for the process
+        # lifetime.
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        assert EmailBotSettings.load(db).mode == "off"
+
+        set_setting(db, "EMAIL_BOT_MODE", "draft")
+        assert EmailBotSettings.load(db).mode == "draft"
+
+    @pytest.mark.parametrize(
+        "stored,expected",
+        [
+            ("en", frozenset({"en"})),
+            ("en,vi", frozenset({"en", "vi"})),
+            ("EN, VI", frozenset({"en", "vi"})),
+            # An empty list would silently mean "send nothing automatically",
+            # which reads as a bug rather than a decision.
+            ("", frozenset({"en"})),
+            ("   ", frozenset({"en"})),
+        ],
+    )
+    def test_the_auto_language_list_is_parsed_forgivingly(self, db, stored, expected):
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        set_setting(db, "EMAIL_BOT_AUTO_LANGUAGES", stored)
+        assert EmailBotSettings.load(db).auto_languages == expected
+
+    @pytest.mark.parametrize("bad", ["", "  ", "half", "1.5", "-0.2", "0.6.1"])
+    def test_an_unusable_threshold_falls_back_to_the_design_default(self, db, bad):
+        # These are free-text fields on an admin form, so a blank or mistyped
+        # value is a realistic mistake. The safe reading is the default, not an
+        # exception that aborts the poll.
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        set_setting(db, "TRIAGE_CONFIDENCE_THRESHOLD", bad)
+        assert EmailBotSettings.load(db).triage_confidence_threshold == 0.6
+
+    @pytest.mark.parametrize("bad", ["", "lots", "0", "-5", "3.7"])
+    def test_an_unusable_cap_falls_back_to_the_design_default(self, db, bad):
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        set_setting(db, "EMAIL_BOT_PER_RUN_CAP", bad)
+        assert EmailBotSettings.load(db).per_run_cap == 20
+
+    def test_may_send_language_honours_the_list(self, db):
+        from app.services.email_bot.settings import EmailBotSettings
+
+        initialize_default_settings(db)
+        set_setting(db, "EMAIL_BOT_AUTO_LANGUAGES", "en")
+        loaded = EmailBotSettings.load(db)
+
+        assert loaded.may_send_language("en")
+        assert not loaded.may_send_language("vi")
+        assert not loaded.may_send_language("other")
+
+
+class TestProductionValidationIgnoresTheNewEnvVars:
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "EMAIL_BOT_ENABLED",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "TYPESAFE_API_KEY",
+            "DISCORD_WEBHOOK_URL",
+            "ANTHROPIC_API_KEY",
+        ],
+    )
+    def test_none_of_them_is_required_in_production(self, name):
+        # The feature is off by default, so a deployment that never turns it on
+        # must not be blocked from starting by a key it has no use for.
+        from app.config import REQUIRED_ENV_VARS
+
+        assert name not in REQUIRED_ENV_VARS
+
+    def test_production_validation_passes_with_all_of_them_unset(self, monkeypatch):
+        import app.config as config
+
+        for name in (
+            "EMAIL_BOT_ENABLED",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "TYPESAFE_API_KEY",
+            "DISCORD_WEBHOOK_URL",
+            "ANTHROPIC_API_KEY",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        for name in config.REQUIRED_ENV_VARS:
+            monkeypatch.setenv(name, "present")
+        monkeypatch.setenv("ENVIRONMENT", "production")
+
+        config.validate_config()
+
+    def test_the_bot_is_disabled_unless_the_flag_is_exactly_true(self, monkeypatch):
+        import importlib
+
+        import app.config as config
+
+        for value, expected in (
+            ("true", True),
+            ("TRUE", True),
+            ("  true  ", True),
+            ("1", False),
+            ("yes", False),
+            ("", False),
+        ):
+            monkeypatch.setenv("EMAIL_BOT_ENABLED", value)
+            reloaded = importlib.reload(config)
+            assert reloaded.EMAIL_BOT_ENABLED is expected, value
+
+        monkeypatch.delenv("EMAIL_BOT_ENABLED", raising=False)
+        importlib.reload(config)

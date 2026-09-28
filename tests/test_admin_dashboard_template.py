@@ -28,6 +28,7 @@ STORED_CRON_VALUES = {
     "CRON_SYNC_VOLUNTEERS": "0 */2 * * *",
     "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
     "CRON_ROTATE_SCHEDULE": "0 * * * *",
+    "CRON_POLL_INBOX": "0 8,18 * * *",
 }
 
 
@@ -124,3 +125,96 @@ class TestCronFieldsRenderStoredValues:
 
         assert attr(tag, "value") == ""
         assert attr(tag, "placeholder") != "0 * * * *"
+
+
+class TestInboxBotCard:
+    """The card an operator reads to know what the bot is doing.
+
+    The mode badge and the error banner are rendered server-side from the
+    settings already in context, so they are correct on first paint rather than
+    after a fetch. The counters and the escalation list come from
+    ``/admin/email-bot/*`` because they change every run.
+    """
+
+    def test_the_card_is_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Inbox Bot" in html
+        assert 'id="inbox-bot-card"' in html
+
+    @pytest.mark.parametrize("mode", ["off", "draft", "auto"])
+    def test_the_mode_badge_shows_the_stored_mode(self, admin_client, test_db, mode):
+        set_setting(test_db, "EMAIL_BOT_MODE", mode)
+        html = admin_client.get("/admin/dashboard").text
+
+        match = re.search(
+            r'<span id="inbox-bot-mode"[^>]*>([^<]*)</span>', html, re.DOTALL
+        )
+        assert match, "the mode badge did not render"
+        assert match.group(1).strip() == mode
+
+    def test_off_says_plainly_that_nothing_happens(self, admin_client, test_db):
+        set_setting(test_db, "EMAIL_BOT_MODE", "off")
+        html = admin_client.get("/admin/dashboard").text
+        assert "Nothing is read, labelled, or drafted while the mode is off." in html
+
+    def test_draft_says_plainly_that_nothing_is_sent(self, admin_client, test_db):
+        set_setting(test_db, "EMAIL_BOT_MODE", "draft")
+        html = admin_client.get("/admin/dashboard").text
+        assert "Nothing is sent." in html
+
+    def test_the_banner_appears_when_a_run_recorded_an_error(
+        self, admin_client, test_db
+    ):
+        set_setting(test_db, "EMAIL_BOT_LAST_ERROR", "the Gmail grant was revoked")
+        html = admin_client.get("/admin/dashboard").text
+
+        assert 'id="inbox-bot-banner"' in html
+        assert "the Gmail grant was revoked" in html
+
+    def test_the_banner_is_absent_after_a_clean_run(self, admin_client, test_db):
+        # The pipeline clears the setting on a clean run, so a stale banner
+        # would mean the problem is still there.
+        set_setting(test_db, "EMAIL_BOT_LAST_ERROR", "")
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-banner"' not in html
+
+    def test_the_card_reads_the_run_and_escalation_endpoints(
+        self, admin_client, test_db
+    ):
+        html = admin_client.get("/admin/dashboard").text
+        assert "/admin/email-bot/runs" in html
+        assert "/admin/email-bot/escalations" in html
+
+    def test_the_card_offers_no_way_to_trigger_a_poll(self, admin_client, test_db):
+        # Polling is the scheduler's job. A button that ran the bot on click
+        # would make "twice a day" untrue and give the run lock something to
+        # refuse.
+        html = admin_client.get("/admin/dashboard").text
+        assert "/admin/email-bot/poll" not in html
+
+    def test_the_resume_button_posts_to_the_resume_endpoint(
+        self, admin_client, test_db
+    ):
+        html = admin_client.get("/admin/dashboard").text
+        assert "resumeInboxConversation" in html
+        assert "/resume" in html
+
+    def test_rendered_escalation_values_are_escaped(self, admin_client, test_db):
+        # The list is built in JavaScript from API values, so it needs an
+        # escaper rather than raw interpolation into innerHTML.
+        html = admin_client.get("/admin/dashboard").text
+        assert "function escapeHtml" in html
+        assert "escapeHtml(item.category" in html
+
+
+class TestPollInboxCronField:
+    def test_the_new_cadence_field_renders_its_stored_value(
+        self, admin_client, test_db
+    ):
+        set_setting(test_db, "CRON_POLL_INBOX", "30 7,19 * * *")
+        html = admin_client.get("/admin/dashboard").text
+        assert attr(find_input(html, "CRON_POLL_INBOX"), "value") == "30 7,19 * * *"
+
+    def test_it_is_labelled_for_a_human(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Poll Volunteer Inbox" in html

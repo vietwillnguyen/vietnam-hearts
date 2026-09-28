@@ -110,6 +110,39 @@ FACEBOOK_ACCESS_TOKEN = os.getenv("FACEBOOK_ACCESS_TOKEN")
 FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
 
+# Inbound Email Bot Configuration
+#
+# All optional, and none of these joins REQUIRED_ENV_VARS: the feature is off by
+# default and a deployment that never turns it on must not be blocked from
+# starting by a key it has no use for.
+#
+# EMAIL_BOT_ENABLED is the operator-level stop and is separate from the
+# EMAIL_BOT_MODE setting on purpose. The setting is the everyday kill switch an
+# admin flips on the dashboard; this variable is the one that survives a
+# database somebody else can edit, so a deploy can hold the feature shut
+# regardless of what the settings table says.
+EMAIL_BOT_ENABLED = os.getenv("EMAIL_BOT_ENABLED", "false").strip().lower() == "true"
+
+# The bot's own Gmail grant, obtained once by running
+# scripts/gmail_oauth_consent.py as the volunteer inbox. Deliberately a
+# different OAuth client from GOOGLE_OAUTH_CLIENT_ID above, which is the web
+# client Supabase auth uses: this one is a Desktop client holding a single
+# gmail.modify scope, and it is revocable from the inbox's own account page
+# without touching either the sign-in flow or the SMTP app password.
+GMAIL_OAUTH_CLIENT_ID = os.getenv("GMAIL_OAUTH_CLIENT_ID")
+GMAIL_OAUTH_CLIENT_SECRET = os.getenv("GMAIL_OAUTH_CLIENT_SECRET")
+GMAIL_OAUTH_REFRESH_TOKEN = os.getenv("GMAIL_OAUTH_REFRESH_TOKEN")
+
+# Jev (TypeSafe AI), the deciding triage classifier.
+TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
+
+# Where escalations are posted. The forward to ESCALATION_OWNER_EMAIL is the
+# durable record; this is the fast notice.
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
+# Only needed when TRIAGE_FALLBACK_MODEL names a Claude model.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
 # Sentry Error Tracking (optional - error tracking disabled if unset)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
