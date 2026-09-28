@@ -1,0 +1,7 @@
+Cảm ơn bạn rất nhiều vì đã nhắn tin và quan tâm đến việc làm tình nguyện viên cùng Vietnam Hearts 💚
+
+Chúng mình dạy tại TP.HCM vào {{ teaching_days }} từ {{ class_time }} và luôn tìm kiếm tình nguyện viên đến hỗ trợ giáo viên với vai trò trợ giảng hoặc đứng lớp.
+
+Nếu bạn ở gần và quan tâm, bạn có thể điền vào biểu mẫu dưới đây nhé! Khi đơn được duyệt, chúng mình sẽ gửi email hướng dẫn và link nhóm chat cho bạn.
+
+{{ signup_form_link }}

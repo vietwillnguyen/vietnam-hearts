@@ -6,6 +6,12 @@ Orchestrates document processing, knowledge base queries, and generates intellig
 
 from typing import Any
 
+from app.services.channels.base import EMAIL_CHANNEL
+from app.services.triage.prompts import (
+    EMAIL_ANSWER_PROHIBITIONS,
+    REFUSAL_SENTINEL,
+    language_instruction,
+)
 from app.utils.logging_config import get_api_logger
 
 from .document_service import DocumentService
@@ -229,7 +235,12 @@ class BotService:
             }
 
     async def chat(
-        self, message: str, user_context: dict | None = None
+        self,
+        message: str,
+        user_context: dict | None = None,
+        *,
+        channel: str = "web",
+        language: str = "en",
     ) -> dict[str, Any]:
         """Answer a question from the knowledge base, or raise.
 
@@ -239,9 +250,18 @@ class BotService:
         not turn it into an answer. Callers must not turn any of them into a
         guess: an ungrounded answer to a prospective volunteer is the harm
         this whole path is built to avoid.
-        """
-        logger.info(f"Processing chat message: {message[:100]}...")
 
+        ``channel="email"`` selects the stricter prompt the email design
+        requires, and ``language`` tells the generator which language to answer
+        in. Neither changes retrieval; they only change what the model is
+        allowed to say and in what language.
+
+        Deliberately logs no part of the message. This runs twice a day against
+        a real inbox, application logs persist to the database, and Sentry runs
+        with send_default_pii=True, so a line carrying the first hundred
+        characters of a stranger's mail is a durable copy of it in two places
+        that should never have one.
+        """
         relevant_chunks = await self.knowledge_service.similarity_search(
             message, limit=3
         )
@@ -251,11 +271,30 @@ class BotService:
             )
 
         context = self._build_context(relevant_chunks)
+        if not context.strip():
+            # Retrieval returned rows whose content was empty or unreadable.
+            # Reaching the generator with an empty context is how an answer
+            # gets invented from the question alone, which is exactly the
+            # failure this path exists to prevent.
+            raise NoRelevantContext(
+                "Retrieved chunks assembled to an empty context; refusing to "
+                "answer ungrounded"
+            )
         logger.info(f"Found {len(relevant_chunks)} relevant chunks")
 
         response = await self._generate_contextual_response(
-            message, context, user_context
+            message, context, user_context, channel=channel, language=language
         )
+
+        if REFUSAL_SENTINEL in response:
+            # The model was told to emit this when the context does not answer
+            # the question, and it did. Treated as the same condition as no
+            # context at all, so the sentinel can never be rendered to a
+            # sender as though it were an answer.
+            raise NoRelevantContext(
+                "The generator reported that the context does not answer the "
+                "question"
+            )
 
         top_similarity = max(
             (chunk.get("similarity") or 0.0) for chunk in relevant_chunks
@@ -292,7 +331,13 @@ class BotService:
             return ""
 
     async def _generate_contextual_response(
-        self, message: str, context: str, user_context: dict | None = None
+        self,
+        message: str,
+        context: str,
+        user_context: dict | None = None,
+        *,
+        channel: str = "web",
+        language: str = "en",
     ) -> str:
         """Generate a grounded response, or raise if generation is unavailable."""
         if not self.knowledge_service.gemini_client:
@@ -300,7 +345,9 @@ class BotService:
                 "Gemini client unavailable; refusing to answer ungrounded"
             )
 
-        prompt = self._build_prompt(message, context, user_context)
+        prompt = self._build_prompt(
+            message, context, user_context, channel=channel, language=language
+        )
         try:
             response = self.knowledge_service.gemini_client.models.generate_content(
                 model=CHAT_MODEL, contents=prompt
@@ -312,19 +359,40 @@ class BotService:
         if not text:
             raise GenerationUnavailable("Gemini returned an empty response")
 
-        logger.info(f"Generated Gemini response: {text[:100]}...")
+        # Length only. The generated text quotes the retrieved context and
+        # answers the sender's question, so logging a prefix of it puts both in
+        # the database.
+        logger.info("Generated a %d character response", len(text))
         return text
 
     def _build_prompt(
-        self, message: str, context: str, user_context: dict | None = None
+        self,
+        message: str,
+        context: str,
+        user_context: dict | None = None,
+        *,
+        channel: str = "web",
+        language: str = "en",
     ) -> str:
         """
         Build prompt for AI response generation
+
+        The email channel gets a stricter set of rules than the web chat. An
+        email reply is a written statement from the organisation to a stranger,
+        arrives unsupervised, and cannot be corrected in the next turn of a
+        conversation, so the prompt forbids the things that would actually do
+        harm: invented dates and commitments, any acceptance or rejection
+        language, amounts of money, third-party personal data, and promised
+        response times. It also gives the model the refusal sentinel, so
+        "I cannot answer this from the context" has somewhere to go other than
+        into a guess.
 
         Args:
             message: User's message
             context: Relevant context
             user_context: Optional user context
+            channel: "email" selects the stricter email rules
+            language: The language the reply should be written in
 
         Returns:
             Formatted prompt
@@ -337,10 +405,17 @@ class BotService:
             "",
             f"Context:\n{context}",
             "",
-            f"Question: {message}",
-            "",
-            "Answer:",
         ]
+
+        if channel == EMAIL_CHANNEL:
+            prompt_parts.append(
+                EMAIL_ANSWER_PROHIBITIONS.format(
+                    language_instruction=language_instruction(language)
+                )
+            )
+            prompt_parts.append("")
+
+        prompt_parts.extend([f"Question: {message}", "", "Answer:"])
 
         if user_context:
             prompt_parts.insert(2, f"User context: {user_context}")

@@ -58,6 +58,7 @@ def settings_db():
         "CRON_SYNC_VOLUNTEERS": "0 */2 * * *",
         "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
         "CRON_ROTATE_SCHEDULE": "0 * * * *",
+        "CRON_POLL_INBOX": "0 8,18 * * *",
         "SCHEDULE_TIMEZONE": "Asia/Ho_Chi_Minh",
     }
 
@@ -106,6 +107,7 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",  # stale weekly value
+                "poll-volunteer-inbox": "0 8,18 * * *",
             }
         )
 
@@ -127,6 +129,7 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 * * * *",
+                "poll-volunteer-inbox": "0 8,18 * * *",
             }
         )
 
@@ -154,6 +157,7 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",
+                "poll-volunteer-inbox": "0 8,18 * * *",
             }
         )
 
@@ -184,6 +188,7 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",  # stale, and about to stay stale
+                "poll-volunteer-inbox": "0 8,18 * * *",
             }
         )
 
@@ -203,6 +208,7 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 0 1 1 *",
                 "send-weekly-reminders": "0 0 1 1 *",
                 "rotate-schedule": "0 17 * * 5",
+                "poll-volunteer-inbox": "0 8,18 * * *",
             }
         )
 
@@ -222,6 +228,7 @@ class TestSyncCronSchedules:
             {
                 "sync-volunteers": "0 0 1 1 *",
                 "send-weekly-reminders": "0 0 1 1 *",
+                "poll-volunteer-inbox": "0 8,18 * * *",
                 # rotate-schedule absent entirely -> get() raises
             }
         )
@@ -314,3 +321,70 @@ class TestSyncCronSchedules:
             assert "httpTarget" not in call.kwargs["body"]
             assert "headers" not in call.kwargs["body"]
             assert "headers" not in call.kwargs["updateMask"]
+
+
+class TestPollInboxJobMapping:
+    """``CRON_POLL_INBOX`` drives the ``poll-volunteer-inbox`` job.
+
+    The mapping is what makes the dashboard field authoritative. Without it the
+    field is decoration again: stored, rendered, and read by nothing - which is
+    exactly the failure the cron sync service was built to end.
+    """
+
+    def test_the_setting_maps_to_the_job(self):
+        assert CRON_SETTING_TO_JOB["CRON_POLL_INBOX"] == "poll-volunteer-inbox"
+
+    def test_the_job_id_matches_the_deploy_script(self):
+        # The script owns job existence; this module owns cadence. A name that
+        # disagrees means the sync silently updates nothing.
+        from app.config import PROJECT_ROOT
+
+        script = (
+            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
+        ).read_text()
+        assert '"poll-volunteer-inbox"' in script
+        assert "/admin/email-bot/poll" in script
+
+    def test_every_mapped_job_exists_in_the_deploy_script(self):
+        from app.config import PROJECT_ROOT
+
+        script = (
+            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
+        ).read_text()
+        for job_id in CRON_SETTING_TO_JOB.values():
+            assert f'"{job_id}"' in script, f"{job_id} is mapped but never created"
+
+    def test_a_drifted_poll_cadence_is_patched(self, settings_db):
+        db, _ = settings_db
+        client, jobs = make_client(
+            {
+                "sync-volunteers": "0 */2 * * *",
+                "send-weekly-reminders": "0 12 * * 0",
+                "rotate-schedule": "0 * * * *",
+                "poll-volunteer-inbox": "*/5 * * * *",  # a far too frequent poll
+            }
+        )
+
+        result = sync_cron_schedules(db, client=client)
+
+        assert [job["job"] for job in result["synced"]] == ["poll-volunteer-inbox"]
+        kwargs = jobs.patch.call_args.kwargs
+        assert kwargs["body"]["schedule"] == "0 8,18 * * *"
+        assert kwargs["name"].endswith("jobs/poll-volunteer-inbox")
+
+    def test_the_default_cadence_is_accepted_as_a_cron_expression(self):
+        # Two runs a day is expressed as a list in the hour field, which the
+        # structural validator has to accept.
+        assert is_valid_cron("0 8,18 * * *")
+
+    def test_the_attempt_deadline_is_set_on_the_poll_job(self):
+        # It has to exceed the worst case of one run at EMAIL_BOT_PER_RUN_CAP.
+        # A deadline that fires mid-run produces exactly the concurrent-retry
+        # case the run lock exists for.
+        from app.config import PROJECT_ROOT
+
+        script = (
+            PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh"
+        ).read_text()
+        assert "--attempt-deadline" in script
+        assert '"600s"' in script
