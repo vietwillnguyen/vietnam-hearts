@@ -189,6 +189,143 @@ def initialize_default_settings(db: Session) -> None:
                 "corrected within the hour instead of days later."
             ),
         },
+        "CRON_POLL_INBOX": {
+            "value": "0 8,18 * * *",
+            "description": (
+                "Cron schedule for polling the volunteer inbox (default: 08:00 and "
+                "18:00 Vietnam time). Two runs a day is deliberate: the bot only "
+                "ever replies to mail that is already waiting, so minutes of "
+                "latency cost nothing and a rarer poll keeps the model spend and "
+                "the blast radius of a bad run both small."
+            ),
+        },
+        "EMAIL_BOT_MODE": {
+            "value": "off",
+            "description": (
+                "Inbox bot mode: off, draft, or auto. off does nothing at all. "
+                "draft labels every mail and leaves answers as Gmail drafts for "
+                "review. auto sends them, and only exists from phase E3. Any "
+                "unrecognised value reads as off, and this is read at the start of "
+                "every run, so changing it here stops or starts the bot at the next "
+                "poll with no deploy."
+            ),
+        },
+        "EMAIL_BOT_AUTO_LANGUAGES": {
+            "value": "en",
+            "description": (
+                "Comma-separated languages the bot may send automatically in auto "
+                "mode (en, vi). A reply in any other language is left as a draft "
+                "even in auto, so the Vietnamese copy can ship and be reviewed "
+                "before a native speaker has signed it off."
+            ),
+        },
+        "EMAIL_BOT_LAST_ERROR": {
+            "value": "",
+            "description": (
+                "Written by the inbox bot when a run aborts or the Gmail grant is "
+                "revoked, and shown as a dashboard banner. Cleared automatically by "
+                "the next clean run, so a stale banner means the problem is still "
+                "there."
+            ),
+        },
+        "EMAIL_BOT_PER_RUN_CAP": {
+            "value": "20",
+            "description": (
+                "Most messages the inbox bot will process in one run, in any mode. "
+                "Bounds the model calls a single poll can make; anything left over "
+                "stays unlabelled and is picked up by the next run."
+            ),
+        },
+        "ESCALATION_OWNER_EMAIL": {
+            "value": "",
+            "description": (
+                "The one address escalated mail is forwarded to. While it is empty "
+                "the inbox bot refuses to run, because an escalation with nowhere "
+                "to go would be silently dropped."
+            ),
+        },
+        "KNOWLEDGE_BASE_DOC_ID": {
+            "value": "",
+            "description": (
+                "Google Doc id of the curated knowledge base the bot answers FAQ "
+                "questions from. Only this doc: the signup responses sheet, the "
+                "schedule sheet and the volunteers table hold personal data and are "
+                "never a retrieval source."
+            ),
+        },
+        "TRIAGE_CLASSIFIER": {
+            "value": "jev",
+            "description": (
+                "Which classifier decides the category: jev or litellm. The other "
+                "one runs in shadow on every message and its answer is recorded for "
+                "comparison, so this can be switched on evidence without a deploy."
+            ),
+        },
+        "TRIAGE_FALLBACK_MODEL": {
+            "value": "gemini/gemini-3.5-flash-lite",
+            "description": (
+                "LiteLLM model string for the shadow classifier, e.g. "
+                "gemini/gemini-3.5-flash-lite or "
+                "anthropic/claude-haiku-4-5-20251001. A Claude model needs "
+                "ANTHROPIC_API_KEY set on the service."
+            ),
+        },
+        "TRIAGE_CONFIDENCE_THRESHOLD": {
+            "value": "0.6",
+            "description": (
+                "Below this classification confidence the bot hands the mail to a "
+                "person instead of answering it. Applied after the category gate, "
+                "so a low-confidence safeguarding guess still escalates."
+            ),
+        },
+        "ANSWER_THRESHOLD": {
+            "value": "0.5",
+            "description": (
+                "Minimum retrieval similarity before a generated FAQ answer is "
+                "offered at all. Below it the sender gets the holding message and "
+                "the mail goes to a person."
+            ),
+        },
+        "VOLUNTEER_SIGNUP_FORM_LINK": {
+            "value": "",
+            "description": (
+                "The volunteer signup Google Form. The sign-up reply is the one "
+                "answer the bot gives from a fixed template, and it points only "
+                "here; while this is empty the template is not rendered and the "
+                "mail goes to a person instead."
+            ),
+        },
+        "CLASS_START_TIME": {
+            "value": "09:30",
+            "description": (
+                "When a class starts, 24-hour HH:MM. Rendered into the sign-up "
+                "reply in each language rather than written into the copy, because "
+                "it is a fact that will change."
+            ),
+        },
+        "CLASS_END_TIME": {
+            "value": "10:30",
+            "description": "When a class ends, 24-hour HH:MM.",
+        },
+        "EMAIL_BOT_DAILY_SEND_CAP": {
+            "value": "30",
+            "description": (
+                "Most replies the inbox bot will send in one day, counted on "
+                "the Vietnam-local day. Gmail's own 500-per-day limit is shared "
+                "with the weekly reminder blast, so a bot that ran away would "
+                "take the reminders down with it. A reached cap drafts the "
+                "reply instead of dropping it."
+            ),
+        },
+        "EMAIL_BOT_PER_SENDER_DAILY_CAP": {
+            "value": "2",
+            "description": (
+                "Most threads one sender can be replied to in a day. This is "
+                "the loop bound: a misbehaving auto-responder on the other side "
+                "cannot extract more than this many replies however many times "
+                "it writes. A reached cap drafts instead of dropping."
+            ),
+        },
     }
 
     for key, config in default_settings.items():
