@@ -231,6 +231,21 @@ SCHEDULER_TIMEZONE    # Cron job timezone at creation (live value: SCHEDULE_TIME
 To change the deployment target (e.g. bump version or change region), edit `scripts/deploy.config`.
 Both `scripts/docker.sh` and `scripts/create-or-update-scheduler-jobs.sh` source this file automatically.
 
+### Privacy policy URL
+
+The deployed service serves a public privacy policy at `<BASE_URL>/privacy`, unauthenticated by design.
+
+```
+https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app/privacy
+```
+
+Enter that URL in the **Privacy policy link** field of the Google OAuth consent screen (Google Cloud Console > **APIs & Services** > **OAuth consent screen** > **Branding**) for every OAuth client this project uses, including the one that grants the volunteer inbox its `gmail.modify` access.
+Google requires a reachable privacy policy there for a published external app, and it checks that the page states the Limited Use disclosure.
+
+The page's text, contact address, Limited Use sentence and "Last updated" date come from the constants at the top of `app/routers/public.py`; the markup is `templates/web/privacy.html`.
+Bump `PRIVACY_POLICY_LAST_UPDATED` whenever the policy text changes.
+`tests/test_privacy_policy.py` pins the properties Google depends on - that the page answers without authentication and carries the disclosure verbatim.
+
 ## Scripts
 
 ### `scripts/setup-dev-env.sh`

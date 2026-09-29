@@ -8,7 +8,7 @@ The application uses Supabase authentication for all admin endpoints:
 
 1. **Admin Endpoints** (`/admin/*`): Supabase authentication required
 2. **Auth Endpoints** (`/auth/*`): Handle Supabase authentication
-3. **Public Endpoints** (`/`, `/health`, `/unsubscribe`): No authentication required
+3. **Public Endpoints** (`/`, `/health`, `/unsubscribe`, `/privacy`): No authentication required
 
 ## Admin API Access
 
