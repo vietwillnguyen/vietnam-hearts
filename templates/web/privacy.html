@@ -117,8 +117,11 @@
             <li>
                 <strong>Volunteer information:</strong> details submitted through our volunteer
                 sign-up form or entered into the Portal - name, email address, phone number,
-                location, availability, start date and intended commitment, teaching experience
-                and certificates, Vietnamese proficiency, the roles and support offered, and a
+                date of birth, passport ID number and passport expiry date, links to the
+                passport scan and headshot photo you upload, links to your Facebook or LinkedIn
+                profile, location, availability, start date and intended commitment, teaching
+                experience and certificates, Vietnamese proficiency, the roles and support
+                offered, your answers to our safeguarding questions, your quiz score, and a
                 record of the emails we have sent you.
             </li>
             <li>
@@ -139,8 +142,34 @@
             <li>Operate and secure the Portal</li>
             <li>Coordinate and communicate with volunteers</li>
             <li>Manage volunteer scheduling and records for Vietnam Hearts</li>
+            <li>Screen volunteer applications, as described below</li>
             <li>Triage, answer and follow up on messages sent to our volunteer inbox</li>
+            <li>Answer messages sent to our Facebook Page, as described below</li>
         </ul>
+
+        <h2>Automated screening of volunteer applications</h2>
+        <p>
+            When you apply to volunteer, the Portal sends parts of your application to
+            <strong>Google Gemini</strong> for an initial assessment: your name, the links to
+            your passport scan and headshot upload, your social media profile link, the
+            position you are interested in, your teaching experience and its details, your
+            motivation and what you hope to gain, your experience with children, the other
+            support you offered, and how you heard about us. Gemini returns a short summary, a
+            rating, and an accepted or rejected recommendation, and that recommendation is
+            recorded as your application's status.
+        </p>
+        <p>
+            You can ask for a person to review the outcome of your application, or ask us to
+            correct information in it, by writing to
+            <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.
+        </p>
+
+        <h2>Facebook Page messages</h2>
+        <p>
+            When you send a text message to our Facebook Page, the Portal sends its content to
+            <strong>Google Gemini</strong>, which writes a reply that is sent back to you
+            automatically through Messenger.
+        </p>
 
         <h2>Volunteer inbox assistant</h2>
         <p>
@@ -198,8 +227,10 @@
                 Cloud, which hosts the Portal on Cloud Run; Google Workspace, where our
                 volunteer sign-up responses and class schedule are held in Google Sheets;
                 Supabase, which hosts the Portal's database and provides sign-in; Gmail, which
-                sends the Portal's email; Jev (TypeSafe AI), Google Gemini and LiteLLM, as
-                described above; Discord, which receives the short internal notices described
+                sends the Portal's email; Google Gemini, which screens volunteer applications,
+                answers Facebook Page messages, and drafts replies and summaries for the
+                volunteer inbox, as described above; Jev (TypeSafe AI) and LiteLLM, which
+                classify volunteer inbox messages as described above; Discord, which receives the short internal notices described
                 above; Meta, which delivers messages sent to our Facebook Page; and Sentry,
                 which receives error reports and, when an error occurs, the IP address and
                 headers of the request that caused it.
