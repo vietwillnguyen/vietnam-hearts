@@ -28,6 +28,14 @@ forward to the coming Monday from Friday 00:00 local so volunteers can sign up f
 week early. Derive dates from that function rather than recomputing `now.weekday()` at
 the call site.
 
+## Privacy policy page
+
+`/privacy` is public on purpose: its URL sits in the Google OAuth consent screen, so Google's
+reviewer fetches it with no account. Never put it behind auth, and never reword the Limited Use
+sentence - Google specifies it verbatim. The text, contact address, disclosure and "Last updated"
+date are constants at the top of `app/routers/public.py`; `tests/test_privacy_policy.py` pins both
+properties, and the README's "Privacy policy URL" section covers the console step.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

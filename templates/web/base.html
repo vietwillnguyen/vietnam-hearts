@@ -86,6 +86,19 @@
             padding: 2rem 0;
             margin-top: auto;
         }
+
+        /* home.html restyles .footer onto a cream background, so this link
+           takes the footer's own text colour rather than a fixed one. */
+        .footer-link {
+            color: inherit;
+            text-decoration: underline;
+        }
+
+        .footer-link:hover,
+        .footer-link:focus {
+            color: inherit;
+            opacity: 0.8;
+        }
     </style>
     
     {% block extra_css %}{% endblock %}
@@ -122,9 +135,10 @@
                 <div class="col-md-6">
                     <h5>Vietnam Hearts</h5>
                     <p>Teaching English to underprivileged children in Vietnam</p>
+                    <p class="mb-0"><a class="footer-link" href="/privacy">Privacy Policy</a></p>
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <p>&copy; 2024 Vietnam Hearts. All rights reserved.</p>
+                    <p>&copy; Vietnam Hearts. All rights reserved.</p>
                     <p>Version: {{ version if version else '1.0.0' }}</p>
                 </div>
             </div>
