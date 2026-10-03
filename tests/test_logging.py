@@ -255,3 +255,169 @@ class TestStartupBannerRedaction:
             "- DATABASE_URL=postgresql://postgres.abc123:***@"
             "aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
         )
+
+
+class TestWidenedRedaction:
+    """Credential shapes beyond a plain URL password and token query params."""
+
+    def test_redacts_a_database_password_containing_a_slash(self):
+        redacted = redact_credentials("postgresql://user:ab/cd-placeholder@host/db")
+        assert "cd-placeholder" not in redacted
+        assert redacted == "postgresql://user:***@host/db"
+
+    def test_redacts_a_database_password_containing_a_bracket(self):
+        redacted = redact_credentials("postgresql://user:x]y-placeholder@host:5432/db")
+        assert "y-placeholder" not in redacted
+        assert redacted == "postgresql://user:***@host:5432/db"
+
+    def test_redacts_a_key_query_parameter(self):
+        redacted = redact_credentials(
+            "https://generativelanguage.example/v1/models?key=PLACEHOLDER-KEY"
+        )
+        assert "PLACEHOLDER-KEY" not in redacted
+        assert redacted.endswith("?key=***")
+
+    def test_redacts_a_bearer_token(self):
+        redacted = redact_credentials("sending with Bearer PLACEHOLDER.TOKEN.VALUE")
+        assert "PLACEHOLDER.TOKEN.VALUE" not in redacted
+        assert redacted == "sending with Bearer ***"
+
+    def test_redacts_an_authorization_header_line(self):
+        redacted = redact_credentials("Authorization: Basic PLACEHOLDER-BASIC")
+        assert "PLACEHOLDER-BASIC" not in redacted
+        assert redacted == "Authorization: ***"
+
+    def test_redacts_an_authorization_value_in_a_dict_repr(self):
+        headers = {"authorization": "Token PLACEHOLDER-TOKEN", "accept": "json"}
+        redacted = redact_credentials(f"headers={headers}")
+        assert "PLACEHOLDER-TOKEN" not in redacted
+        assert redacted == "headers={'authorization': '***', 'accept': 'json'}"
+
+    def test_redacts_an_authorization_value_in_json(self):
+        redacted = redact_credentials('{"Authorization": "PLACEHOLDER-JSON"}')
+        assert "PLACEHOLDER-JSON" not in redacted
+        assert redacted == '{"Authorization": "***"}'
+
+    def test_widened_redaction_is_idempotent(self):
+        once = redact_credentials(
+            "Authorization: Bearer PLACEHOLDER postgresql://u:a/b@h/db?key=PLACEHOLDER"
+        )
+        assert redact_credentials(once) == once
+
+
+class TestGlobalRedactionGuard:
+    """Loggers that bypass the factory must be redacted at the sink too."""
+
+    TOKEN = "PLACEHOLDER-PAGE-TOKEN"
+    URL = f"https://graph.facebook.com/v18.0/me/messages?access_token={TOKEN}"
+
+    def test_a_handler_added_to_a_bare_stdlib_logger_sees_the_redacted_record(self):
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        bare = logging.getLogger("some.third.party")
+        handler = _Capture()
+        bare.addHandler(handler)
+        try:
+            bare.warning("request failed for %s", self.URL)
+        finally:
+            bare.removeHandler(handler)
+
+        assert captured, "the record never reached the handler"
+        assert self.TOKEN not in captured[0]
+        assert captured[0].endswith("?access_token=***")
+
+    def test_a_bare_logger_falling_back_to_last_resort_is_redacted(
+        self, monkeypatch, capsys
+    ):
+        bare = logging.getLogger("some.third.party.unconfigured")
+        monkeypatch.setattr(bare, "propagate", False)
+
+        bare.warning("request failed for %s", self.URL)
+
+        err = capsys.readouterr().err
+        assert "access_token=***" in err
+        assert self.TOKEN not in err
+
+
+class TestMessengerErrorRedaction:
+    """The Messenger sender logs requests errors whose text embeds the full URL.
+
+    Its module logger is a bare stdlib logger with no handlers, so in
+    production the record is written to stderr by logging.lastResort.
+    """
+
+    TOKEN = "PLACEHOLDER-PAGE-TOKEN"
+
+    def _connection_error(self, path):
+        import requests
+
+        return requests.exceptions.ConnectionError(
+            "HTTPSConnectionPool(host='graph.facebook.com', port=443): "
+            f"Max retries exceeded with url: {path}?access_token={self.TOKEN}"
+            "&fields=id (Caused by NameResolutionError)"
+        )
+
+    def _sender(self, monkeypatch):
+        import app.services.messenger.message_sender as message_sender
+
+        monkeypatch.setattr(message_sender.logger, "propagate", False)
+        sender = message_sender.MessageSender()
+        sender.page_access_token = self.TOKEN
+        return message_sender, sender
+
+    def test_send_message_connection_error_is_redacted(self, monkeypatch, capsys):
+        message_sender, sender = self._sender(monkeypatch)
+        error = self._connection_error("/v18.0/me/messages")
+        monkeypatch.setattr(
+            message_sender.requests,
+            "post",
+            lambda *a, **k: (_ for _ in ()).throw(error),
+        )
+
+        assert sender.send_text_message("recipient", "hello") is False
+
+        err = capsys.readouterr().err
+        assert "Request error sending message" in err
+        assert "access_token=***" in err
+        assert self.TOKEN not in err
+
+    def test_send_message_timeout_is_redacted(self, monkeypatch, capsys):
+        import requests
+
+        message_sender, sender = self._sender(monkeypatch)
+        error = requests.exceptions.Timeout(
+            "Read timed out. url: https://graph.facebook.com/v18.0/me/messages"
+            f"?access_token={self.TOKEN}"
+        )
+        monkeypatch.setattr(
+            message_sender.requests,
+            "post",
+            lambda *a, **k: (_ for _ in ()).throw(error),
+        )
+
+        assert sender.send_text_message("recipient", "hello") is False
+
+        err = capsys.readouterr().err
+        assert "access_token=***" in err
+        assert self.TOKEN not in err
+
+    def test_user_profile_and_page_info_errors_are_redacted(self, monkeypatch, capsys):
+        message_sender, sender = self._sender(monkeypatch)
+        error = self._connection_error("/v18.0/me")
+        monkeypatch.setattr(
+            message_sender.requests,
+            "get",
+            lambda *a, **k: (_ for _ in ()).throw(error),
+        )
+
+        assert sender.get_user_profile("someone") is None
+        assert sender.get_page_info() is None
+
+        err = capsys.readouterr().err
+        assert "Error getting user profile" in err
+        assert "Error getting page info" in err
+        assert self.TOKEN not in err

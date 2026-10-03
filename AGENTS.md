@@ -59,12 +59,16 @@ set, so Cloud Logging parses severity), a rotating file under `logs/`, and - unl
 Anything logged therefore lands in Cloud Logging (~30-day default retention) *and* in the
 database the admin dashboard reads, so treat a log line as published to both.
 
-`setup_logger` attaches `CredentialRedactingFilter`, which rewrites the record before any
-handler sees it, so a URL password or a credential-shaped query parameter is redacted to
-`***` even if a call site forgets. Three modules bypass the factory with a bare
-`logging.getLogger(__name__)` (`app/config.py`, `app/services/messenger/message_sender.py`,
-`app/utils/retry_utils.py`); those records miss the redaction filter and the other two sinks,
-so use `get_logger` for anything new.
+`CredentialRedactingFilter` rewrites a record so a URL password, a credential-shaped query
+parameter, a Bearer token, or an Authorization value is redacted to `***` even if a call
+site forgets. `install_credential_redaction()` runs on import of `logging_config` and puts
+it on every sink in the process: `logging.lastResort`, the root logger and its handlers, and
+any handler added later via a one-time `Logger.addHandler` wrap. That matters because three
+modules bypass the factory with a bare `logging.getLogger(__name__)` (`app/config.py`,
+`app/services/messenger/message_sender.py`, `app/utils/retry_utils.py`); with no root
+handlers in production their records reach Cloud Logging through `lastResort` on stderr.
+They are redacted but still miss the file and `system_logs` sinks, so use `get_logger` for
+anything new.
 
 ## Maintaining this file
 

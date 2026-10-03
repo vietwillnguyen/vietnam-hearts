@@ -67,15 +67,30 @@ MAX_BYTES = get_env_int(
 BACKUP_COUNT = get_env_int("LOG_BACKUP_COUNT", 5, 1, 20)
 
 # One vocabulary for "this name carries a credential", shared with the request
-# logging middleware so the two cannot drift apart.
-SENSITIVE_PARAM_MARKERS = ("token", "secret", "password", "signature", "api_key")
+# logging middleware so the two cannot drift apart. Matched as a substring of
+# the lowercased name: over-redacting a harmless name costs nothing in a log,
+# under-redacting a credential is a leak.
+SENSITIVE_PARAM_MARKERS = (
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "signature",
+    "api_key",
+    "apikey",
+    "key",
+    "credential",
+    "auth",
+)
 
 REDACTED = "***"
 
-# scheme://user:password@host -> the password only. A URL with no password
-# (scheme://user@host) has no colon before the "@" and is left alone.
+# scheme://user:password@host -> the password only. Like SQLAlchemy's URL
+# parser, the password runs to the "@", so an unencoded / ? # [ or ] inside it
+# is still covered. A URL with no password (scheme://user@host) has no colon
+# before the "@" and is left alone.
 _URL_CREDENTIALS_RE = re.compile(
-    r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.\-]*://[^:/?#\[\]@\s]+:)[^/?#\[\]@\s]+@"
+    r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.\-]*://[^:/?#\[\]@\s]+:)[^@\s]+(?=@)"
 )
 
 # ?access_token=..., &hub.verify_token=... - the value of any query parameter
@@ -87,26 +102,47 @@ _SENSITIVE_QUERY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_BEARER_RE = re.compile(r"(?P<prefix>\bBearer\s+)[^\s'\",]+", re.IGNORECASE)
+
+# 'authorization': '...' or "Authorization": "..." in a dict repr or JSON.
+_QUOTED_AUTHORIZATION_RE = re.compile(
+    r"(?P<prefix>(?P<kq>['\"])authorization(?P=kq)\s*:\s*(?P<vq>['\"])).*?(?=(?P=vq))",
+    re.IGNORECASE,
+)
+
+# Authorization: ... as a raw header line, to the end of the line.
+_HEADER_AUTHORIZATION_RE = re.compile(
+    r"(?P<prefix>\bauthorization:[ \t]*)[^\r\n]+", re.IGNORECASE
+)
+
+_REDACTIONS = (
+    _URL_CREDENTIALS_RE,
+    _SENSITIVE_QUERY_RE,
+    _BEARER_RE,
+    _QUOTED_AUTHORIZATION_RE,
+    _HEADER_AUTHORIZATION_RE,
+)
+
 
 def redact_credentials(text: str) -> str:
     """Strip credentials out of a string bound for a log sink.
 
-    Covers the two shapes that actually reach our logs: a password embedded in
-    a connection URL, and a credential passed as a query parameter. Idempotent,
-    so it is safe to apply at a call site and again in the logging filter.
+    Covers a password embedded in a connection URL, a credential passed as a
+    query parameter, a Bearer token, and an Authorization header value.
+    Idempotent, so it is safe to apply at a call site and again in the
+    logging filter.
     """
-    text = _URL_CREDENTIALS_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}@", text)
-    return _SENSITIVE_QUERY_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}", text)
+    for pattern in _REDACTIONS:
+        text = pattern.sub(lambda m: f"{m.group('prefix')}{REDACTED}", text)
+    return text
 
 
 class CredentialRedactingFilter(logging.Filter):
-    """Redact credentials from a record before it reaches any handler.
+    """Redact credentials from a record before a sink formats it.
 
-    Attached to the logger rather than to its handlers: Logger.handle applies
-    logger filters once, before callHandlers, so every sink - stdout, the
-    rotating file, and the system_logs table - sees the redacted record
-    regardless of handler order or of handlers attached later. Mirrors the
-    db_log_handler rule that logging must never raise into application code.
+    Rewrites the record in place and never drops it, so it changes what a sink
+    writes but never which sinks a record reaches. Mirrors the db_log_handler
+    rule that logging must never raise into application code.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -121,8 +157,42 @@ class CredentialRedactingFilter(logging.Filter):
         return True
 
 
-# Stateless, so one instance is shared by every logger the factory builds.
+# Stateless, so one instance is shared by every logger and handler it guards.
 _credential_redacting_filter = CredentialRedactingFilter()
+
+
+def install_credential_redaction() -> None:
+    """Guard every log sink in the process, not just the factory's loggers.
+
+    Modules that use a bare logging.getLogger(__name__) propagate to a root
+    logger with no handlers in production, so their records are written to
+    stderr - and from there to Cloud Logging - by logging.lastResort. The
+    filter therefore goes on lastResort, on the root logger and its current
+    handlers, and, through a one-time wrap of Logger.addHandler, on every
+    handler attached later (uvicorn's dictConfig, pytest's caplog, ...).
+    Handler filters run per sink even for propagated records, which logger
+    filters do not. Idempotent: addFilter skips an instance already present
+    and the wrap is installed at most once.
+    """
+    if logging.lastResort is not None:
+        logging.lastResort.addFilter(_credential_redacting_filter)
+    logging.root.addFilter(_credential_redacting_filter)
+    for handler in logging.root.handlers:
+        handler.addFilter(_credential_redacting_filter)
+
+    if getattr(logging.Logger.addHandler, "_redacts_credentials", False):
+        return
+    original_add_handler = logging.Logger.addHandler
+
+    def add_handler(self: logging.Logger, hdlr: logging.Handler) -> None:
+        hdlr.addFilter(_credential_redacting_filter)
+        original_add_handler(self, hdlr)
+
+    add_handler._redacts_credentials = True  # type: ignore[attr-defined]
+    logging.Logger.addHandler = add_handler  # type: ignore[method-assign]
+
+
+install_credential_redaction()
 
 
 # Shared formatter
