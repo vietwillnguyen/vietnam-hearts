@@ -25,9 +25,15 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-# Matches a weekday at a word boundary, full or 3-letter abbreviation
-# (e.g. "Monday 6/22" or "Mon"), so header detection is robust to either format.
-_WEEKDAY_RE = re.compile(r"\b(mon|tue|wed|thu|fri|sat|sun)", re.IGNORECASE)
+from app.utils.schedule_dates import DAY_MONTH_RE, weekday_token
+
+# How many day labels a row needs before it counts as a class header. A single
+# one is not enough: volunteers type names into the day columns, and "Thu Hằng"
+# opens with a weekday token as surely as "Thursday 09/10" does. The thinnest
+# real header seen carries four (13/04/2026's Grade 5 row leaves Monday blank),
+# so three leaves one cell of margin. Two is too few: Schedule 24/11/2025 holds
+# two cells opening with "Thu Hang" in one row.
+_MIN_DAY_LABELS = 3
 _MAX_RE = re.compile(r"max\s*(\d+)", re.IGNORECASE)
 
 
@@ -55,16 +61,29 @@ def _cell(row: Sequence[str], idx: int) -> str:
     return str(row[idx]).strip() if idx < len(row) else ""
 
 
+def _is_day_label(cell: str) -> bool:
+    """True if ``cell`` opens with the day it labels rather than free text."""
+    return bool(weekday_token(cell)) or bool(DAY_MONTH_RE.match(cell))
+
+
 def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:
     """True if ``row`` is a class header: a non-empty title cell followed by
-    weekday labels.
+    at least ``_MIN_DAY_LABELS`` day labels.
+
+    A quorum of day labels is what separates a header from the rows beneath it.
+    Matching a weekday anywhere in any one cell used to be enough, which made a
+    class header out of every "Teacher" row holding "Annie (Thu Hằng)" and
+    every "Curriculum" row holding "W24: Shopping & Money" - the live
+    05/10/2026 tab parsed as four blocks for three classes, so the reminder
+    counted a volunteer's name as a fourth class with no teacher.
 
     ``title_index`` is the column holding the class title (0 when the grid is
     fetched from column B, 1 when fetched from column A).
     """
     if not row or not _cell(row, title_index):
         return False
-    return any(_WEEKDAY_RE.search(str(c)) for c in row[title_index + 1 :])
+    days = (str(c).strip() for c in row[title_index + 1 :])
+    return sum(_is_day_label(c) for c in days) >= _MIN_DAY_LABELS
 
 
 def _is_header_row(row: Sequence[str]) -> bool:

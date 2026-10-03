@@ -36,20 +36,27 @@ def _row(timestamp, start_date):
     return row
 
 
+def _cell(formatted, raw):
+    cell = {}
+    if formatted != "":
+        cell["formattedValue"] = formatted
+    if isinstance(raw, int | float):
+        cell["effectiveValue"] = {"numberValue": raw}
+    elif raw != "":
+        cell["effectiveValue"] = {"stringValue": raw}
+    return cell
+
+
 def _service_returning(formatted_rows, raw_rows):
-    """A service whose values().get() answers by valueRenderOption."""
-
-    def fake_get(**kwargs):
-        request = MagicMock()
-        if kwargs.get("valueRenderOption") == "UNFORMATTED_VALUE":
-            assert kwargs.get("dateTimeRenderOption") == "SERIAL_NUMBER"
-            request.execute.return_value = {"values": raw_rows}
-        else:
-            request.execute.return_value = {"values": formatted_rows}
-        return request
-
+    """A service whose single grid-data read carries both cell renderings."""
+    row_data = [
+        {"values": [_cell(f, r) for f, r in zip(formatted, raw, strict=True)]}
+        for formatted, raw in zip(formatted_rows, raw_rows, strict=True)
+    ]
     sheet = MagicMock()
-    sheet.values.return_value.get.side_effect = fake_get
+    sheet.get.return_value.execute.return_value = {
+        "sheets": [{"data": [{"rowData": row_data}]}]
+    }
     service = GoogleSheetsService()
     service._sheet = sheet
     service._initialized = True
@@ -86,6 +93,10 @@ def test_vietnamese_locale_timestamp_is_not_read_as_us_month_first():
 
     assert submission["timestamp"] == datetime(2026, 10, 5, 14, 30)
     assert parse_start_date(submission["start_date"]) == date(2026, 11, 3)
+    service.sheet.values.assert_not_called()
+    [call] = service.sheet.get.call_args_list
+    assert call.kwargs["includeGridData"] is True
+    assert call.kwargs["ranges"] == ["A2:ZZ"]
 
 
 def test_us_locale_sheet_still_reads_the_same_dates():

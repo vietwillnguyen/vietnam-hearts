@@ -28,6 +28,28 @@ forward to the coming Monday from Friday 00:00 local so volunteers can sign up f
 week early. Derive dates from that function rather than recomputing `now.weekday()` at
 the call site.
 
+## Schedule day headers
+
+Day-header cells (C:G of each class header row) are date serials formatted
+`SCHEDULE_DAY_HEADER_FORMAT` (`dddd" "d"/"m`), so the spreadsheet's vi_VN locale
+renders "Thứ Hai 5/10" and the displayed text can never disagree with the stored
+date. Writing the header as text is what used to let a locale change read 12/10
+as 10 December. `update_sheet_dates` rewrites the format on every rotation, so a
+new weekly tab does not inherit the Schedule Template's own `dddd" "m"/"d`
+(month-first) format - the Template is volunteer-maintained, so never edit it.
+
+A class header is a titled row with at least three day labels, each of which
+must *open* with its day (`row_is_class_header`). Both halves carry weight: a
+weekday matched anywhere in any one cell made a header out of every row holding
+"Annie (Thu Hằng)" or "W24: Shopping & Money", and a quorum of two is not enough
+because one live row holds two "Thu Hang" cells. `weekday_token` anchors for the
+same reason; `weekday_tokens` stays unanchored for settings values like
+"Tuesday and Thursday".
+
+Twelve 2025 tabs (`Schedule 06/09`..`08/25`) are protected owner-only and keep
+month-first titles, which is why `parse_schedule_sheet_title` still accepts
+`%m/%d`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
