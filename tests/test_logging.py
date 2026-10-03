@@ -100,10 +100,10 @@ class TestRedactCredentials:
 
     def test_replaces_the_password_in_a_database_url(self):
         redacted = redact_credentials(
-            "postgresql://postgres.abc123:h0rse-b4ttery@"
+            "postgresql://postgres.abc123:placeholder-not-a-real-secret@"
             "aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
         )
-        assert "h0rse-b4ttery" not in redacted
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == (
             "postgresql://postgres.abc123:***@"
             "aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
@@ -119,16 +119,16 @@ class TestRedactCredentials:
 
     def test_redacts_a_token_query_parameter(self):
         redacted = redact_credentials(
-            "https://graph.facebook.com/v23.0/me/messages?access_token=EAAG-live-token"
+            "https://graph.facebook.com/v23.0/me/messages?access_token=placeholder-not-a-real-secret"
         )
-        assert "EAAG-live-token" not in redacted
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted.endswith("?access_token=***")
 
     def test_redacts_a_secret_query_parameter_after_an_ampersand(self):
         redacted = redact_credentials(
-            "https://example.test/hook?hub.mode=subscribe&hub.verify_token=s3cret"
+            "https://example.test/hook?hub.mode=subscribe&hub.verify_token=placeholder-not-a-real-secret"
         )
-        assert "s3cret" not in redacted
+        assert "placeholder-not-a-real-secret" not in redacted
         assert "hub.mode=subscribe" in redacted
         assert redacted.endswith("&hub.verify_token=***")
 
@@ -138,17 +138,17 @@ class TestRedactCredentials:
 
     def test_redacts_every_credential_on_one_line(self):
         redacted = redact_credentials(
-            "primary=postgresql://u1:pw-one@h1/db replica=postgresql://u2:pw-two@h2/db"
+            "primary=postgresql://u1:placeholder-not-a-real-secret-1@h1/db replica=postgresql://u2:placeholder-not-a-real-secret-2@h2/db"
         )
-        assert "pw-one" not in redacted
-        assert "pw-two" not in redacted
+        assert "placeholder-not-a-real-secret-1" not in redacted
+        assert "placeholder-not-a-real-secret-2" not in redacted
 
     def test_leaves_plain_text_alone(self):
         message = "Configuration validated successfully"
         assert redact_credentials(message) == message
 
     def test_is_idempotent(self):
-        once = redact_credentials("postgresql://u:pw@h/db")
+        once = redact_credentials("postgresql://u:placeholder-not-a-real-secret@h/db")
         assert redact_credentials(once) == once
 
 
@@ -170,24 +170,28 @@ class TestCredentialRedactingFilterGuard:
         logger = setup_logger("redaction_guard_direct")
         captured, handler = self._capture(logger)
         try:
-            logger.info("connecting to postgresql://app:n3ver-log-me@db.test/main")
+            logger.info(
+                "connecting to postgresql://app:placeholder-not-a-real-secret@db.test/main"
+            )
         finally:
             logger.removeHandler(handler)
 
         assert captured, "the record never reached the handler"
-        assert "n3ver-log-me" not in captured[0]
+        assert "placeholder-not-a-real-secret" not in captured[0]
         assert "postgresql://app:***@db.test/main" in captured[0]
 
     def test_redaction_also_covers_lazy_percent_args(self):
         logger = setup_logger("redaction_guard_lazy")
         captured, handler = self._capture(logger)
         try:
-            logger.info("dsn=%s", "postgresql://app:n3ver-log-me@db.test/main")
+            logger.info(
+                "dsn=%s", "postgresql://app:placeholder-not-a-real-secret@db.test/main"
+            )
         finally:
             logger.removeHandler(handler)
 
         assert captured, "the record never reached the handler"
-        assert "n3ver-log-me" not in captured[0]
+        assert "placeholder-not-a-real-secret" not in captured[0]
         assert "postgresql://app:***@db.test/main" in captured[0]
 
     def test_a_clean_message_is_left_untouched(self):
@@ -204,7 +208,7 @@ class TestCredentialRedactingFilterGuard:
 class TestStartupBannerRedaction:
     """The startup banner is the path that leaked the password to Cloud Logging."""
 
-    PASSWORD = "n3ver-log-this-pw"
+    PASSWORD = "placeholder-not-a-real-secret"
     LEAKY_URL = (
         f"postgresql://postgres.abc123:{PASSWORD}@"
         "aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
@@ -261,46 +265,59 @@ class TestWidenedRedaction:
     """Credential shapes beyond a plain URL password and token query params."""
 
     def test_redacts_a_database_password_containing_a_slash(self):
-        redacted = redact_credentials("postgresql://user:ab/cd-placeholder@host/db")
-        assert "cd-placeholder" not in redacted
+        redacted = redact_credentials(
+            "postgresql://user:placeholder/placeholder-not-a-real-secret@host/db"
+        )
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == "postgresql://user:***@host/db"
 
     def test_redacts_a_database_password_containing_a_bracket(self):
-        redacted = redact_credentials("postgresql://user:x]y-placeholder@host:5432/db")
-        assert "y-placeholder" not in redacted
+        redacted = redact_credentials(
+            "postgresql://user:placeholder]placeholder-not-a-real-secret@host:5432/db"
+        )
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == "postgresql://user:***@host:5432/db"
 
     def test_redacts_a_key_query_parameter(self):
         redacted = redact_credentials(
-            "https://generativelanguage.example/v1/models?key=PLACEHOLDER-KEY"
+            "https://generativelanguage.example/v1/models?key=placeholder-not-a-real-secret"
         )
-        assert "PLACEHOLDER-KEY" not in redacted
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted.endswith("?key=***")
 
     def test_redacts_a_bearer_token(self):
-        redacted = redact_credentials("sending with Bearer PLACEHOLDER.TOKEN.VALUE")
-        assert "PLACEHOLDER.TOKEN.VALUE" not in redacted
+        redacted = redact_credentials(
+            "sending with Bearer placeholder-not-a-real-secret"
+        )
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == "sending with Bearer ***"
 
     def test_redacts_an_authorization_header_line(self):
-        redacted = redact_credentials("Authorization: Basic PLACEHOLDER-BASIC")
-        assert "PLACEHOLDER-BASIC" not in redacted
+        redacted = redact_credentials(
+            "Authorization: Basic placeholder-not-a-real-secret"
+        )
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == "Authorization: ***"
 
     def test_redacts_an_authorization_value_in_a_dict_repr(self):
-        headers = {"authorization": "Token PLACEHOLDER-TOKEN", "accept": "json"}
+        headers = {
+            "authorization": "Token placeholder-not-a-real-secret",
+            "accept": "json",
+        }
         redacted = redact_credentials(f"headers={headers}")
-        assert "PLACEHOLDER-TOKEN" not in redacted
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == "headers={'authorization': '***', 'accept': 'json'}"
 
     def test_redacts_an_authorization_value_in_json(self):
-        redacted = redact_credentials('{"Authorization": "PLACEHOLDER-JSON"}')
-        assert "PLACEHOLDER-JSON" not in redacted
+        redacted = redact_credentials(
+            '{"Authorization": "placeholder-not-a-real-secret"}'
+        )
+        assert "placeholder-not-a-real-secret" not in redacted
         assert redacted == '{"Authorization": "***"}'
 
     def test_widened_redaction_is_idempotent(self):
         once = redact_credentials(
-            "Authorization: Bearer PLACEHOLDER postgresql://u:a/b@h/db?key=PLACEHOLDER"
+            "Authorization: Bearer placeholder-not-a-real-secret postgresql://u:placeholder/placeholder-not-a-real-secret@h/db?key=placeholder-not-a-real-secret"
         )
         assert redact_credentials(once) == once
 
@@ -308,7 +325,7 @@ class TestWidenedRedaction:
 class TestGlobalRedactionGuard:
     """Loggers that bypass the factory must be redacted at the sink too."""
 
-    TOKEN = "PLACEHOLDER-PAGE-TOKEN"
+    TOKEN = "placeholder-not-a-real-secret"
     URL = f"https://graph.facebook.com/v18.0/me/messages?access_token={TOKEN}"
 
     def test_a_handler_added_to_a_bare_stdlib_logger_sees_the_redacted_record(self):
@@ -350,7 +367,7 @@ class TestMessengerErrorRedaction:
     production the record is written to stderr by logging.lastResort.
     """
 
-    TOKEN = "PLACEHOLDER-PAGE-TOKEN"
+    TOKEN = "placeholder-not-a-real-secret"
 
     def _connection_error(self, path):
         import requests
@@ -461,7 +478,7 @@ class TestUvicornAccessLogRedaction:
     def test_webhook_verify_token_is_redacted_and_the_line_still_emitted(self):
         output = self._log_request(
             "test.uvicorn.access.webhook",
-            "/webhook?hub.mode=subscribe&hub.verify_token=PLACEHOLDER-VERIFY"
+            "/webhook?hub.mode=subscribe&hub.verify_token=placeholder-not-a-real-secret"
             "&hub.challenge=42",
         )
         assert output == (
@@ -472,7 +489,7 @@ class TestUvicornAccessLogRedaction:
     def test_unsubscribe_token_is_redacted_and_the_line_still_emitted(self):
         output = self._log_request(
             "test.uvicorn.access.unsubscribe",
-            "/public/unsubscribe?token=PLACEHOLDER-UNSUB",
+            "/public/unsubscribe?token=placeholder-not-a-real-secret",
         )
         assert output == (
             '203.0.113.7:5000 - "GET /public/unsubscribe?token=*** HTTP/1.1" 200 OK\n'
@@ -518,24 +535,29 @@ class TestRedactingFilterKeepsRecordShape:
 
     def test_string_args_are_redacted_in_place(self):
         message, args = self._emit(
-            "fetching %s (attempt %d)", "https://h.test/x?access_token=PLACEHOLDER", 2
+            "fetching %s (attempt %d)",
+            "https://h.test/x?access_token=placeholder-not-a-real-secret",
+            2,
         )
         assert message == "fetching https://h.test/x?access_token=*** (attempt 2)"
         assert args == ("https://h.test/x?access_token=***", 2)
 
     def test_mapping_args_are_redacted_in_place(self):
         message, args = self._emit(
-            "dsn=%(dsn)s", {"dsn": "postgresql://u:PLACEHOLDER@h/db"}
+            "dsn=%(dsn)s", {"dsn": "postgresql://u:placeholder-not-a-real-secret@h/db"}
         )
         assert message == "dsn=postgresql://u:***@h/db"
         assert args == {"dsn": "postgresql://u:***@h/db"}
 
     def test_a_credential_in_a_non_string_arg_is_still_redacted(self):
         message, _ = self._emit(
-            "headers=%s", {"authorization": "Token PLACEHOLDER", "accept": "json"}
+            "headers=%s",
+            {"authorization": "Token placeholder-not-a-real-secret", "accept": "json"},
         )
         assert message == "headers={'authorization': '***', 'accept': 'json'}"
 
     def test_a_placeholder_consumed_by_msg_redaction_still_formats(self):
-        message, _ = self._emit("Authorization: %s", "Basic PLACEHOLDER")
+        message, _ = self._emit(
+            "Authorization: %s", "Basic placeholder-not-a-real-secret"
+        )
         assert message == "Authorization: ***"
