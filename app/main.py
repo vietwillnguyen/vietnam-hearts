@@ -28,7 +28,12 @@ from .config import (
 )
 from .database import get_db, init_db
 from .middleware import setup_middleware
-from .utils.logging_config import get_log_file_path, get_logger, print_log_paths
+from .utils.logging_config import (
+    get_log_file_path,
+    get_logger,
+    print_log_paths,
+    redact_credentials,
+)
 from .utils.sentry_config import init_sentry
 
 # Configure logging
@@ -48,7 +53,10 @@ async def lifespan(app: FastAPI):
         logger.info(f"- ENVIRONMENT={ENVIRONMENT}")
         logger.info(f"- TESTING={os.getenv('TESTING')}")
         logger.info(f"- API_URL={API_URL}")
-        logger.info(f"- DATABASE_URL={DATABASE_URL}")
+        # Redacted at the call site as well as by the logging filter: the
+        # raw URL carries the database password and used to reach Cloud
+        # Logging on every cold start.
+        logger.info(f"- DATABASE_URL={redact_credentials(DATABASE_URL)}")
         logger.info(f"- LOGS_DIR={get_log_file_path()}")
         logger.info("-" * 50)
 

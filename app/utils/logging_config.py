@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -64,6 +65,65 @@ MAX_BYTES = get_env_int(
     "LOG_MAX_BYTES", 10 * 1024 * 1024, 1024 * 1024, 100 * 1024 * 1024
 )  # 10MB default
 BACKUP_COUNT = get_env_int("LOG_BACKUP_COUNT", 5, 1, 20)
+
+# One vocabulary for "this name carries a credential", shared with the request
+# logging middleware so the two cannot drift apart.
+SENSITIVE_PARAM_MARKERS = ("token", "secret", "password", "signature", "api_key")
+
+REDACTED = "***"
+
+# scheme://user:password@host -> the password only. A URL with no password
+# (scheme://user@host) has no colon before the "@" and is left alone.
+_URL_CREDENTIALS_RE = re.compile(
+    r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.\-]*://[^:/?#\[\]@\s]+:)[^/?#\[\]@\s]+@"
+)
+
+# ?access_token=..., &hub.verify_token=... - the value of any query parameter
+# whose name looks like a credential.
+_SENSITIVE_QUERY_RE = re.compile(
+    r"(?P<prefix>[?&][^?&=\s]*(?:"
+    + "|".join(SENSITIVE_PARAM_MARKERS)
+    + r")[^?&=\s]*=)[^?&\s]+",
+    re.IGNORECASE,
+)
+
+
+def redact_credentials(text: str) -> str:
+    """Strip credentials out of a string bound for a log sink.
+
+    Covers the two shapes that actually reach our logs: a password embedded in
+    a connection URL, and a credential passed as a query parameter. Idempotent,
+    so it is safe to apply at a call site and again in the logging filter.
+    """
+    text = _URL_CREDENTIALS_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}@", text)
+    return _SENSITIVE_QUERY_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}", text)
+
+
+class CredentialRedactingFilter(logging.Filter):
+    """Redact credentials from a record before it reaches any handler.
+
+    Attached to the logger rather than to its handlers: Logger.handle applies
+    logger filters once, before callHandlers, so every sink - stdout, the
+    rotating file, and the system_logs table - sees the redacted record
+    regardless of handler order or of handlers attached later. Mirrors the
+    db_log_handler rule that logging must never raise into application code.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+            redacted = redact_credentials(message)
+            if redacted != message:
+                record.msg = redacted
+                record.args = None
+        except Exception:  # noqa: BLE001 - logging must never raise
+            pass
+        return True
+
+
+# Stateless, so one instance is shared by every logger the factory builds.
+_credential_redacting_filter = CredentialRedactingFilter()
+
 
 # Shared formatter
 formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
@@ -134,6 +194,10 @@ def setup_logger(
 
     logger.setLevel(level)
     logger.propagate = False  # Prevent duplicate logs from parent loggers
+
+    # Guard every sink: a credential-bearing URL logged anywhere from here on
+    # is redacted before it is formatted or shipped.
+    logger.addFilter(_credential_redacting_filter)
 
     # Add rotating file handler only if logs directory exists and log file is specified
     if LOGS_DIR and log_file:

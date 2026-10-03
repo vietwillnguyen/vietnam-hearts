@@ -50,6 +50,22 @@ Twelve 2025 tabs (`Schedule 06/09`..`08/25`) are protected owner-only and keep
 month-first titles, which is why `parse_schedule_sheet_title` still accepts
 `%m/%d`.
 
+## Logging
+
+Every app logger comes from `app/utils/logging_config.py::get_logger`, and each one fans a
+record out to three sinks: stdout (JSON via `CloudRunJSONFormatter` whenever `K_SERVICE` is
+set, so Cloud Logging parses severity), a rotating file under `logs/`, and - unless
+`PERSIST_LOGS_TO_DB=false` - the `system_logs` table through the shared `DatabaseLogHandler`.
+Anything logged therefore lands in Cloud Logging (~30-day default retention) *and* in the
+database the admin dashboard reads, so treat a log line as published to both.
+
+`setup_logger` attaches `CredentialRedactingFilter`, which rewrites the record before any
+handler sees it, so a URL password or a credential-shaped query parameter is redacted to
+`***` even if a call site forgets. Three modules bypass the factory with a bare
+`logging.getLogger(__name__)` (`app/config.py`, `app/services/messenger/message_sender.py`,
+`app/utils/retry_utils.py`); those records miss the redaction filter and the other two sinks,
+so use `get_logger` for anything new.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

@@ -13,18 +13,16 @@ from typing import Any
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.utils.logging_config import get_logger
+from app.utils.logging_config import SENSITIVE_PARAM_MARKERS, get_logger
 from app.utils.request_helpers import format_forwarded_for, get_client_ip
 
 logger = get_logger("logging_middleware")
-
-_SENSITIVE_PARAM_MARKERS = ("token", "secret", "password", "signature", "api_key")
 
 
 def _is_sensitive_param(name: str) -> bool:
     """True when a query parameter name looks like it carries a credential."""
     lowered = name.lower()
-    return any(marker in lowered for marker in _SENSITIVE_PARAM_MARKERS)
+    return any(marker in lowered for marker in SENSITIVE_PARAM_MARKERS)
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
