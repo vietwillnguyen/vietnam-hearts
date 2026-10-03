@@ -7,6 +7,7 @@ en_US sheet read as month-first (12/10 became 10 December) and which carries
 no weekday for the parser to find, so the week's reminder had no classes.
 """
 
+import logging
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -106,6 +107,29 @@ def test_day_headers_are_written_as_dates_with_a_vietnamese_day_month_format():
         c.kwargs["range"] for c in sheet.values.return_value.update.call_args_list
     ]
     assert all("C1" in r or "B1" in r for r in written_ranges)
+
+
+def test_a_sheet_with_no_class_header_is_reported(caplog):
+    grid = [
+        ["", "Schedule for Week 06/01"],
+        ["", "Grade 1\n9:30", "6/1", "", "", "", ""],
+        ["", "Teacher", "", "An"],
+    ]
+    service, sheet = _service_with_grid(grid)
+
+    with (
+        patch(
+            "app.services.google_sheets.ConfigHelper.get_schedule_sheet_id",
+            return_value="sid",
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        service.update_sheet_dates(datetime(2026, 10, 19), db=MagicMock())
+
+    sheet.batchUpdate.assert_not_called()
+    [record] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert "Schedule 19/10/2026" in record.getMessage()
+    assert "19/10/2026" in record.getMessage()
 
 
 def test_vietnamese_weekday_names_resolve_to_the_same_teaching_days():

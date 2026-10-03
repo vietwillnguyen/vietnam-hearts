@@ -182,12 +182,11 @@ def date_to_sheets_serial(value: datetime) -> int:
     return (value.date() - SHEETS_EPOCH.date()).days
 
 
-def _raw_cell(row: list[Any], index: int) -> Any:
-    return row[index] if index < len(row) else ""
-
-
-def _is_serial(value: Any) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+def _cell_serial(cells: list[dict[str, Any]], index: int) -> float | None:
+    """The raw number behind a grid cell, or None when it holds no number."""
+    if index >= len(cells):
+        return None
+    return cells[index].get("effectiveValue", {}).get("numberValue")
 
 
 class GoogleSheetsService:
@@ -382,38 +381,32 @@ class GoogleSheetsService:
             logger.info(
                 f"Fetching signups from sheet {sheet_id} with range {full_range}"
             )
-            result = (
-                self.sheet.values()
-                .get(
-                    spreadsheetId=sheet_id,
-                    range=full_range,
-                )
-                .execute()
-            )
-            values = result.get("values", [])
             # Displayed dates follow the spreadsheet's locale (DD/MM under vi_VN,
-            # MM/DD under en_US), so date columns are read from raw serials.
-            raw_values = (
-                self.sheet.values()
-                .get(
-                    spreadsheetId=sheet_id,
-                    range=full_range,
-                    valueRenderOption="UNFORMATTED_VALUE",
-                    dateTimeRenderOption="SERIAL_NUMBER",
-                )
-                .execute()
-                .get("values", [])
-            )
+            # MM/DD under en_US), so date columns are read from raw serials. Grid
+            # data returns both renderings of every cell in one read, so the two
+            # can never come from different versions of the sheet.
+            result = self.sheet.get(
+                spreadsheetId=sheet_id,
+                ranges=[full_range],
+                includeGridData=True,
+                fields="sheets.data.rowData.values(formattedValue,effectiveValue)",
+            ).execute()
+            values = [
+                row_data.get("values", [])
+                for sheet in result.get("sheets", [])
+                for grid in sheet.get("data", [])
+                for row_data in grid.get("rowData", [])
+            ]
             headers = SIGNUP_SHEET_HEADERS
 
             # Process each row into a dictionary
             submissions = []
             skipped_count = 0
-            for row_index, row in enumerate(values):
+            for cells in values:
+                row = [cell.get("formattedValue", "") for cell in cells]
                 # Pad row with empty strings if it's shorter than headers
                 row_data = row + [""] * (len(headers) - len(row))
                 submission = dict(zip(headers, row_data, strict=False))
-                raw_row = raw_values[row_index] if row_index < len(raw_values) else []
 
                 # Skip submissions with empty email addresses or missing essential fields
                 email_address = submission.get("email_address", "").strip()
@@ -444,15 +437,15 @@ class GoogleSheetsService:
 
                 # Replace displayed dates with values read from the raw serials.
                 # A cell typed as text (e.g. "ASAP") keeps its displayed value.
-                raw_timestamp = _raw_cell(raw_row, SIGNUP_TIMESTAMP_COL)
-                if _is_serial(raw_timestamp):
+                raw_timestamp = _cell_serial(cells, SIGNUP_TIMESTAMP_COL)
+                if raw_timestamp is not None:
                     submission["timestamp"] = sheets_serial_to_datetime(raw_timestamp)
                 elif submission["timestamp"]:
                     logger.warning(
                         f"Timestamp is not a date cell: {submission['timestamp']}"
                     )
-                raw_start_date = _raw_cell(raw_row, SIGNUP_START_DATE_COL)
-                if _is_serial(raw_start_date):
+                raw_start_date = _cell_serial(cells, SIGNUP_START_DATE_COL)
+                if raw_start_date is not None:
                     submission["start_date"] = (
                         sheets_serial_to_datetime(raw_start_date).date().isoformat()
                     )
@@ -747,10 +740,16 @@ class GoogleSheetsService:
                 self.sheet.batchUpdate(
                     spreadsheetId=spreadsheet_id, body={"requests": requests}
                 ).execute()
-            logger.info(
-                f"Updated {len(requests)} day header rows in {sheet_title} "
-                f"from {sheet_date.strftime('%d/%m/%Y')}"
-            )
+                logger.info(
+                    f"Updated {len(requests)} day header rows in {sheet_title} "
+                    f"from {sheet_date.strftime('%d/%m/%Y')}"
+                )
+            else:
+                logger.warning(
+                    f"No class header rows found in {sheet_title}, so its day "
+                    f"headers were not set for the week of "
+                    f"{sheet_date.strftime('%d/%m/%Y')}"
+                )
             logger.info(f"Successfully updated dates in sheet {sheet_title}")
         except Exception as e:
             logger.error(f"Failed to update sheet dates: {str(e)}", exc_info=True)

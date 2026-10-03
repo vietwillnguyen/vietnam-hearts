@@ -34,9 +34,10 @@ _DAY_MONTH_RE = re.compile(r"\d{1,2}/\d{1,2}(?![\d/])")
 
 # How many day labels a row needs before it counts as a class header. A single
 # one is not enough: volunteers type names into the day columns, and "Thu Hằng"
-# opens with a weekday token as surely as "Thursday 09/10" does. Three is the
-# fewest a real header carries - 13/04/2026's Grade 5 row leaves Monday blank
-# and the rotation only ever writes five.
+# opens with a weekday token as surely as "Thursday 09/10" does. The thinnest
+# real header seen carries four (13/04/2026's Grade 5 row leaves Monday blank),
+# so three leaves one cell of margin. Two is too few: Schedule 24/11/2025 holds
+# two cells opening with "Thu Hang" in one row.
 _MIN_DAY_LABELS = 3
 _MAX_RE = re.compile(r"max\s*(\d+)", re.IGNORECASE)
 
