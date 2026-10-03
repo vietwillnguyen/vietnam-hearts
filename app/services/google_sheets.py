@@ -164,6 +164,26 @@ def _live_index_after_insert(
     live_indexes[sheet_id] = target_index
 
 
+SIGNUP_TIMESTAMP_COL = SIGNUP_SHEET_HEADERS.index("timestamp")
+SIGNUP_START_DATE_COL = SIGNUP_SHEET_HEADERS.index("start_date")
+
+# Google Sheets counts date serials in days from 1899-12-30.
+SHEETS_EPOCH = datetime(1899, 12, 30)
+
+
+def sheets_serial_to_datetime(serial: float) -> datetime:
+    """Convert a Sheets date serial to a naive datetime, rounded to the second."""
+    return SHEETS_EPOCH + timedelta(seconds=round(serial * 86400))
+
+
+def _raw_cell(row: list[Any], index: int) -> Any:
+    return row[index] if index < len(row) else ""
+
+
+def _is_serial(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
 class GoogleSheetsService:
     def __init__(self):
         """Initialize Google Sheets service with lazy initialization"""
@@ -365,15 +385,29 @@ class GoogleSheetsService:
                 .execute()
             )
             values = result.get("values", [])
+            # Displayed dates follow the spreadsheet's locale (DD/MM under vi_VN,
+            # MM/DD under en_US), so date columns are read from raw serials.
+            raw_values = (
+                self.sheet.values()
+                .get(
+                    spreadsheetId=sheet_id,
+                    range=full_range,
+                    valueRenderOption="UNFORMATTED_VALUE",
+                    dateTimeRenderOption="SERIAL_NUMBER",
+                )
+                .execute()
+                .get("values", [])
+            )
             headers = SIGNUP_SHEET_HEADERS
 
             # Process each row into a dictionary
             submissions = []
             skipped_count = 0
-            for row in values:
+            for row_index, row in enumerate(values):
                 # Pad row with empty strings if it's shorter than headers
                 row_data = row + [""] * (len(headers) - len(row))
                 submission = dict(zip(headers, row_data, strict=False))
+                raw_row = raw_values[row_index] if row_index < len(raw_values) else []
 
                 # Skip submissions with empty email addresses or missing essential fields
                 email_address = submission.get("email_address", "").strip()
@@ -402,16 +436,20 @@ class GoogleSheetsService:
                     skipped_count += 1
                     continue
 
-                # Convert timestamp string to datetime
-                if submission["timestamp"]:
-                    try:
-                        submission["timestamp"] = datetime.strptime(
-                            submission["timestamp"], "%m/%d/%Y %H:%M:%S"
-                        )
-                    except ValueError:
-                        logger.warning(
-                            f"Invalid timestamp format: {submission['timestamp']}"
-                        )
+                # Replace displayed dates with values read from the raw serials.
+                # A cell typed as text (e.g. "ASAP") keeps its displayed value.
+                raw_timestamp = _raw_cell(raw_row, SIGNUP_TIMESTAMP_COL)
+                if _is_serial(raw_timestamp):
+                    submission["timestamp"] = sheets_serial_to_datetime(raw_timestamp)
+                elif submission["timestamp"]:
+                    logger.warning(
+                        f"Timestamp is not a date cell: {submission['timestamp']}"
+                    )
+                raw_start_date = _raw_cell(raw_row, SIGNUP_START_DATE_COL)
+                if _is_serial(raw_start_date):
+                    submission["start_date"] = (
+                        sheets_serial_to_datetime(raw_start_date).date().isoformat()
+                    )
 
                 submissions.append(submission)
 
