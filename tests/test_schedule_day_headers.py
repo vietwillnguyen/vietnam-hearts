@@ -123,3 +123,25 @@ def test_vietnamese_weekday_names_resolve_to_the_same_teaching_days():
     assert weekday_token("Thursday 6/25") == "thu"
     assert is_teaching_day("Thứ Ba 6/10", "Tuesday, Thursday") is True
     assert is_teaching_day("Thứ Tư 7/10", "Tuesday, Thursday") is False
+
+
+def test_volunteer_names_and_lesson_titles_are_not_class_headers():
+    # Rows from the live sheet: weekday-like substrings inside names and titles.
+    assert not row_is_class_header(["", "Annie (Thu Hằng) ", "", "Thomas Jacobs"])
+    assert not row_is_class_header(["optional", "Thu Hằng", "optional", "Thomas", "optional"])
+    assert not row_is_class_header(["Curriculum", "Test", "", "W24: Shopping & Money", ""])
+    assert not row_is_class_header(["Assistants", "Mathew, Marvin, Manda, Anis", "", "Ánh, Thu Hằng"])
+
+
+def test_header_with_a_blank_day_and_a_note_is_still_a_class_header():
+    assert row_is_class_header(["Grade 2", "", "Tuesday 14/04", "Wednesday 15/04", "Thursday 16/04", "Friday 17/04"])
+    assert row_is_class_header(["Grade 5", "Monday 06/10", "Tuesday 07/10", "Thursday 09/10           TEST DAY"])
+
+
+def test_a_names_row_inside_a_block_does_not_split_it():
+    rows = [
+        ["Grade 2\n9:30", "Monday 05/10", "Tuesday 06/10", "Wednesday 07/10", "Thursday 08/10", "Friday 09/10"],
+        ["Teacher", "", "An", "", "Bình", ""],
+        ["Assistants MAX 4", "", "Annie (Thu Hằng) ", "", "Thomas Jacobs", ""],
+    ]
+    assert len(discover_schedule_blocks(rows)) == 1
