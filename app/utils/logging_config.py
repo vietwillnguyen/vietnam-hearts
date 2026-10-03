@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -137,19 +138,48 @@ def redact_credentials(text: str) -> str:
     return text
 
 
+def _redact_args(args):
+    """Redact the str values of a record's args, keeping their shape."""
+    if isinstance(args, Mapping):
+        return {
+            k: redact_credentials(v) if isinstance(v, str) else v
+            for k, v in args.items()
+        }
+    if isinstance(args, tuple | list):
+        return tuple(redact_credentials(a) if isinstance(a, str) else a for a in args)
+    return args
+
+
+def _is_clean(record: logging.LogRecord) -> bool:
+    try:
+        message = record.getMessage()
+    except Exception:  # noqa: BLE001 - a msg/args mismatch is not clean
+        return False
+    return redact_credentials(message) == message
+
+
 class CredentialRedactingFilter(logging.Filter):
     """Redact credentials from a record before a sink formats it.
 
     Rewrites the record in place and never drops it, so it changes what a sink
-    writes but never which sinks a record reaches. Mirrors the db_log_handler
-    rule that logging must never raise into application code.
+    writes but never which sinks a record reaches. Redacts msg and each str
+    arg separately so a formatter that reads record.args itself - uvicorn's
+    AccessFormatter unpacks five of them - still gets the shape it expects.
+    Only when a credential survives that (it sits in a non-str arg, or spans
+    msg and an arg) is the record collapsed to its redacted message with no
+    args, as a last resort. Mirrors the db_log_handler rule that logging must
+    never raise into application code.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
-            message = record.getMessage()
-            redacted = redact_credentials(message)
-            if redacted != message:
+            if _is_clean(record):
+                return True
+            redacted = redact_credentials(record.getMessage())
+            if isinstance(record.msg, str):
+                record.msg = redact_credentials(record.msg)
+            record.args = _redact_args(record.args)
+            if not _is_clean(record):
                 record.msg = redacted
                 record.args = None
         except Exception:  # noqa: BLE001 - logging must never raise
@@ -167,18 +197,25 @@ def install_credential_redaction() -> None:
     Modules that use a bare logging.getLogger(__name__) propagate to a root
     logger with no handlers in production, so their records are written to
     stderr - and from there to Cloud Logging - by logging.lastResort. The
-    filter therefore goes on lastResort, on the root logger and its current
-    handlers, and, through a one-time wrap of Logger.addHandler, on every
-    handler attached later (uvicorn's dictConfig, pytest's caplog, ...).
-    Handler filters run per sink even for propagated records, which logger
-    filters do not. Idempotent: addFilter skips an instance already present
-    and the wrap is installed at most once.
+    filter therefore goes on lastResort, on the root logger, on the handlers
+    already attached to the root or any other logger (uvicorn configures its
+    uvicorn.error and uvicorn.access handlers before it imports the app), and,
+    through a one-time wrap of Logger.addHandler, on every handler attached
+    later. Handler filters run per sink even for propagated records, which
+    logger filters do not. Idempotent: addFilter skips an instance already
+    present and the wrap is installed at most once.
     """
     if logging.lastResort is not None:
         logging.lastResort.addFilter(_credential_redacting_filter)
     logging.root.addFilter(_credential_redacting_filter)
-    for handler in logging.root.handlers:
-        handler.addFilter(_credential_redacting_filter)
+    loggers = [logging.root] + [
+        logger
+        for logger in list(logging.Logger.manager.loggerDict.values())
+        if isinstance(logger, logging.Logger)
+    ]
+    for logger in loggers:
+        for handler in logger.handlers:
+            handler.addFilter(_credential_redacting_filter)
 
     if getattr(logging.Logger.addHandler, "_redacts_credentials", False):
         return

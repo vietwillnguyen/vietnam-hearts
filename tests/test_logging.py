@@ -421,3 +421,121 @@ class TestMessengerErrorRedaction:
         assert "Error getting user profile" in err
         assert "Error getting page info" in err
         assert self.TOKEN not in err
+
+
+class TestUvicornAccessLogRedaction:
+    """uvicorn configures its access handler before the app (and this module)
+    is imported, and its AccessFormatter unpacks record.args into five values.
+    """
+
+    ACCESS_FORMAT = '%(client_addr)s - "%(request_line)s" %(status_code)s'
+    UVICORN_ACCESS_MSG = '%s - "%s %s HTTP/%s" %d'
+
+    def _preexisting_access_handler(self, name):
+        import io
+
+        from uvicorn.logging import AccessFormatter
+
+        from app.utils.logging_config import install_credential_redaction
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(AccessFormatter(self.ACCESS_FORMAT, use_colors=False))
+        access_logger = logging.getLogger(name)
+        access_logger.propagate = False
+        # Attached the way it is when uvicorn's dictConfig ran first.
+        access_logger.handlers.append(handler)
+        install_credential_redaction()
+        return access_logger, handler, stream
+
+    def _log_request(self, name, path):
+        access_logger, handler, stream = self._preexisting_access_handler(name)
+        try:
+            access_logger.info(
+                self.UVICORN_ACCESS_MSG, "203.0.113.7:5000", "GET", path, "1.1", 200
+            )
+        finally:
+            access_logger.handlers.remove(handler)
+        return stream.getvalue()
+
+    def test_webhook_verify_token_is_redacted_and_the_line_still_emitted(self):
+        output = self._log_request(
+            "test.uvicorn.access.webhook",
+            "/webhook?hub.mode=subscribe&hub.verify_token=PLACEHOLDER-VERIFY"
+            "&hub.challenge=42",
+        )
+        assert output == (
+            '203.0.113.7:5000 - "GET /webhook?hub.mode=subscribe'
+            '&hub.verify_token=***&hub.challenge=42 HTTP/1.1" 200 OK\n'
+        )
+
+    def test_unsubscribe_token_is_redacted_and_the_line_still_emitted(self):
+        output = self._log_request(
+            "test.uvicorn.access.unsubscribe",
+            "/public/unsubscribe?token=PLACEHOLDER-UNSUB",
+        )
+        assert output == (
+            '203.0.113.7:5000 - "GET /public/unsubscribe?token=*** HTTP/1.1" 200 OK\n'
+        )
+
+    def test_installing_twice_attaches_the_filter_once(self):
+        from app.utils.logging_config import install_credential_redaction
+
+        access_logger, handler, _ = self._preexisting_access_handler(
+            "test.uvicorn.access.idempotent"
+        )
+        try:
+            install_credential_redaction()
+            redacting = [
+                f
+                for f in handler.filters
+                if type(f).__name__ == "CredentialRedactingFilter"
+            ]
+            assert len(redacting) == 1
+        finally:
+            access_logger.handlers.remove(handler)
+
+
+class TestRedactingFilterKeepsRecordShape:
+    """Redaction must not break how a record's msg and args are formatted."""
+
+    def _emit(self, *args):
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append((record.getMessage(), record.args))
+
+        bare = logging.getLogger("test.redaction.shape")
+        bare.propagate = False
+        handler = _Capture()
+        bare.addHandler(handler)
+        try:
+            bare.warning(*args)
+        finally:
+            bare.removeHandler(handler)
+        return captured[0]
+
+    def test_string_args_are_redacted_in_place(self):
+        message, args = self._emit(
+            "fetching %s (attempt %d)", "https://h.test/x?access_token=PLACEHOLDER", 2
+        )
+        assert message == "fetching https://h.test/x?access_token=*** (attempt 2)"
+        assert args == ("https://h.test/x?access_token=***", 2)
+
+    def test_mapping_args_are_redacted_in_place(self):
+        message, args = self._emit(
+            "dsn=%(dsn)s", {"dsn": "postgresql://u:PLACEHOLDER@h/db"}
+        )
+        assert message == "dsn=postgresql://u:***@h/db"
+        assert args == {"dsn": "postgresql://u:***@h/db"}
+
+    def test_a_credential_in_a_non_string_arg_is_still_redacted(self):
+        message, _ = self._emit(
+            "headers=%s", {"authorization": "Token PLACEHOLDER", "accept": "json"}
+        )
+        assert message == "headers={'authorization': '***', 'accept': 'json'}"
+
+    def test_a_placeholder_consumed_by_msg_redaction_still_formats(self):
+        message, _ = self._emit("Authorization: %s", "Basic PLACEHOLDER")
+        assert message == "Authorization: ***"

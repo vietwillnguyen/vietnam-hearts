@@ -62,8 +62,10 @@ database the admin dashboard reads, so treat a log line as published to both.
 `CredentialRedactingFilter` rewrites a record so a URL password, a credential-shaped query
 parameter, a Bearer token, or an Authorization value is redacted to `***` even if a call
 site forgets. `install_credential_redaction()` runs on import of `logging_config` and puts
-it on every sink in the process: `logging.lastResort`, the root logger and its handlers, and
-any handler added later via a one-time `Logger.addHandler` wrap. That matters because three
+it on every sink in the process: `logging.lastResort`, the root logger, the handlers already
+on any logger (uvicorn's access and error handlers exist before the app is imported), and
+any handler added later via a one-time `Logger.addHandler` wrap. It redacts msg and each str
+arg in place so formatters that unpack `record.args` keep working. That matters because three
 modules bypass the factory with a bare `logging.getLogger(__name__)` (`app/config.py`,
 `app/services/messenger/message_sender.py`, `app/utils/retry_utils.py`); with no root
 handlers in production their records reach Cloud Logging through `lastResort` on stderr.
