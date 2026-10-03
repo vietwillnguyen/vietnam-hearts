@@ -25,9 +25,12 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-# Matches a weekday at a word boundary, full or 3-letter abbreviation
-# (e.g. "Monday 6/22" or "Mon"), so header detection is robust to either format.
-_WEEKDAY_RE = re.compile(r"\b(mon|tue|wed|thu|fri|sat|sun)", re.IGNORECASE)
+from app.utils.schedule_dates import weekday_tokens
+
+# A bare day label such as "19/10", left by the rotation before day headers were
+# written as formatted dates; several in a row still mark a class header.
+_DAY_MONTH_RE = re.compile(r"\d{1,2}/\d{1,2}")
+_MIN_BARE_DAY_LABELS = 3
 _MAX_RE = re.compile(r"max\s*(\d+)", re.IGNORECASE)
 
 
@@ -64,7 +67,10 @@ def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:
     """
     if not row or not _cell(row, title_index):
         return False
-    return any(_WEEKDAY_RE.search(str(c)) for c in row[title_index + 1 :])
+    days = [str(c).strip() for c in row[title_index + 1 :]]
+    if any(weekday_tokens(c) for c in days):
+        return True
+    return sum(bool(_DAY_MONTH_RE.fullmatch(c)) for c in days) >= _MIN_BARE_DAY_LABELS
 
 
 def _is_header_row(row: Sequence[str]) -> bool:

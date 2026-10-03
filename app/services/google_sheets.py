@@ -18,6 +18,7 @@ from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error, safe_api_call
 from app.utils.schedule_dates import (
     DEFAULT_SCHEDULE_TIMEZONE,
+    SCHEDULE_DAY_HEADER_FORMAT,
     current_week_monday,
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
@@ -174,6 +175,11 @@ SHEETS_EPOCH = datetime(1899, 12, 30)
 def sheets_serial_to_datetime(serial: float) -> datetime:
     """Convert a Sheets date serial to a naive datetime, rounded to the second."""
     return SHEETS_EPOCH + timedelta(seconds=round(serial * 86400))
+
+
+def date_to_sheets_serial(value: datetime) -> int:
+    """The Sheets date serial for the calendar day of ``value``."""
+    return (value.date() - SHEETS_EPOCH.date()).days
 
 
 def _raw_cell(row: list[Any], index: int) -> Any:
@@ -694,26 +700,57 @@ class GoogleSheetsService:
             # than relying on hardcoded per-class ranges.
             from app.services.schedule_parser import row_is_class_header
 
-            dates = [
-                (sheet_date + timedelta(days=i)).strftime("%d/%m") for i in range(5)
+            # Day headers are written as date serials with an explicit format, so
+            # neither the sheet's locale nor the template's own format can turn
+            # "12/10" into 10 December or drop the weekday the parser looks for.
+            day_cells = [
+                {
+                    "userEnteredValue": {
+                        "numberValue": date_to_sheets_serial(
+                            sheet_date + timedelta(days=i)
+                        )
+                    },
+                    "userEnteredFormat": {
+                        "numberFormat": {
+                            "type": "DATE",
+                            "pattern": SCHEDULE_DAY_HEADER_FORMAT,
+                        }
+                    },
+                }
+                for i in range(5)
             ]
             grid = self.get_range_from_sheet(
                 db, spreadsheet_id, f"{sheet_title}!A1:G100"
             )
+            requests = []
             for offset, row in enumerate(grid):
                 # title is in column B (index 1) when fetched from column A
                 if not row_is_class_header(row, title_index=1):
                     continue
-                row_num = offset + 1  # 1-based sheet row
                 # Write the 5 dates into C:G, preserving the title in column B.
-                header_range = f"{sheet_title}!C{row_num}:G{row_num}"
-                self.sheet.values().update(
-                    spreadsheetId=spreadsheet_id,
-                    range=header_range,
-                    valueInputOption="USER_ENTERED",
-                    body={"values": [dates]},
+                requests.append(
+                    {
+                        "updateCells": {
+                            "range": {
+                                "sheetId": individual_sheet_id,
+                                "startRowIndex": offset,
+                                "endRowIndex": offset + 1,
+                                "startColumnIndex": 2,
+                                "endColumnIndex": 7,
+                            },
+                            "rows": [{"values": day_cells}],
+                            "fields": "userEnteredValue,userEnteredFormat.numberFormat",
+                        }
+                    }
+                )
+            if requests:
+                self.sheet.batchUpdate(
+                    spreadsheetId=spreadsheet_id, body={"requests": requests}
                 ).execute()
-                logger.info(f"Updated {header_range} to {dates}")
+            logger.info(
+                f"Updated {len(requests)} day header rows in {sheet_title} "
+                f"from {sheet_date.strftime('%d/%m/%Y')}"
+            )
             logger.info(f"Successfully updated dates in sheet {sheet_title}")
         except Exception as e:
             logger.error(f"Failed to update sheet dates: {str(e)}", exc_info=True)

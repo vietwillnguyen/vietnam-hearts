@@ -53,16 +53,52 @@ DEFAULT_TEACHING_DAYS = ("Tuesday", "Thursday")
 # seeded value and the code default can never drift apart.
 DEFAULT_TEACHING_DAYS_SETTING = ", ".join(DEFAULT_TEACHING_DAYS)
 
-# Sheet day labels vary in form and usually carry a date - "Tue", "Monday 6/22".
-# Only the leading weekday token identifies the day.
-_WEEKDAY_TOKEN_RE = re.compile(r"\b(mon|tue|wed|thu|fri|sat|sun)", re.IGNORECASE)
+# Sheet day labels vary in form and usually carry a date - "Tue", "Monday 6/22",
+# or, since the sheet's locale is vi_VN, "Thứ Hai 5/10". Only the leading weekday
+# token identifies the day. The Vietnamese alternative comes first so an
+# unaccented "Thu Ba" reads as Tuesday rather than the English "thu".
+_WEEKDAY_TOKEN_RE = re.compile(
+    r"\b(?:th[ứu]\s+(hai|ba|t[ưu]|n[ăa]m|s[áa]u|b[ảa]y|[2-7])\b|ch[ủu]\s*nh[ậa]t\b)"
+    r"|\b(mon|tue|wed|thu|fri|sat|sun)",
+    re.IGNORECASE,
+)
+_VIETNAMESE_WEEKDAYS = {
+    "hai": "mon",
+    "2": "mon",
+    "ba": "tue",
+    "3": "tue",
+    "tư": "wed",
+    "tu": "wed",
+    "4": "wed",
+    "năm": "thu",
+    "nam": "thu",
+    "5": "thu",
+    "sáu": "fri",
+    "sau": "fri",
+    "6": "fri",
+    "bảy": "sat",
+    "bay": "sat",
+    "7": "sat",
+}
+
+# The day-header number format: the weekday in the sheet's locale, then day/month.
+SCHEDULE_DAY_HEADER_FORMAT = 'dddd" "d"/"m'
 
 
 def weekday_tokens(label: str) -> list[str]:
     """Every lowercase three-letter weekday token in ``label``, in order."""
     if not label:
         return []
-    return [match.lower() for match in _WEEKDAY_TOKEN_RE.findall(str(label))]
+    tokens = []
+    for match in _WEEKDAY_TOKEN_RE.finditer(str(label)):
+        vietnamese, english = match.groups()
+        if english:
+            tokens.append(english.lower())
+        elif vietnamese:
+            tokens.append(_VIETNAMESE_WEEKDAYS[vietnamese.lower()])
+        else:
+            tokens.append("sun")  # Chủ Nhật
+    return tokens
 
 
 def weekday_token(label: str) -> str | None:
