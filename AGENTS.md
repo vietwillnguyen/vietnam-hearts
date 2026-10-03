@@ -50,6 +50,28 @@ Twelve 2025 tabs (`Schedule 06/09`..`08/25`) are protected owner-only and keep
 month-first titles, which is why `parse_schedule_sheet_title` still accepts
 `%m/%d`.
 
+## Logging
+
+Every app logger comes from `app/utils/logging_config.py::get_logger`, and each one fans a
+record out to three sinks: stdout (JSON via `CloudRunJSONFormatter` whenever `K_SERVICE` is
+set, so Cloud Logging parses severity), a rotating file under `logs/`, and - unless
+`PERSIST_LOGS_TO_DB=false` - the `system_logs` table through the shared `DatabaseLogHandler`.
+Anything logged therefore lands in Cloud Logging (~30-day default retention) *and* in the
+database the admin dashboard reads, so treat a log line as published to both.
+
+`CredentialRedactingFilter` rewrites a record so a URL password, a credential-shaped query
+parameter, a Bearer token, or an Authorization value is redacted to `***` even if a call
+site forgets. `install_credential_redaction()` runs on import of `logging_config` and puts
+it on every sink in the process: `logging.lastResort`, the root logger, the handlers already
+on any logger (uvicorn's access and error handlers exist before the app is imported), and
+any handler added later via a one-time `Logger.addHandler` wrap. It redacts msg and each str
+arg in place so formatters that unpack `record.args` keep working. That matters because three
+modules bypass the factory with a bare `logging.getLogger(__name__)` (`app/config.py`,
+`app/services/messenger/message_sender.py`, `app/utils/retry_utils.py`); with no root
+handlers in production their records reach Cloud Logging through `lastResort` on stderr.
+They are redacted but still miss the file and `system_logs` sinks, so use `get_logger` for
+anything new.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
