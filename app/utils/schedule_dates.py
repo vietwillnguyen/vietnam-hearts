@@ -57,8 +57,13 @@ DEFAULT_TEACHING_DAYS_SETTING = ", ".join(DEFAULT_TEACHING_DAYS)
 # or, since the sheet's locale is vi_VN, "Thứ Hai 5/10". Only the leading weekday
 # token identifies the day. The Vietnamese alternative comes first so an
 # unaccented "Thu Ba" reads as Tuesday rather than the English "thu".
+#
+# The numeric Vietnamese form rejects a digit followed by "/" or another digit,
+# because "Thu 6/10" is an English Thursday the 6th, not "Thứ 6" (Friday); only
+# a standalone digit, as in "Thứ 6" or "Thứ 6 10/10", names the weekday.
 _WEEKDAY_TOKEN_RE = re.compile(
-    r"\b(?:th[ứu]\s+(hai|ba|t[ưu]|n[ăa]m|s[áa]u|b[ảa]y|[2-7])\b|ch[ủu]\s*nh[ậa]t\b)"
+    r"\b(?:th[ứu]\s+(hai|ba|t[ưu]|n[ăa]m|s[áa]u|b[ảa]y|[2-7](?![\d/]))\b"
+    r"|ch[ủu]\s*nh[ậa]t\b)"
     r"|\b(mon|tue|wed|thu|fri|sat|sun)",
     re.IGNORECASE,
 )
@@ -85,26 +90,43 @@ _VIETNAMESE_WEEKDAYS = {
 SCHEDULE_DAY_HEADER_FORMAT = 'dddd" "d"/"m'
 
 
+def _match_to_token(match: re.Match[str]) -> str:
+    """The lowercase three-letter weekday token a regex match names."""
+    vietnamese, english = match.groups()
+    if english:
+        return english.lower()
+    if vietnamese:
+        return _VIETNAMESE_WEEKDAYS[vietnamese.lower()]
+    return "sun"  # Chủ Nhật, the only alternative that captures nothing
+
+
 def weekday_tokens(label: str) -> list[str]:
-    """Every lowercase three-letter weekday token in ``label``, in order."""
+    """
+    Every lowercase three-letter weekday token in ``label``, in order.
+
+    Matches anywhere in the string, which suits free-form settings values like
+    "Tuesday and Thursday". Do not use it on a cell copied out of the sheet:
+    a volunteer called "Annie (Thu Hằng)" would read as Thursday. Day labels
+    go through weekday_token(), which anchors to the start of the label.
+    """
     if not label:
         return []
-    tokens = []
-    for match in _WEEKDAY_TOKEN_RE.finditer(str(label)):
-        vietnamese, english = match.groups()
-        if english:
-            tokens.append(english.lower())
-        elif vietnamese:
-            tokens.append(_VIETNAMESE_WEEKDAYS[vietnamese.lower()])
-        else:
-            tokens.append("sun")  # Chủ Nhật
-    return tokens
+    return [_match_to_token(m) for m in _WEEKDAY_TOKEN_RE.finditer(str(label))]
 
 
 def weekday_token(label: str) -> str | None:
-    """The first lowercase three-letter weekday token in ``label``, or None."""
-    tokens = weekday_tokens(label)
-    return tokens[0] if tokens else None
+    """
+    The weekday ``label`` names, as a lowercase three-letter token, or None.
+
+    A day label leads with its weekday - "Thứ Hai 5/10", "Thursday 09/10 TEST
+    DAY" - so the match is anchored to the start. Anywhere else in the cell it
+    is a coincidence: the names and lesson titles volunteers type into the day
+    columns are full of them ("Thu Hằng", "W24: Shopping & Money").
+    """
+    if not label:
+        return None
+    match = _WEEKDAY_TOKEN_RE.match(str(label).strip())
+    return _match_to_token(match) if match else None
 
 
 def parse_teaching_days(raw: str | Iterable[str] | None) -> frozenset[str]:

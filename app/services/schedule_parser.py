@@ -25,12 +25,19 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.utils.schedule_dates import weekday_tokens
+from app.utils.schedule_dates import weekday_token
 
 # A bare day label such as "19/10", left by the rotation before day headers were
-# written as formatted dates; several in a row still mark a class header.
-_DAY_MONTH_RE = re.compile(r"\d{1,2}/\d{1,2}")
-_MIN_BARE_DAY_LABELS = 3
+# written as formatted dates. The trailing guard keeps "19/10/2026" out, and the
+# label has to open the cell so a stray fraction mid-sentence cannot pass.
+_DAY_MONTH_RE = re.compile(r"\d{1,2}/\d{1,2}(?![\d/])")
+
+# How many day labels a row needs before it counts as a class header. A single
+# one is not enough: volunteers type names into the day columns, and "Thu Hằng"
+# opens with a weekday token as surely as "Thursday 09/10" does. Three is the
+# fewest a real header carries - 13/04/2026's Grade 5 row leaves Monday blank
+# and the rotation only ever writes five.
+_MIN_DAY_LABELS = 3
 _MAX_RE = re.compile(r"max\s*(\d+)", re.IGNORECASE)
 
 
@@ -58,19 +65,29 @@ def _cell(row: Sequence[str], idx: int) -> str:
     return str(row[idx]).strip() if idx < len(row) else ""
 
 
+def _is_day_label(cell: str) -> bool:
+    """True if ``cell`` opens with the day it labels rather than free text."""
+    return bool(weekday_token(cell)) or bool(_DAY_MONTH_RE.match(cell))
+
+
 def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:
     """True if ``row`` is a class header: a non-empty title cell followed by
-    weekday labels.
+    at least ``_MIN_DAY_LABELS`` day labels.
+
+    A quorum of day labels is what separates a header from the rows beneath it.
+    Matching a weekday anywhere in any one cell used to be enough, which made a
+    class header out of every "Teacher" row holding "Annie (Thu Hằng)" and
+    every "Curriculum" row holding "W24: Shopping & Money" - the live
+    05/10/2026 tab parsed as four blocks for three classes, so the reminder
+    counted a volunteer's name as a fourth class with no teacher.
 
     ``title_index`` is the column holding the class title (0 when the grid is
     fetched from column B, 1 when fetched from column A).
     """
     if not row or not _cell(row, title_index):
         return False
-    days = [str(c).strip() for c in row[title_index + 1 :]]
-    if any(weekday_tokens(c) for c in days):
-        return True
-    return sum(bool(_DAY_MONTH_RE.fullmatch(c)) for c in days) >= _MIN_BARE_DAY_LABELS
+    days = (str(c).strip() for c in row[title_index + 1 :])
+    return sum(_is_day_label(c) for c in days) >= _MIN_DAY_LABELS
 
 
 def _is_header_row(row: Sequence[str]) -> bool:

@@ -11,6 +11,11 @@ sheet shapes that broke the weekly reminder email:
 - Google Sheets trailing-empty-cell/row trimming (ragged rows)
 - blank separator rows between class blocks
 - non-class header/announcement rows that must be ignored
+
+Every header fixture below carries at least three day columns, because that is
+what row_is_class_header() requires - see _MIN_DAY_LABELS. A real header always
+has a column per weekday; demanding a quorum is what stops a "Teacher" row of
+volunteer names ("Thu Hang", "Thu Hằng") from being read as a fourth class.
 """
 
 from app.services.schedule_parser import ClassBlock, discover_schedule_blocks
@@ -45,26 +50,27 @@ class TestDiscoverScheduleBlocks:
 
     def test_block_with_head_assistant_row(self):
         rows = [
-            ["Combined 3 & 4\n9:30 - 10:30 AM", "Mon", "Tue"],
-            ["Teacher", "Lydie", "Need Volunteers"],
+            ["Combined 3 & 4\n9:30 - 10:30 AM", "Mon", "Tue", "Wed"],
+            ["Teacher", "Lydie", "Need Volunteers", ""],
             [
                 "Head Assistant (min 1), must handle attendance and supply box",
                 "Thanh Thao",
                 "Michael",
+                "",
             ],
-            ["Assistants MAX 1", "Hai Chau, Florian", "Trang Vo"],
-            ["Curriculum & Lesson Plan", "1-20", "[link]"],
+            ["Assistants MAX 1", "Hai Chau, Florian", "Trang Vo", ""],
+            ["Curriculum & Lesson Plan", "1-20", "[link]", ""],
         ]
         b = discover_schedule_blocks(rows)[0]
         assert b.name == "Combined 3 & 4"
         assert b.has_head_ta is True
-        assert b.head_ta == ("Thanh Thao", "Michael")
-        assert b.assistants == ("Hai Chau, Florian", "Trang Vo")
+        assert b.head_ta == ("Thanh Thao", "Michael", "")
+        assert b.assistants == ("Hai Chau, Florian", "Trang Vo", "")
         assert b.max_assistants == 1
 
     def test_max_assistants_none_when_no_max_label(self):
         rows = [
-            ["Grade X\n10 AM", "Mon"],
+            ["Grade X\n10 AM", "Mon", "Tue", "Wed"],
             ["Teacher", "A"],
             ["Assistants", "B"],  # no MAX token -> no limit
         ]
