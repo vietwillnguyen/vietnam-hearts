@@ -25,12 +25,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.utils.schedule_dates import weekday_token
-
-# A bare day label such as "19/10", left by the rotation before day headers were
-# written as formatted dates. The trailing guard keeps "19/10/2026" out, and the
-# label has to open the cell so a stray fraction mid-sentence cannot pass.
-_DAY_MONTH_RE = re.compile(r"\d{1,2}/\d{1,2}(?![\d/])")
+from app.utils.schedule_dates import DAY_MONTH_RE, weekday_token
 
 # How many day labels a row needs before it counts as a class header. A single
 # one is not enough: volunteers type names into the day columns, and "Thu Hằng"
@@ -68,7 +63,7 @@ def _cell(row: Sequence[str], idx: int) -> str:
 
 def _is_day_label(cell: str) -> bool:
     """True if ``cell`` opens with the day it labels rather than free text."""
-    return bool(weekday_token(cell)) or bool(_DAY_MONTH_RE.match(cell))
+    return bool(weekday_token(cell)) or bool(DAY_MONTH_RE.match(cell))
 
 
 def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:

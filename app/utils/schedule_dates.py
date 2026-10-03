@@ -86,6 +86,13 @@ _VIETNAMESE_WEEKDAYS = {
     "7": "sat",
 }
 
+# A bare day label such as "19/10", left by the rotation before day headers were
+# written as formatted dates. The trailing guard keeps "19/10/2026" out, and the
+# label has to open the cell so a stray fraction mid-sentence cannot pass.
+DAY_MONTH_RE = re.compile(r"(\d{1,2})/(\d{1,2})(?![\d/])")
+_WEEKDAY_BY_INDEX = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_WEEKDAYS_PER_SCHOOL_WEEK = 5
+
 # The day-header number format: the weekday in the sheet's locale, then day/month.
 SCHEDULE_DAY_HEADER_FORMAT = 'dddd" "d"/"m'
 
@@ -156,15 +163,47 @@ def parse_teaching_days(raw: str | Iterable[str] | None) -> frozenset[str]:
     return frozenset(weekday_token(day) for day in DEFAULT_TEACHING_DAYS)
 
 
-def is_teaching_day(day_label: str, teaching_days: Iterable[str] | None = None) -> bool:
+def dated_weekday_token(label: str, week_monday: datetime) -> str | None:
+    """
+    The weekday a bare d/m ``label`` falls on within the week of ``week_monday``.
+
+    The label carries no year, so the year is the one that places it inside
+    that week's Monday..Friday - a week can straddle New Year, and "1/1" on the
+    week of 29/12/2025 is Thursday 2026. None when no year does.
+    """
+    match = DAY_MONTH_RE.match(str(label or "").strip())
+    if not match:
+        return None
+    day, month = int(match.group(1)), int(match.group(2))
+    monday = week_monday.date()
+    friday = monday + timedelta(days=_WEEKDAYS_PER_SCHOOL_WEEK - 1)
+    for year in sorted({monday.year, friday.year}):
+        try:
+            date = datetime(year, month, day).date()
+        except ValueError:
+            continue
+        if monday <= date <= friday:
+            return _WEEKDAY_BY_INDEX[date.weekday()]
+    return None
+
+
+def is_teaching_day(
+    day_label: str,
+    teaching_days: Iterable[str] | None = None,
+    week_monday: datetime | None = None,
+) -> bool:
     """
     True if ``day_label`` names one of the days classes run on.
 
-    A label naming no recognizable weekday counts as a teaching day: failing
-    open keeps a genuinely unfilled slot visible in the reminder, where failing
-    closed would silently drop it.
+    A label leading with a weekday is read from it. A bare d/m label is read
+    from its date when ``week_monday``, the Monday of the tab it came from, is
+    given. A label naming no recognizable weekday counts as a teaching day:
+    failing open keeps a genuinely unfilled slot visible in the reminder, where
+    failing closed would silently drop it.
     """
     token = weekday_token(day_label)
+    if token is None and week_monday is not None:
+        token = dated_weekday_token(day_label, week_monday)
     if token is None:
         return True
     return token in parse_teaching_days(teaching_days)
