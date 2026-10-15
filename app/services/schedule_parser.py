@@ -61,7 +61,7 @@ def _cell(row: Sequence[str], idx: int) -> str:
     return str(row[idx]).strip() if idx < len(row) else ""
 
 
-def is_day_label(cell: str) -> bool:
+def _is_day_label(cell: str) -> bool:
     """True if ``cell`` opens with the day it labels rather than free text."""
     return bool(weekday_token(cell)) or bool(DAY_MONTH_RE.match(cell))
 
@@ -83,7 +83,7 @@ def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:
     if not row or not _cell(row, title_index):
         return False
     days = (str(c).strip() for c in row[title_index + 1 :])
-    return sum(is_day_label(c) for c in days) >= _MIN_DAY_LABELS
+    return sum(_is_day_label(c) for c in days) >= _MIN_DAY_LABELS
 
 
 def _is_header_row(row: Sequence[str]) -> bool:

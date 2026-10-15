@@ -39,8 +39,8 @@ TITLE_COLUMN_INDEX = 1
 DAY_HEADER_START_COLUMN = 2
 DAY_HEADER_END_COLUMN = 7
 
-# The block spans B:J - title, five weekdays, then the merged "Classroom Info"
-# pair. Column L carries the sheet-wide "Schedule Key" note, merged down the
+# The block spans A:J - the margin, title, five weekdays, then the merged
+# "Classroom Info" pair. Column L carries the sheet-wide "Schedule Key" note, merged down the
 # first block's rows on every tab; copying it would land a second copy inside
 # the target's own merge, so the copy stops at J.
 BLOCK_START_COLUMN = 0
@@ -275,7 +275,7 @@ def build_requests(plan: BackfillPlan, template_sheet_id: int) -> list[dict]:
     blank rows of a copy that then failed:
 
     1. open ``row_count`` rows at the insert point, inheriting no formatting;
-    2. copy the template block's B:J over them, which brings values, formats
+    2. copy the template block's A:J over them, which brings values, formats
        and the merged "Classroom Info" pair with it;
     3. overwrite the new header's C:G with this week's dates.
     """
