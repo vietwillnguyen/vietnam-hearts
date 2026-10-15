@@ -102,11 +102,13 @@ def test_day_headers_are_written_as_dates_with_a_vietnamese_day_month_format():
     assert {v["userEnteredFormat"]["numberFormat"]["pattern"] for v in values} == {
         'dddd" "d"/"m'
     }
-    # No locale-dependent text write of the day headers remains.
+    # The only text write left is the title banner in B1 - no
+    # locale-dependent text write of the day headers remains, and no second
+    # write to C1, which sits inside B1's merge and shows nothing.
     written_ranges = [
         c.kwargs["range"] for c in sheet.values.return_value.update.call_args_list
     ]
-    assert all("C1" in r or "B1" in r for r in written_ranges)
+    assert written_ranges == ["'Schedule 19/10/2026'!B1"]
 
 
 def test_a_sheet_with_no_class_header_is_reported(caplog):
@@ -228,3 +230,40 @@ def test_teaching_day_ignores_weekdays_buried_in_a_cell():
     assert is_teaching_day("Wednesday 07/10 - Thu Hằng", "Tuesday, Thursday") is False
     # Settings values still match a weekday anywhere in the entry.
     assert parse_teaching_days("Tuesday and Thursday") == frozenset({"tue", "thu"})
+
+
+def test_every_class_in_the_updated_template_gets_its_day_headers():
+    """The captain's 2026-10-15 template has four blocks, not three.
+
+    Nothing here enumerates classes - headers are discovered - so this pins
+    that a tab cloned from the new template has all four dated, Grade 1A's
+    included, at the rows the template puts them on.
+    """
+    from tests.fixtures.schedule_sheets import TEMPLATE_GRID
+
+    service, sheet = _service_with_grid(TEMPLATE_GRID)
+
+    with patch(
+        "app.services.google_sheets.ConfigHelper.get_schedule_sheet_id",
+        return_value="sid",
+    ):
+        service.update_sheet_dates(datetime(2026, 10, 19), db=MagicMock())
+
+    [call] = sheet.batchUpdate.call_args_list
+    requests = call.kwargs["body"]["requests"]
+    # Rows 7, 13, 19 and 25 of the sheet, 0-based in the API.
+    assert [r["updateCells"]["range"]["startRowIndex"] for r in requests] == [
+        6,
+        12,
+        18,
+        24,
+    ]
+    for request in requests:
+        values = request["updateCells"]["rows"][0]["values"]
+        assert [v["userEnteredValue"]["numberValue"] for v in values] == [
+            46314,
+            46315,
+            46316,
+            46317,
+            46318,
+        ]

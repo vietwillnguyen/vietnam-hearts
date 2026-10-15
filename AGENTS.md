@@ -50,6 +50,38 @@ Twelve 2025 tabs (`Schedule 06/09`..`08/25`) are protected owner-only and keep
 month-first titles, which is why `parse_schedule_sheet_title` still accepts
 `%m/%d`.
 
+## Which tab the schedule is read from
+
+A range with no tab name resolves to the *first sheet in the spreadsheet*, and
+rotation pins "Schedule Template" there (display weeks start at index 1). An
+unqualified read of the class grid therefore returned the template's
+placeholder rows - that is what made every weekly reminder describe unfilled
+classes - so always go through
+`GoogleSheetsService.get_leading_schedule_sheet`, the first *visible dated*
+tab, and qualify ranges with `sheet_utils.a1_range`. Dated matters as much as
+visible: every helper here matches tabs by the "Schedule " prefix, which also
+catches the template, and the template is visible whenever a volunteer is
+editing it.
+
+## Template changes reach only future tabs
+
+Rotation builds a weekly tab by duplicating "Schedule Template", so a class
+the captain adds to the template appears only in tabs created after the edit;
+the current week and already-created future weeks keep the old shape and hold
+signups that cannot be recreated. `scripts/apply_class_block_to_weekly_sheets.py`
+backfills one template block into those tabs (dry-run by default, idempotent,
+inserts full-width rows above the block at the same position the template puts
+it). It placed Grade 1A into the weeks of 12/10, 19/10 and 26/10/2026 on
+2026-10-15, each backed up first to a hidden `Backup Schedule <date> 2026-10-15`
+tab - those are safe to delete once the captain is happy.
+
+Nothing in the code enumerates classes, so a fourth block needed no code
+change. Two shapes to keep in mind when touching the parser: a class title may
+carry one time line per day (Grade 1A meets Tuesday morning and Thursday
+afternoon), and `discover_schedule_blocks` treats every column after the label
+as a day - read B:G, or the "Classroom Info" cells in I:J become two phantom
+days with no teacher.
+
 ## Logging
 
 Every app logger comes from `app/utils/logging_config.py::get_logger`, and each one fans a

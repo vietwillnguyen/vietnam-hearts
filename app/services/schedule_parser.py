@@ -123,7 +123,11 @@ def discover_schedule_blocks(rows: list[list[str]]) -> list[ClassBlock]:
         title = _cell(row, 0)
         title_parts = [p.strip() for p in title.split("\n")]
         name = title_parts[0]
-        time = " ".join(p for p in title_parts[1:] if p)
+        # A title can carry one time for the whole class ("9:30 - 10:30 AM") or
+        # one line per day, as Grade 1A does since it meets Tuesday morning and
+        # Thursday afternoon. Joining those with a space ran the two together
+        # in the reminder's heading.
+        time = ", ".join(p for p in title_parts[1:] if p)
         days = tuple(str(c).strip() for c in row[1:])
 
         teacher: tuple[str, ...] = ()

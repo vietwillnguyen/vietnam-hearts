@@ -56,6 +56,25 @@ def _block(
 class TestBuildClassTable:
     """Test build_class_table rendering from a ClassBlock"""
 
+    def test_a_class_that_meets_at_two_times_names_both_in_its_heading(self):
+        """Grade 1A, added to the template on 2026-10-15, meets Tuesday
+        morning and Thursday afternoon; its title carries a line per day."""
+        block = _block(
+            name="Grade 1A",
+            time="TUESDAY 9:30 - 10:30 AM, THURSDAY 3:30 - 4:30 PM",
+            max_assistants=4,
+            days=["Thứ Ba 13/10", "Thứ Năm 15/10"],
+            teacher=["Need Volunteers", "Need Volunteers"],
+            assistants=["Need Volunteers", "Need Volunteers"],
+        )
+
+        html = EmailService().build_class_table(block)["table_html"]
+
+        assert (
+            "<h3>Grade 1A (TUESDAY 9:30 - 10:30 AM, THURSDAY 3:30 - 4:30 PM) "
+            "- Max 4 Assistants</h3>" in html
+        )
+
     def test_max_assistants_enforcement(self):
         block = _block(
             max_assistants=2,

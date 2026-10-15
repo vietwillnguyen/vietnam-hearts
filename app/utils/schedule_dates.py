@@ -95,6 +95,18 @@ _WEEKDAYS_PER_SCHOOL_WEEK = 5
 
 # The day-header number format: the weekday in the sheet's locale, then day/month.
 SCHEDULE_DAY_HEADER_FORMAT = 'dddd" "d"/"m'
+# Google Sheets counts date serials in days from 1899-12-30.
+SHEETS_EPOCH = datetime(1899, 12, 30)
+
+
+def sheets_serial_to_datetime(serial: float) -> datetime:
+    """Convert a Sheets date serial to a naive datetime, rounded to the second."""
+    return SHEETS_EPOCH + timedelta(seconds=round(serial * 86400))
+
+
+def date_to_sheets_serial(value: datetime) -> int:
+    """The Sheets date serial for the calendar day of ``value``."""
+    return (value.date() - SHEETS_EPOCH.date()).days
 
 
 def _match_to_token(match: re.Match[str]) -> str:
