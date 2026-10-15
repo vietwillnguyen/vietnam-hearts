@@ -61,7 +61,7 @@ def _cell(row: Sequence[str], idx: int) -> str:
     return str(row[idx]).strip() if idx < len(row) else ""
 
 
-def _is_day_label(cell: str) -> bool:
+def is_day_label(cell: str) -> bool:
     """True if ``cell`` opens with the day it labels rather than free text."""
     return bool(weekday_token(cell)) or bool(DAY_MONTH_RE.match(cell))
 
@@ -83,7 +83,7 @@ def row_is_class_header(row: Sequence[str], title_index: int = 0) -> bool:
     if not row or not _cell(row, title_index):
         return False
     days = (str(c).strip() for c in row[title_index + 1 :])
-    return sum(_is_day_label(c) for c in days) >= _MIN_DAY_LABELS
+    return sum(is_day_label(c) for c in days) >= _MIN_DAY_LABELS
 
 
 def _is_header_row(row: Sequence[str]) -> bool:
@@ -123,7 +123,11 @@ def discover_schedule_blocks(rows: list[list[str]]) -> list[ClassBlock]:
         title = _cell(row, 0)
         title_parts = [p.strip() for p in title.split("\n")]
         name = title_parts[0]
-        time = " ".join(p for p in title_parts[1:] if p)
+        # A title can carry one time for the whole class ("9:30 - 10:30 AM") or
+        # one line per day, as Grade 1A does since it meets Tuesday morning and
+        # Thursday afternoon. Joining those with a space ran the two together
+        # in the reminder's heading.
+        time = ", ".join(p for p in title_parts[1:] if p)
         days = tuple(str(c).strip() for c in row[1:])
 
         teacher: tuple[str, ...] = ()

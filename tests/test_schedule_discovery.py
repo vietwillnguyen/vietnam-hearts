@@ -120,3 +120,53 @@ class TestDiscoverScheduleBlocks:
     def test_empty_input_returns_empty(self):
         assert discover_schedule_blocks([]) == []
         assert discover_schedule_blocks([[], [""], [""]]) == []
+
+
+class TestUpdatedTemplateShape:
+    """The template the captain changed on 2026-10-15.
+
+    Grade 1A is the first class whose title names a time per day, because it
+    meets Tuesday morning and Thursday afternoon. Nothing in the parser
+    enumerates classes, so the fourth block needs no code change - these pin
+    that, and the heading the reminder builds from the multi-line title.
+    """
+
+    def _blocks(self):
+        from tests.fixtures.schedule_sheets import TEMPLATE_GRID
+
+        # Production reads B1:G100, so the parser sees the label column and
+        # the five weekday columns - never the "Classroom Info" pair in I:J,
+        # which it would otherwise count as two more days.
+        return discover_schedule_blocks([row[1:7] for row in TEMPLATE_GRID])
+
+    def test_the_template_parses_as_four_classes_in_sheet_order(self):
+        assert [block.name for block in self._blocks()] == [
+            "Grade 1A",
+            "Grade 1B (Special Needs)",
+            "Grade 2",
+            "Grade 5",
+        ]
+
+    def test_a_per_day_time_reads_as_a_list_not_a_run_on(self):
+        grade_1a = self._blocks()[0]
+
+        assert grade_1a.time == "TUESDAY 9:30 - 10:30 AM, THURSDAY 3:30 - 4:30 PM"
+
+    def test_every_block_carries_a_head_assistant_row_and_a_cap_of_four(self):
+        blocks = self._blocks()
+
+        assert all(block.has_head_ta for block in blocks)
+        assert {block.max_assistants for block in blocks} == {4}
+
+    def test_the_unfilled_template_asks_for_volunteers_on_teaching_days(self):
+        grade_1a = self._blocks()[0]
+
+        # C:G are Monday to Friday; the template pre-fills Tuesday and
+        # Thursday, the two days Vietnam Hearts teaches.
+        assert grade_1a.teacher == (
+            "",
+            "Need Volunteers",
+            "",
+            "Need Volunteers",
+            "",
+        )

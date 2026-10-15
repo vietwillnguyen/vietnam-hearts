@@ -20,9 +20,12 @@ from app.utils.schedule_dates import (
     DEFAULT_SCHEDULE_TIMEZONE,
     SCHEDULE_DAY_HEADER_FORMAT,
     current_week_monday,
+    date_to_sheets_serial,
     format_schedule_sheet_title,
     parse_schedule_sheet_title,
+    sheets_serial_to_datetime,
 )
+from app.utils.sheet_utils import a1_range
 
 logger = get_api_logger()
 
@@ -38,6 +41,13 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.file",
 ]
+
+# The class grid inside one weekly schedule tab: column B holds the row labels
+# (class title, Teacher, Head Assistant, Assistants, Curriculum) and C:G the
+# five weekdays. 100 rows is well clear of the four blocks the template now
+# carries; the API trims trailing empty rows, so over-reaching costs nothing.
+SCHEDULE_CLASS_AREA_RANGE = "B1:G100"
+
 
 # Column mapping for the volunteer signup form sheet.
 # Index 0 = col A.  Update here when the form adds/removes columns.
@@ -167,19 +177,6 @@ def _live_index_after_insert(
 
 SIGNUP_TIMESTAMP_COL = SIGNUP_SHEET_HEADERS.index("timestamp")
 SIGNUP_START_DATE_COL = SIGNUP_SHEET_HEADERS.index("start_date")
-
-# Google Sheets counts date serials in days from 1899-12-30.
-SHEETS_EPOCH = datetime(1899, 12, 30)
-
-
-def sheets_serial_to_datetime(serial: float) -> datetime:
-    """Convert a Sheets date serial to a naive datetime, rounded to the second."""
-    return SHEETS_EPOCH + timedelta(seconds=round(serial * 86400))
-
-
-def date_to_sheets_serial(value: datetime) -> int:
-    """The Sheets date serial for the calendar day of ``value``."""
-    return (value.date() - SHEETS_EPOCH.date()).days
 
 
 def _cell_serial(cells: list[dict[str, Any]], index: int) -> float | None:
@@ -343,18 +340,41 @@ class GoogleSheetsService:
             raise ValueError("range_name is required for get_schedule_range")
         return self.get_range_from_sheet(db, sheet_id, range_name)
 
-    def get_schedule_blocks(self, db: Session, range_name: str = "B1:G100"):
+    def get_schedule_blocks(
+        self, db: Session, range_name: str = SCHEDULE_CLASS_AREA_RANGE
+    ):
         """
-        Auto-discover class blocks from the current schedule sheet.
+        Auto-discover class blocks from the week the schedule currently leads with.
 
-        The schedule tab is the single source of truth: this fetches the whole
-        class area (starting at column B so labels are at index 0) and parses it
-        into ClassBlock objects, tolerating missing rows, blank separators, and
-        the Sheets API's trailing-empty trimming. No hardcoded per-class ranges.
+        The leading visible dated tab is the single source of truth: this
+        fetches its whole class area (from column B, so labels are at index 0)
+        and parses it into ClassBlock objects, tolerating missing rows, blank
+        separators, and the Sheets API's trailing-empty trimming. No hardcoded
+        per-class ranges, and no hardcoded class list - the template grew a
+        fourth block (Grade 1A) without this needing to know.
+
+        The range is qualified with that tab's title. Unqualified, the API
+        reads the first sheet in the spreadsheet, which rotation keeps as
+        "Schedule Template": every reminder then described the template's
+        "Need Volunteers" placeholders and its dummy dates rather than the
+        live week.
+
+        Raises:
+            ValueError: if no visible dated schedule tab exists. Failing loudly
+                beats reporting the template, and beats returning no classes -
+                an empty parse reads downstream as "no open slots" and would
+                silently cancel the week's reminder.
         """
         from app.services.schedule_parser import discover_schedule_blocks
 
-        rows = self.get_schedule_range(db, range_name)
+        sheet = self.get_leading_schedule_sheet(db)
+        if sheet is None:
+            raise ValueError(
+                "No visible dated schedule sheet to read class blocks from; "
+                "run the schedule rotation before sending reminders"
+            )
+        title = sheet["properties"]["title"]
+        rows = self.get_schedule_range(db, a1_range(title, range_name))
         return discover_schedule_blocks(rows)
 
     def get_signup_form_submissions(
@@ -653,7 +673,7 @@ class GoogleSheetsService:
 
     def update_sheet_dates(self, sheet_date: datetime, db: Session):
         """
-        Update the blue header and table header dates in the new sheet.
+        Update the title banner and the per-class day headers in a weekly sheet.
         """
         try:
             sheet_title = format_schedule_sheet_title(sheet_date)
@@ -670,18 +690,13 @@ class GoogleSheetsService:
             if not individual_sheet_id:
                 raise ValueError(f"Sheet {sheet_title} not found")
 
-            # Update blue header (assuming it's cell C1)
-            blue_header_range = f"{sheet_title}!C1"
+            # The title banner is one merged cell, B1:J1, so B1 is the only
+            # cell that can carry it. A second write to C1 - which the code
+            # used to make, calling it "the blue header" - lands inside that
+            # merge and shows nothing.
             self.sheet.values().update(
                 spreadsheetId=spreadsheet_id,
-                range=blue_header_range,
-                valueInputOption="USER_ENTERED",
-                body={"values": [[sheet_title]]},
-            ).execute()
-
-            self.sheet.values().update(
-                spreadsheetId=spreadsheet_id,
-                range=f"{sheet_title}!B1",
+                range=a1_range(sheet_title, "B1"),
                 valueInputOption="USER_ENTERED",
                 body={
                     "values": [[f"Schedule for Week {sheet_date.strftime('%d/%m/%Y')}"]]
@@ -713,7 +728,7 @@ class GoogleSheetsService:
                 for i in range(5)
             ]
             grid = self.get_range_from_sheet(
-                db, spreadsheet_id, f"{sheet_title}!A1:G100"
+                db, spreadsheet_id, a1_range(sheet_title, "A1:G100")
             )
             requests = []
             for offset, row in enumerate(grid):
@@ -774,6 +789,24 @@ class GoogleSheetsService:
             if sheet["properties"]["title"].startswith("Schedule ")
         ]
 
+    def get_leading_schedule_sheet(self, db: Session) -> dict | None:
+        """
+        The visible dated schedule tab the display leads with, or None.
+
+        Dated is the operative word: every helper here matches tabs by the
+        "Schedule " prefix, which also catches "Schedule Template" - a tab
+        that sits at index 0 and is visible whenever someone has been editing
+        it. Taking the first visible "Schedule *" tab therefore used to land
+        on the template, whose title parses to no date.
+        """
+        for sheet in self.get_schedule_sheets(db):
+            if sheet["properties"].get("hidden", False):
+                continue
+            if parse_schedule_sheet_title(sheet["properties"]["title"]) is None:
+                continue
+            return sheet
+        return None
+
     def get_sheet_by_date(self, date: datetime, db: Session) -> dict | None:
         """Get sheet metadata for a specific date (matches both title formats)"""
         sheets = self.get_schedule_sheets(db)
@@ -813,15 +846,10 @@ class GoogleSheetsService:
             tuple[datetime, datetime]: (monday_date, friday_date) from the current schedule
         """
         try:
-            # Get all schedule sheets
-            schedule_sheets = self.get_schedule_sheets(db)
-
-            # Find the first visible schedule sheet (they should be ordered by date)
-            visible_sheet = None
-            for sheet in schedule_sheets:
-                if not sheet["properties"].get("hidden", False):
-                    visible_sheet = sheet
-                    break
+            # The leading visible *dated* tab - skipping "Schedule Template",
+            # which is visible whenever someone is editing it and would
+            # otherwise force the fallback below on every call.
+            visible_sheet = self.get_leading_schedule_sheet(db)
 
             if not visible_sheet:
                 logger.warning(
@@ -829,13 +857,10 @@ class GoogleSheetsService:
                 )
                 return self._calculated_schedule_dates(db)
 
-            # Extract date from sheet title (DD/MM/YYYY, or legacy MM/DD)
+            # Already known to parse - that is what made this tab the leading
+            # one rather than, say, the template sitting above it.
             sheet_title = visible_sheet["properties"]["title"]
             sheet_date = parse_schedule_sheet_title(sheet_title)
-
-            if sheet_date is None:
-                logger.warning(f"Could not parse date from sheet title '{sheet_title}'")
-                return self._calculated_schedule_dates(db)
 
             # Calculate Monday and Friday for this week
             days_since_monday = sheet_date.weekday()

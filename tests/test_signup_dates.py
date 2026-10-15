@@ -14,8 +14,8 @@ from app.routers.admin.helpers import parse_start_date
 from app.services.google_sheets import (
     SIGNUP_SHEET_HEADERS,
     GoogleSheetsService,
-    sheets_serial_to_datetime,
 )
+from app.utils.schedule_dates import sheets_serial_to_datetime
 
 TIMESTAMP_COL = SIGNUP_SHEET_HEADERS.index("timestamp")
 START_DATE_COL = SIGNUP_SHEET_HEADERS.index("start_date")
