@@ -7,7 +7,7 @@ Tests cover:
 - Error handling and edge cases
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 
 import pytest
@@ -86,7 +86,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1111111111",
                 "position_interest": "Teacher, TA",
                 "availability": "Monday, Tuesday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -112,7 +112,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 2222222222",
                 "position_interest": "Teacher",
                 "availability": "Wednesday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "3 months",
                 "teaching_experience": "Some experience",
                 "experience_details": "",
@@ -243,7 +243,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1111111111",
                 "position_interest": "Teacher",
                 "availability": "Monday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -360,7 +360,7 @@ class TestFormSubmissionProcessing:
             "phone_number": "+84 1234567890",
             "position_interest": "Teacher, TA",
             "availability": "Monday, Tuesday, Wednesday",
-            "start_date": "12/01/2024",
+            "start_date": "2024-12-01",
             "commitment_duration": "6 months",
             "teaching_experience": "Some experience",
             "experience_details": "Worked with children",
@@ -378,9 +378,7 @@ class TestFormSubmissionProcessing:
         assert volunteer.positions == ["Teacher", "TA"]
         assert volunteer.location == "Ho Chi Minh City"
         assert volunteer.availability == ["Monday", "Tuesday", "Wednesday"]
-        assert (
-            volunteer.start_date == datetime.strptime("12/01/2024", "%m/%d/%Y").date()
-        )
+        assert volunteer.start_date == date(2024, 12, 1)
         assert volunteer.commitment_duration == "6 months"
         assert volunteer.teaching_experience == "Some experience"
         assert volunteer.experience_details == "Worked with children"
@@ -448,7 +446,7 @@ class TestFormSubmissionProcessing:
             "phone_number": "+84 1234567890",
             "position_interest": "Teacher",
             "availability": "Monday",
-            "start_date": "12/01/2024",
+            "start_date": "2024-12-01",
             "commitment_duration": "6 months",
             "teaching_experience": "None",
             "experience_details": "",
@@ -489,7 +487,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1234567890",
                 "position_interest": "Teacher",
                 "availability": "Monday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -581,7 +579,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1234567890",
                 "position_interest": "Teacher",
                 "availability": "Monday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -633,7 +631,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1234567890",
                 "position_interest": "Teacher",
                 "availability": "Monday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -697,7 +695,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1111111111",
                 "position_interest": "Teacher",
                 "availability": "Monday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -723,7 +721,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 2222222222",
                 "position_interest": "Teacher",
                 "availability": "Tuesday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -749,7 +747,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 3333333333",
                 "position_interest": "Teacher",
                 "availability": "Wednesday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -775,7 +773,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 4444444444",
                 "position_interest": "Teacher",
                 "availability": "Thursday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -869,7 +867,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 1111111111",
                 "position_interest": "Teacher",
                 "availability": "Monday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -895,7 +893,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 2222222222",
                 "position_interest": "Teacher",
                 "availability": "Tuesday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -921,7 +919,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 3333333333",
                 "position_interest": "Teacher",
                 "availability": "Wednesday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",
@@ -947,7 +945,7 @@ class TestFormSubmissionProcessing:
                 "phone_number": "+84 4444444444",
                 "position_interest": "Teacher",
                 "availability": "Thursday",
-                "start_date": "12/01/2024",
+                "start_date": "2024-12-01",
                 "commitment_duration": "6 months",
                 "teaching_experience": "None",
                 "experience_details": "",

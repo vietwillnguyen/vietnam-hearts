@@ -99,7 +99,10 @@ class EmailService:
         )
 
     def build_class_table(
-        self, block: "ClassBlock", teaching_days: Iterable[str] | None = None
+        self,
+        block: "ClassBlock",
+        teaching_days: Iterable[str] | None = None,
+        week_monday: datetime | None = None,
     ) -> dict:
         """
         Build the HTML table for a single class from a parsed ClassBlock.
@@ -110,7 +113,9 @@ class EmailService:
 
         `teaching_days` are the weekdays the organization actually teaches on
         (default DEFAULT_TEACHING_DAYS); a blank teacher cell on any other day
-        is a day with no class rather than an unfilled slot.
+        is a day with no class rather than an unfilled slot. `week_monday` is
+        the Monday of the tab the block was read from, which dates a bare d/m
+        day label such as "19/10" so it too can be placed on its weekday.
 
         The returned dict includes a `needs_volunteers` flag (True if any day is
         missing a teacher, head TA, or assistant) that callers use to decide
@@ -178,7 +183,7 @@ class EmailService:
                     )
                     bg_color = "#f5f5f5"
                 elif not teacher_lower or "need volunteers" in teacher_lower:
-                    if is_teaching_day(day, teaching_days):
+                    if is_teaching_day(day, teaching_days, week_monday):
                         status = "❌ Missing Teacher"
                         bg_color = "#ffcccc"
                         needs_volunteers = True
@@ -257,9 +262,6 @@ class EmailService:
         # Auto-discover class blocks from the schedule sheet (single source of truth)
         class_blocks = sheets_service.get_schedule_blocks(db)
         teaching_days = ConfigHelper.get_schedule_teaching_days(db)
-        class_tables = [
-            self.build_class_table(block, teaching_days) for block in class_blocks
-        ]
 
         # The subject must name the week the tables above were actually read
         # from, and those come from the leading visible schedule tab. That tab
@@ -271,6 +273,10 @@ class EmailService:
         # anchor, evaluated in the organization's timezone.
         start_date, _ = sheets_service.get_current_schedule_dates(db)
         end_date = start_date + timedelta(days=6)  # Sunday
+        class_tables = [
+            self.build_class_table(block, teaching_days, start_date)
+            for block in class_blocks
+        ]
 
         subject = self.get_reminder_subject(start_date, end_date)
 
@@ -290,6 +296,7 @@ class EmailService:
             SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
             INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
+            INVITE_LINK_WHATSAPP=ConfigHelper.get_invite_link_whatsapp(db),
             ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
             INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
             FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
@@ -311,6 +318,7 @@ class EmailService:
             # Get dynamic settings from database
             schedule_signup_link = config.get_schedule_signup_link(db)
             INVITE_LINK_ZALO = config.get_invite_link_zalo(db)
+            INVITE_LINK_WHATSAPP = config.get_invite_link_whatsapp(db)
             onboarding_guide_link = config.get_onboarding_guide_link(db)
             instagram_link = config.get_instagram_link(db)
             facebook_page_link = config.get_facebook_page_link(db)
@@ -323,6 +331,7 @@ class EmailService:
                     volunteer, db
                 ),
                 "INVITE_LINK_ZALO": INVITE_LINK_ZALO or "#",
+                "INVITE_LINK_WHATSAPP": INVITE_LINK_WHATSAPP,
                 "ONBOARDING_GUIDE_LINK": onboarding_guide_link or "#",
                 "INSTAGRAM_LINK": instagram_link or "#",
                 "FACEBOOK_PAGE_LINK": facebook_page_link or "#",

@@ -11,6 +11,11 @@ sheet shapes that broke the weekly reminder email:
 - Google Sheets trailing-empty-cell/row trimming (ragged rows)
 - blank separator rows between class blocks
 - non-class header/announcement rows that must be ignored
+
+Every header fixture below carries at least three day columns, because that is
+what row_is_class_header() requires - see _MIN_DAY_LABELS. A real header always
+has a column per weekday; demanding a quorum is what stops a "Teacher" row of
+volunteer names ("Thu Hang", "Thu Hằng") from being read as a fourth class.
 """
 
 from app.services.schedule_parser import ClassBlock, discover_schedule_blocks
@@ -45,26 +50,27 @@ class TestDiscoverScheduleBlocks:
 
     def test_block_with_head_assistant_row(self):
         rows = [
-            ["Combined 3 & 4\n9:30 - 10:30 AM", "Mon", "Tue"],
-            ["Teacher", "Lydie", "Need Volunteers"],
+            ["Combined 3 & 4\n9:30 - 10:30 AM", "Mon", "Tue", "Wed"],
+            ["Teacher", "Lydie", "Need Volunteers", ""],
             [
                 "Head Assistant (min 1), must handle attendance and supply box",
                 "Thanh Thao",
                 "Michael",
+                "",
             ],
-            ["Assistants MAX 1", "Hai Chau, Florian", "Trang Vo"],
-            ["Curriculum & Lesson Plan", "1-20", "[link]"],
+            ["Assistants MAX 1", "Hai Chau, Florian", "Trang Vo", ""],
+            ["Curriculum & Lesson Plan", "1-20", "[link]", ""],
         ]
         b = discover_schedule_blocks(rows)[0]
         assert b.name == "Combined 3 & 4"
         assert b.has_head_ta is True
-        assert b.head_ta == ("Thanh Thao", "Michael")
-        assert b.assistants == ("Hai Chau, Florian", "Trang Vo")
+        assert b.head_ta == ("Thanh Thao", "Michael", "")
+        assert b.assistants == ("Hai Chau, Florian", "Trang Vo", "")
         assert b.max_assistants == 1
 
     def test_max_assistants_none_when_no_max_label(self):
         rows = [
-            ["Grade X\n10 AM", "Mon"],
+            ["Grade X\n10 AM", "Mon", "Tue", "Wed"],
             ["Teacher", "A"],
             ["Assistants", "B"],  # no MAX token -> no limit
         ]
@@ -114,3 +120,53 @@ class TestDiscoverScheduleBlocks:
     def test_empty_input_returns_empty(self):
         assert discover_schedule_blocks([]) == []
         assert discover_schedule_blocks([[], [""], [""]]) == []
+
+
+class TestUpdatedTemplateShape:
+    """The template the captain changed on 2026-10-15.
+
+    Grade 1A is the first class whose title names a time per day, because it
+    meets Tuesday morning and Thursday afternoon. Nothing in the parser
+    enumerates classes, so the fourth block needs no code change - these pin
+    that, and the heading the reminder builds from the multi-line title.
+    """
+
+    def _blocks(self):
+        from tests.fixtures.schedule_sheets import TEMPLATE_GRID
+
+        # Production reads B1:G100, so the parser sees the label column and
+        # the five weekday columns - never the "Classroom Info" pair in I:J,
+        # which it would otherwise count as two more days.
+        return discover_schedule_blocks([row[1:7] for row in TEMPLATE_GRID])
+
+    def test_the_template_parses_as_four_classes_in_sheet_order(self):
+        assert [block.name for block in self._blocks()] == [
+            "Grade 1A",
+            "Grade 1B (Special Needs)",
+            "Grade 2",
+            "Grade 5",
+        ]
+
+    def test_a_per_day_time_reads_as_a_list_not_a_run_on(self):
+        grade_1a = self._blocks()[0]
+
+        assert grade_1a.time == "TUESDAY 9:30 - 10:30 AM, THURSDAY 3:30 - 4:30 PM"
+
+    def test_every_block_carries_a_head_assistant_row_and_a_cap_of_four(self):
+        blocks = self._blocks()
+
+        assert all(block.has_head_ta for block in blocks)
+        assert {block.max_assistants for block in blocks} == {4}
+
+    def test_the_unfilled_template_asks_for_volunteers_on_teaching_days(self):
+        grade_1a = self._blocks()[0]
+
+        # C:G are Monday to Friday; the template pre-fills Tuesday and
+        # Thursday, the two days Vietnam Hearts teaches.
+        assert grade_1a.teacher == (
+            "",
+            "Need Volunteers",
+            "",
+            "Need Volunteers",
+            "",
+        )

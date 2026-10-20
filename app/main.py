@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.engine import make_url
 
 from app.routers.admin import admin_router
 from app.routers.auth import router as auth_router
@@ -48,7 +49,12 @@ async def lifespan(app: FastAPI):
         logger.info(f"- ENVIRONMENT={ENVIRONMENT}")
         logger.info(f"- TESTING={os.getenv('TESTING')}")
         logger.info(f"- API_URL={API_URL}")
-        logger.info(f"- DATABASE_URL={DATABASE_URL}")
+        # Rendered by SQLAlchemy with the password hidden, and redacted again
+        # by the logging filter: the raw URL carries the database password and
+        # used to reach Cloud Logging on every cold start.
+        logger.info(
+            f"- DATABASE_URL={make_url(DATABASE_URL).render_as_string(hide_password=True)}"
+        )
         logger.info(f"- LOGS_DIR={get_log_file_path()}")
         logger.info("-" * 50)
 

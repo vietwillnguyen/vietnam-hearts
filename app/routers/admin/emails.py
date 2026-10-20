@@ -135,13 +135,13 @@ async def send_weekly_reminder_emails(request: Request):
                 }
 
             teaching_days = ConfigHelper.get_schedule_teaching_days(db)
-            class_tables = [
-                email_service.build_class_table(block, teaching_days)
-                for block in sheets_service.get_schedule_blocks(db)
-            ]
             current_monday, current_friday = sheets_service.get_current_schedule_dates(
                 db
             )
+            class_tables = [
+                email_service.build_class_table(block, teaching_days, current_monday)
+                for block in sheets_service.get_schedule_blocks(db)
+            ]
             subject = email_service.get_reminder_subject(current_monday, current_friday)
 
             if not any(ct.get("needs_volunteers") for ct in class_tables):
@@ -212,6 +212,7 @@ async def send_weekly_reminder_emails(request: Request):
                         db_volunteer, db
                     ),
                     INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
+                    INVITE_LINK_WHATSAPP=ConfigHelper.get_invite_link_whatsapp(db),
                     ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db)
                     or "#",
                     INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",

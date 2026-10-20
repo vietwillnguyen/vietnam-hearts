@@ -14,11 +14,15 @@ def parse_start_date(date_str):
     """Parse start date from form submission"""
     if not date_str or date_str.upper() == "ASAP":
         return datetime.now().date()
-    try:
-        return datetime.strptime(date_str, "%m/%d/%Y").date()
-    except ValueError:
-        logger.warning(f"Invalid date format: {date_str}")
-        return None
+    # ISO is what the sheet reader produces from a date cell; DD/MM/YYYY is the
+    # Vietnamese form a hand-typed text cell would use.
+    for date_format in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(date_str, date_format).date()
+        except ValueError:
+            continue
+    logger.warning(f"Invalid date format: {date_str}")
+    return None
 
 
 def get_volunteer_summary(volunteers):
