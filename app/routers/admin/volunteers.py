@@ -76,6 +76,9 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
                 "weekly_reminders_subscribed": v.weekly_reminders_subscribed,
                 "all_emails_subscribed": v.all_emails_subscribed,
                 "created_at": v.created_at.isoformat() if v.created_at else None,
+                "last_active_at": v.last_active_at.isoformat()
+                if v.last_active_at
+                else None,
             }
             for v in recipients
         ]

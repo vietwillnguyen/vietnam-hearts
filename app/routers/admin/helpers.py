@@ -55,6 +55,10 @@ def get_volunteer_summary(volunteers):
                 else None,
                 "positions": volunteer.positions or [],
                 "created_at": volunteer.created_at,
+                # Why a volunteer may have dropped off the weekly reminder:
+                # None means the schedule-sheet name matcher never placed
+                # them, so their sign-up date is used instead.
+                "last_active_at": volunteer.last_active_at,
             }
         )
     return volunteer_data

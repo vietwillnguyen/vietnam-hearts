@@ -9,9 +9,12 @@ Covers:
 """
 
 import json
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from app.models import Volunteer as VolunteerModel
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -660,6 +663,10 @@ class TestJudgePendingSubmissionsEndpoint:
                 "app.services.google_sheets.sheets_service.get_signup_form_submissions",
                 return_value=[],
             ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_sheets",
+                return_value=[],
+            ),
             patch("time.sleep"),
         ):
             response = client.post("/admin/review-and-sync")
@@ -668,10 +675,103 @@ class TestJudgePendingSubmissionsEndpoint:
         data = response.json()
         # Judge step ran and wrote to sheet
         mock_write.assert_called_once()
-        # Response contains both judge and sync sections
+        # Response contains the judge, sync and activity sections
         assert "judge" in data
         assert "sync" in data
+        assert "activity" in data
         assert data["judge"]["accepted"] == 1
+
+    def test_review_and_sync_records_volunteer_activity(
+        self, client, test_db, mock_auth_service
+    ):
+        """The run credits the week's signups, and names it to the caller.
+
+        The weekly reminder's recency window is measured against nothing else,
+        so this step running is what keeps an active volunteer on the list.
+        """
+        from tests.fixtures.schedule_sheets import CURRENT_WEEK_GRID
+
+        test_db.add(
+            VolunteerModel(
+                name="Joe Tran", email="joe.tran@example.com", is_active=True
+            )
+        )
+        test_db.commit()
+
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=[],
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_signup_form_submissions",
+                return_value=[],
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_sheets",
+                return_value=[
+                    {
+                        "properties": {
+                            "title": "Schedule 12/10/2026",
+                            "sheetId": 1775524467,
+                            "hidden": False,
+                        }
+                    }
+                ],
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_range",
+                return_value=[row[1:7] for row in CURRENT_WEEK_GRID],
+            ),
+            patch("time.sleep"),
+        ):
+            response = client.post("/admin/review-and-sync")
+
+        assert response.status_code == 200
+        activity = response.json()["activity"]
+        assert activity["tabs_scanned"] == 1
+        assert activity["volunteers_credited"] == 1
+        # Names typed as a nickname nobody has a record for are reported, not
+        # dropped: each one is a volunteer who will otherwise look lapsed.
+        assert "Yer" in activity["unmatched_signup_names"]
+
+        volunteer = test_db.query(VolunteerModel).one()
+        assert volunteer.last_active_at == datetime(2026, 10, 12)
+
+    def test_review_and_sync_surfaces_an_activity_scan_failure(
+        self, client, test_db, mock_auth_service
+    ):
+        """A broken activity scan must not report success.
+
+        It is the quiet failure that costs most: with last_active_at frozen,
+        every volunteer ages out of the recency window and the reminder stops
+        reaching people who are still turning up every week. Unlike a failed
+        sync, nothing downstream would reveal it.
+        """
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_pending_submissions_with_rows",
+                return_value=[],
+            ),
+            patch(
+                "app.utils.config_helper.ConfigHelper.get_dry_run", return_value=False
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_signup_form_submissions",
+                return_value=[],
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_sheets",
+                side_effect=RuntimeError("Sheets permission denied"),
+            ),
+            patch("time.sleep"),
+        ):
+            response = client.post("/admin/review-and-sync")
+
+        assert response.status_code == 500
 
     def test_review_and_sync_reports_failure_when_sync_step_fails(
         self, client, test_db, mock_auth_service

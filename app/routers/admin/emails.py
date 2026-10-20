@@ -24,6 +24,7 @@ from app.routers.admin.helpers import (
 )
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
+from app.services.volunteer_activity import select_weekly_reminder_recipients
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 
@@ -183,7 +184,12 @@ def weekly_reminder_health(db: Session = Depends(get_db)):
 
 @router.post("/send-weekly-reminders")
 async def send_weekly_reminder_emails(request: Request):
-    """Send weekly reminder emails to all active subscribed volunteers.
+    """Send weekly reminder emails to recently active subscribed volunteers.
+
+    Recipients come from select_weekly_reminder_recipients, which adds a
+    recency window (REMINDER_ACTIVE_WEEKS) on top of the subscription flags so
+    volunteers who signed up once and never came back stop being emailed
+    forever.
 
     Skips the send (returning status "skipped") if weekly reminders are
     disabled globally, or if no class has an open teacher/head TA/assistant
@@ -239,12 +245,7 @@ async def send_weekly_reminder_emails(request: Request):
                 ]
                 volunteer_lookup = {dry_run_volunteer.email: dry_run_volunteer}
             else:
-                db_volunteers = (
-                    db.query(VolunteerModel)
-                    .filter(VolunteerModel.is_active.is_(True))
-                    .filter(VolunteerModel.weekly_reminders_subscribed.is_(True))
-                    .all()
-                )
+                db_volunteers = select_weekly_reminder_recipients(db)
                 volunteers = [{"email": v.email, "name": v.name} for v in db_volunteers]
                 volunteer_lookup = {v.email: v for v in db_volunteers}
 

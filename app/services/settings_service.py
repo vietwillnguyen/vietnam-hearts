@@ -131,6 +131,17 @@ def initialize_default_settings(db: Session) -> None:
             "value": "true",
             "description": "If false, weekly reminder emails will be disabled globally",
         },
+        "REMINDER_ACTIVE_WEEKS": {
+            "value": "8",
+            "description": (
+                "How many weeks back a volunteer must have signed up on the "
+                "schedule sheet to still receive the weekly reminder. "
+                "Volunteers never matched on the sheet are measured from their "
+                "sign-up date instead, so a newly accepted volunteer is never "
+                "excluded. Set to 0 to email every subscribed volunteer "
+                "regardless of recency."
+            ),
+        },
         "INVITE_LINK_ZALO": {
             "value": "https://zalo.me/g/gcmgkowx6gvotsghvsji",
             "description": "Zalo group chat invite link",

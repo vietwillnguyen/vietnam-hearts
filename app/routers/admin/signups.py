@@ -17,6 +17,7 @@ from app.models import Volunteer as VolunteerModel
 from app.routers.admin.helpers import create_new_volunteer_object
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
+from app.services.volunteer_activity import record_activity_from_schedule_sheets
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error
@@ -389,6 +390,8 @@ def judge_pending_submissions(
         "Full pipeline for the scheduled cron job:\n"
         "1. LLM judges up to `limit` PENDING submissions and writes ACCEPTED/REJECTED to the sheet.\n"
         "2. Syncs all ACCEPTED submissions from the sheet into the volunteer database and sends confirmation emails.\n"
+        "3. Records volunteer activity from the visible schedule tabs, which is what the weekly "
+        "reminder's recency window is measured against.\n"
         "Respects dry_run — when True, step 1 logs only and step 2 still syncs (it reads the sheet state).\n"
         "A hard sync failure (e.g. a Sheets permission error) raises a 502 rather than "
         "returning `status: success` - per-row judge errors are still reported via `judge.errors`."
@@ -412,6 +415,20 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
     sync_details = sync_result.get("details", {})
     logger.info(f"Sync step done: status={sync_status} details={sync_details}")
 
+    # Step 3: record who is signed up on the visible schedule weeks. This is
+    # the only input to the weekly reminder's recency window, and a scan that
+    # quietly stops running lets last_active_at go stale - which drops real
+    # volunteers off the reminder rather than merely failing to add them. So a
+    # Sheets failure here propagates, exactly as step 2's does.
+    activity_results = record_activity_from_schedule_sheets(db)
+    unmatched = sorted(
+        {name for _, result in activity_results for name in result.unmatched}
+    )
+    logger.info(
+        f"Activity step done: {len(activity_results)} tab(s) scanned, "
+        f"{len(unmatched)} signup name(s) unmatched"
+    )
+
     return {
         "status": "success",
         "judge": judge_result,
@@ -419,6 +436,14 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
             "status": sync_status,
             "volunteers_created": sync_details.get("volunteers_created", 0),
             "accepted_submissions": sync_details.get("accepted_submissions", 0),
+        },
+        "activity": {
+            "tabs_scanned": len(activity_results),
+            "volunteers_credited": sum(r.matched for _, r in activity_results),
+            # Surfaced rather than only logged: an unplaceable name is a
+            # volunteer who will look lapsed, and the captain is the only one
+            # who can fix the record or ask for a full name.
+            "unmatched_signup_names": unmatched,
         },
     }
 

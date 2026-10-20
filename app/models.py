@@ -61,6 +61,14 @@ class Volunteer(Base):
     email_unsubscribe_token = Column(String, unique=True, nullable=True)
     last_email_sent_at = Column(DateTime, nullable=True)
 
+    # Monday of the most recent schedule week this volunteer is signed up on.
+    # The sheet is the only record of who still turns up, and it holds typed
+    # names rather than emails, so this is filled by name matching and stays
+    # NULL for a volunteer who has never been placed - see
+    # app/services/volunteer_activity.py, which treats NULL as "fall back to
+    # the sign-up date" rather than "inactive".
+    last_active_at = Column(DateTime, nullable=True)
+
     # Granular unsubscribe options
     weekly_reminders_subscribed = Column(Boolean, default=True)
     all_emails_subscribed = Column(Boolean, default=True)
