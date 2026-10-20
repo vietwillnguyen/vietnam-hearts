@@ -296,6 +296,7 @@ class EmailService:
             SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
             EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
             INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
+            INVITE_LINK_WHATSAPP=ConfigHelper.get_invite_link_whatsapp(db),
             ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
             INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
             FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
@@ -317,6 +318,7 @@ class EmailService:
             # Get dynamic settings from database
             schedule_signup_link = config.get_schedule_signup_link(db)
             INVITE_LINK_ZALO = config.get_invite_link_zalo(db)
+            INVITE_LINK_WHATSAPP = config.get_invite_link_whatsapp(db)
             onboarding_guide_link = config.get_onboarding_guide_link(db)
             instagram_link = config.get_instagram_link(db)
             facebook_page_link = config.get_facebook_page_link(db)
@@ -329,6 +331,7 @@ class EmailService:
                     volunteer, db
                 ),
                 "INVITE_LINK_ZALO": INVITE_LINK_ZALO or "#",
+                "INVITE_LINK_WHATSAPP": INVITE_LINK_WHATSAPP,
                 "ONBOARDING_GUIDE_LINK": onboarding_guide_link or "#",
                 "INSTAGRAM_LINK": instagram_link or "#",
                 "FACEBOOK_PAGE_LINK": facebook_page_link or "#",

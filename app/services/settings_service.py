@@ -135,6 +135,13 @@ def initialize_default_settings(db: Session) -> None:
             "value": "https://zalo.me/g/gcmgkowx6gvotsghvsji",
             "description": "Zalo group chat invite link",
         },
+        "INVITE_LINK_WHATSAPP": {
+            "value": "https://chat.whatsapp.com/KpfV7kCbR9N1sW8J6ujD1o",
+            "description": (
+                "WhatsApp community invite link, offered beside Zalo for "
+                "volunteers who cannot register with Zalo. Empty hides it"
+            ),
+        },
         "ONBOARDING_GUIDE_LINK": {
             "value": "",
             "description": "Link to the onboarding guide for new volunteers",
