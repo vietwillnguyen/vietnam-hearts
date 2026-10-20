@@ -104,6 +104,14 @@ handlers in production their records reach Cloud Logging through `lastResort` on
 They are redacted but still miss the file and `system_logs` sinks, so use `get_logger` for
 anything new.
 
+## Privacy policy page
+
+`/privacy` is public on purpose: its URL sits in the Google OAuth consent screen, so Google's
+reviewer fetches it with no account. Never put it behind auth, and never reword the Limited Use
+sentence - Google specifies it verbatim. The text, contact address, disclosure and "Last updated"
+date are constants at the top of `app/routers/public.py`; `tests/test_privacy_policy.py` pins both
+properties, and the README's "Privacy policy URL" section covers the console step.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

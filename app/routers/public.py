@@ -30,6 +30,24 @@ public_router = APIRouter(prefix="", tags=["public"])
 # Initialize templates
 templates = Jinja2Templates(directory="templates/web")
 
+# The address the privacy policy tells people to write to, and the one the
+# volunteer inbox itself lives at.
+CONTACT_EMAIL = "vietnam.hearts.volunteering@gmail.com"
+
+# Google requires this sentence to appear on the privacy policy behind an OAuth
+# consent screen that requests a restricted scope, worded exactly as its API
+# Services User Data Policy sets it out. It lives here rather than inline in the
+# template so a test can pin the wording; do not paraphrase it.
+LIMITED_USE_DISCLOSURE = (
+    "Vietnam Hearts' use and transfer of information received from Google APIs "
+    "will adhere to the Google API Services User Data Policy, including the "
+    "Limited Use requirements."
+)
+
+# The date this policy text last changed. Bump it whenever the text below it
+# does; the page states it, and people rely on it to tell versions apart.
+PRIVACY_POLICY_LAST_UPDATED = "September 30, 2026"
+
 
 @public_router.get("/", response_class=HTMLResponse)
 async def home_page(request: Request):
@@ -38,6 +56,28 @@ async def home_page(request: Request):
 
     return templates.TemplateResponse(
         "home.html", {"request": request, "version": APPLICATION_VERSION}
+    )
+
+
+@public_router.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy_page(request: Request):
+    """Serve the privacy policy.
+
+    Deliberately unauthenticated: this URL is on the Google OAuth consent
+    screen for the volunteer inbox, so Google's reviewer and the public both
+    have to be able to fetch it without an account.
+    """
+    from app.config import APPLICATION_VERSION
+
+    return templates.TemplateResponse(
+        "privacy.html",
+        {
+            "request": request,
+            "version": APPLICATION_VERSION,
+            "contact_email": CONTACT_EMAIL,
+            "limited_use_disclosure": LIMITED_USE_DISCLOSURE,
+            "last_updated": PRIVACY_POLICY_LAST_UPDATED,
+        },
     )
 
 
