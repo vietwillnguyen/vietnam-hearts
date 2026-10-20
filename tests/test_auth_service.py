@@ -59,3 +59,56 @@ class TestGetUserFromApikey:
             asyncio.run(
                 auth_service._get_user_from_apikey("sb_secret_wrong_key_value_here")
             )
+
+
+class TestServiceRoleAdminAccess:
+    """The scheduler authenticates with the service-role key, not a user account.
+
+    Pins down the 403s that stopped the Sunday weekly-reminder job for four
+    weeks (2026-09-27 through 2026-10-18). A valid service-role key already
+    carries the highest privilege the app has, but get_current_admin_user put
+    the synthetic service-account email through the admin_users lookup anyway.
+    That lookup fails closed, so the scheduler was denied whenever the row was
+    missing or Supabase was slow.
+    """
+
+    @pytest.fixture
+    def request_with_apikey(self):
+        request = MagicMock()
+        request.headers = {"apikey": CURRENT_FORMAT_SECRET_KEY}
+        request.query_params = {}
+        request.cookies = {}
+        return request
+
+    def test_grants_admin_without_consulting_admin_users(
+        self, auth_service, request_with_apikey
+    ):
+        auth_service.admin_supabase = MagicMock()
+        with (
+            patch(
+                "app.services.auth_service.SUPABASE_SECRET_KEY",
+                CURRENT_FORMAT_SECRET_KEY,
+            ),
+            patch("app.services.auth_service.ADMIN_EMAILS", []),
+        ):
+            user = asyncio.run(auth_service.get_current_admin_user(request_with_apikey))
+
+        assert user["id"] == "service-account-auto-scheduler"
+        auth_service.admin_supabase.table.assert_not_called()
+
+    def test_grants_admin_when_supabase_is_unreachable(
+        self, auth_service, request_with_apikey
+    ):
+        """A Supabase outage must not take the scheduler down with it."""
+        auth_service.admin_supabase = MagicMock()
+        auth_service.admin_supabase.table.side_effect = OSError("supabase unreachable")
+        with (
+            patch(
+                "app.services.auth_service.SUPABASE_SECRET_KEY",
+                CURRENT_FORMAT_SECRET_KEY,
+            ),
+            patch("app.services.auth_service.ADMIN_EMAILS", []),
+        ):
+            user = asyncio.run(auth_service.get_current_admin_user(request_with_apikey))
+
+        assert user["id"] == "service-account-auto-scheduler"

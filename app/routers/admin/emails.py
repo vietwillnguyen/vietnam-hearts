@@ -2,7 +2,7 @@
 Admin email management endpoints
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
@@ -14,7 +14,11 @@ from app.models import (
 from app.models import (
     Volunteer as VolunteerModel,
 )
-from app.routers.admin.helpers import get_email_summary
+from app.routers.admin.helpers import (
+    ABANDONED_PENDING_REMINDER_AGE,
+    get_email_summary,
+    get_weekly_reminder_run_health,
+)
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
 from app.utils.config_helper import ConfigHelper
@@ -115,6 +119,54 @@ async def send_confirmation_emails(request: Request, db: Session = Depends(get_d
         }
 
 
+def fail_abandoned_pending_reminders(db: Session) -> int:
+    """Resolve PENDING reminder rows left behind by a run that never finished.
+
+    Rows are committed PENDING before the batch is sent so the run can be
+    resumed, which means a run killed at the request deadline abandons them.
+    They would otherwise sit PENDING forever and keep the run-health check
+    reporting a failure that nothing can clear.
+    """
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - ABANDONED_PENDING_REMINDER_AGE
+    abandoned = (
+        db.query(EmailCommunicationModel)
+        .filter(
+            EmailCommunicationModel.email_type == "weekly_reminder",
+            EmailCommunicationModel.status == "PENDING",
+            EmailCommunicationModel.created_at < cutoff,
+        )
+        .all()
+    )
+    if not abandoned:
+        return 0
+
+    for row in abandoned:
+        row.status = "failed"
+        row.error_message = (
+            "abandoned: the run that queued this email did not finish sending it"
+        )
+    db.commit()
+    logger.warning(
+        f"Marked {len(abandoned)} abandoned PENDING weekly reminder rows as failed"
+    )
+    return len(abandoned)
+
+
+@router.get("/weekly-reminder-health")
+def weekly_reminder_health(db: Session = Depends(get_db)):
+    """Report whether the Sunday weekly-reminder run is actually landing."""
+    try:
+        return get_weekly_reminder_run_health(db)
+    except Exception as e:
+        logger.error(
+            f"Failed to compute weekly reminder health: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compute weekly reminder health: {str(e)}",
+        ) from e
+
+
 @router.post("/send-weekly-reminders")
 async def send_weekly_reminder_emails(request: Request):
     """Send weekly reminder emails to all active subscribed volunteers.
@@ -133,6 +185,8 @@ async def send_weekly_reminder_emails(request: Request):
                     "status": "skipped",
                     "message": "Weekly reminders are currently disabled globally. Enable them in the admin settings to send weekly reminders.",
                 }
+
+            fail_abandoned_pending_reminders(db)
 
             teaching_days = ConfigHelper.get_schedule_teaching_days(db)
             current_monday, current_friday = sheets_service.get_current_schedule_dates(
@@ -178,6 +232,23 @@ async def send_weekly_reminder_emails(request: Request):
                 )
                 volunteers = [{"email": v.email, "name": v.name} for v in db_volunteers]
                 volunteer_lookup = {v.email: v for v in db_volunteers}
+
+            already_sent = {
+                row.recipient_email
+                for row in db.query(EmailCommunicationModel.recipient_email)
+                .filter(
+                    EmailCommunicationModel.email_type == "weekly_reminder",
+                    EmailCommunicationModel.subject == subject,
+                    EmailCommunicationModel.status == "sent",
+                )
+                .all()
+            }
+            if already_sent:
+                logger.info(
+                    f"{len(already_sent)} volunteers already received this week's "
+                    "reminder, resuming with the rest"
+                )
+                volunteers = [v for v in volunteers if v["email"] not in already_sent]
 
             logger.info(
                 f"Sending weekly reminder emails to {len(volunteers)} volunteers"
@@ -232,27 +303,45 @@ async def send_weekly_reminder_emails(request: Request):
                 db.add(email_comm)
             db.commit()
 
-            for email_comm, html_body in email_communications:
-                try:
-                    email_service.send_custom_email(
-                        to_email=email_comm.recipient_email,
-                        subject=email_comm.subject,
-                        html_body=html_body,
-                    )
+            # One shared SMTP session for the batch. A connection per message
+            # cost ~1.85s each, which put a 170-volunteer run at 315s - past
+            # both the scheduler deadline and Cloud Run's 300s request limit.
+            sent_count = 0
+            failed_count = 0
+            outcomes = email_service.send_html_batch(
+                (comm.recipient_email, comm.subject, html_body)
+                for comm, html_body in email_communications
+            )
+            # Pair outcomes with rows by position, not by address: volunteer
+            # emails carry no unique constraint, so keying on the address would
+            # strand one of two volunteers who share one at PENDING forever.
+            for (email_comm, _), (_, error) in zip(
+                email_communications, outcomes, strict=True
+            ):
+                if error is None:
                     email_comm.status = "sent"
                     email_comm.sent_at = datetime.now()
-                except Exception as e:
-                    logger.error(
-                        f"Failed to send weekly reminder to {email_comm.recipient_email}: {str(e)}"
-                    )
+                    sent_count += 1
+                else:
                     email_comm.status = "failed"
-                    email_comm.error_message = str(e)
+                    email_comm.error_message = str(error)
+                    failed_count += 1
 
             db.commit()
 
+        logger.info(
+            f"Weekly reminder run finished: {sent_count} sent, {failed_count} failed"
+        )
         return {
-            "status": "success",
-            "message": "Weekly reminder emails sent successfully",
+            "status": "success" if not failed_count else "partial",
+            "message": (
+                f"Weekly reminder emails: {sent_count} sent, {failed_count} failed"
+            ),
+            "details": {
+                "sent": sent_count,
+                "failed": failed_count,
+                "skipped_already_sent": len(already_sent),
+            },
         }
 
     except HTTPException:

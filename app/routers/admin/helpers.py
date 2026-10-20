@@ -2,7 +2,7 @@
 Shared helpers used across multiple admin sub-routers.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from app.models import Volunteer as VolunteerModel
 from app.utils.logging_config import get_api_logger
@@ -111,3 +111,102 @@ def create_new_volunteer_object(submission: dict) -> VolunteerModel:
         additional_info=f"Social Media: {submission.get('social_media_link', 'N/A')}\nReferral Source: {submission.get('referral_source', 'N/A')}",
         is_active=True,
     )
+
+
+# A weekly job that missed a Sunday is more than 7 days stale; the extra day
+# absorbs clock skew and a late run without crying wolf.
+WEEKLY_REMINDER_STALE_AFTER_DAYS = 8
+
+# PENDING rows are written before the batch is sent, so a run killed at the
+# request deadline leaves them behind. No run can outlive Cloud Run's 300s
+# request timeout, so anything PENDING this long was abandoned, not in flight.
+ABANDONED_PENDING_REMINDER_AGE = timedelta(hours=6)
+
+
+def get_weekly_reminder_run_health(db) -> dict:
+    """Summarize the most recent weekly-reminder run from its email rows.
+
+    Cloud Scheduler's job status is otherwise the only place a failed Sunday
+    shows, and it keeps just the last attempt - which is how the job stayed
+    broken for four Sundays (2026-09-27..2026-10-18) without anyone noticing.
+
+    A run that was legitimately skipped (no class needed volunteers) writes no
+    rows, so it reads here as "stale" rather than "ok". That is deliberate: the
+    captain still wants to know no reminder has gone out in over a week, and
+    weeks_seen shows which weeks did send.
+    """
+    from app.models import EmailCommunication as EmailCommunicationModel
+
+    reminders = (
+        db.query(EmailCommunicationModel)
+        .filter(EmailCommunicationModel.email_type == "weekly_reminder")
+        .all()
+    )
+    if not reminders:
+        return {
+            "status": "stale",
+            "message": "No weekly reminder emails have ever been recorded",
+            "last_run": None,
+            "days_since_last_run": None,
+            "weeks_seen": 0,
+            "stale_after_days": WEEKLY_REMINDER_STALE_AFTER_DAYS,
+        }
+
+    def row_time(row):
+        return row.created_at or row.sent_at
+
+    latest = max(reminders, key=lambda row: (row_time(row) or datetime.min, row.id))
+    # The subject carries the week's date range, so it identifies the run that
+    # produced a row without depending on when that row happened to be written.
+    run_rows = [row for row in reminders if row.subject == latest.subject]
+
+    counts = {"sent": 0, "failed": 0, "pending": 0, "other": 0}
+    for row in run_rows:
+        key = (row.status or "").lower()
+        counts[key if key in counts else "other"] += 1
+
+    run_times = [row_time(row) for row in run_rows if row_time(row)]
+    last_run_at = max(run_times) if run_times else None
+    days_since = (
+        (datetime.now(UTC).replace(tzinfo=None) - _as_naive_utc(last_run_at)).days
+        if last_run_at
+        else None
+    )
+
+    unresolved = counts["failed"] + counts["pending"]
+    if unresolved:
+        status = "failed"
+        message = (
+            f"The last weekly reminder run ({latest.subject}) "
+            f"sent {counts['sent']} and did not send {unresolved}"
+        )
+    elif days_since is not None and days_since > WEEKLY_REMINDER_STALE_AFTER_DAYS:
+        status = "stale"
+        message = f"No weekly reminder has been sent for {days_since} days"
+    else:
+        status = "ok"
+        message = f"The last weekly reminder run sent {counts['sent']} emails"
+
+    return {
+        "status": status,
+        "message": message,
+        "last_run": {
+            "subject": latest.subject,
+            "at": last_run_at.isoformat() if last_run_at else None,
+            "recipients": len(run_rows),
+            **counts,
+        },
+        "days_since_last_run": days_since,
+        "weeks_seen": len({row.subject for row in reminders}),
+        "stale_after_days": WEEKLY_REMINDER_STALE_AFTER_DAYS,
+    }
+
+
+def _as_naive_utc(value: datetime) -> datetime:
+    """Normalize a stored timestamp for comparison against UTC now.
+
+    EmailCommunication writes created_at as aware UTC but the column is
+    timezone-naive, so rows come back naive while some code paths set
+    timestamps from a naive local clock.
+    """
+    return value.replace(tzinfo=None) if value.tzinfo else value

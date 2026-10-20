@@ -20,7 +20,11 @@ from app.models import (
 from app.models import (
     Volunteer as VolunteerModel,
 )
-from app.routers.admin.helpers import get_email_summary, get_volunteer_summary
+from app.routers.admin.helpers import (
+    get_email_summary,
+    get_volunteer_summary,
+    get_weekly_reminder_run_health,
+)
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
 from app.utils.config_helper import ConfigHelper
@@ -151,6 +155,15 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
             health_status["services"]["email_service"] = "available"
         except Exception as e:
             health_status["services"]["email_service"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+
+        try:
+            reminder_health = get_weekly_reminder_run_health(db)
+            health_status["services"]["weekly_reminders"] = reminder_health
+            if reminder_health["status"] != "ok":
+                health_status["status"] = "degraded"
+        except Exception as e:
+            health_status["services"]["weekly_reminders"] = f"error: {str(e)}"
             health_status["status"] = "degraded"
 
         try:

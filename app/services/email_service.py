@@ -6,7 +6,7 @@ import os
 import re
 import secrets
 import smtplib
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import datetime
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -28,6 +28,36 @@ from app.utils.logging_config import get_api_logger
 from app.utils.schedule_dates import is_teaching_day
 
 logger = get_api_logger()
+
+# Errors that mean the SMTP session itself is gone, so the message is worth
+# retrying on a fresh connection. A rejected recipient or a refused message is
+# deliberately absent: the session still works, so reconnecting would only buy
+# back the per-message login cost that send_html_batch exists to avoid.
+SESSION_LEVEL_SMTP_ERRORS = (
+    smtplib.SMTPServerDisconnected,
+    smtplib.SMTPConnectError,
+    smtplib.SMTPHeloError,
+    smtplib.SMTPAuthenticationError,
+    ConnectionError,
+    TimeoutError,
+)
+
+
+def _is_session_level_error(error: Exception) -> bool:
+    return isinstance(error, SESSION_LEVEL_SMTP_ERRORS)
+
+
+def _close_quietly(server: smtplib.SMTP | None) -> None:
+    """Close a session without letting teardown mask the real failure."""
+    if server is None:
+        return
+    try:
+        server.quit()
+    except Exception:
+        try:
+            server.close()
+        except Exception:
+            logger.debug("Ignoring error while closing SMTP session", exc_info=True)
 
 
 class EmailService:
@@ -478,6 +508,95 @@ class EmailService:
             logger.error(
                 f"Failed to Send emails to new volunteers: {str(e)}", exc_info=True
             )
+
+    def _open_smtp_session(self) -> smtplib.SMTP:
+        """Connect, secure and authenticate one SMTP session."""
+        server = smtplib.SMTP(self.smtp_server, self.smtp_port)
+        try:
+            server.starttls()
+            server.login(self.smtp_username, self.smtp_password)
+        except Exception:
+            _close_quietly(server)
+            raise
+        return server
+
+    def _build_html_message(
+        self, to_email: str, subject: str, html_body: str
+    ) -> MIMEMultipart:
+        message = MIMEMultipart()
+        message["From"] = f"{self.sender_name} <{self.email_sender}>"
+        message["To"] = to_email
+        message["Subject"] = subject
+        message.attach(MIMEText(html_body, "html"))
+        return message
+
+    def send_html_batch(
+        self, messages: Iterable[tuple[str, str, str]]
+    ) -> Iterator[tuple[str, Exception | None]]:
+        """Deliver (to_email, subject, html_body) triples over one SMTP session.
+
+        Yields (to_email, error) per message, error being None on success, so
+        the caller can record each outcome as it happens rather than inferring
+        it. Unlike send_custom_email this never reports a refused send as a
+        success - mistaking one for the other is what filled
+        email_communications with rows marked "sent" during the four Sundays
+        the job was failing.
+
+        Gmail charges a TCP connect, a STARTTLS handshake and an AUTH round
+        trip per connection - about 1.7s each from Cloud Run - so a connection
+        per message made the run grow linearly with the volunteer list and pass
+        the request deadline at around 160 recipients. One shared session
+        amortises that over the whole batch.
+
+        A shared session can still be dropped mid-batch, so a connection-level
+        error reconnects and retries that message once. A permanent rejection
+        does not: the session is fine, and reconnecting per bad address would
+        put back the per-message login cost this exists to remove.
+        """
+        server: smtplib.SMTP | None = None
+        # Set once the session cannot be established at all. That is a
+        # run-level fault, so the remaining messages are reported against it
+        # instead of each paying for another doomed connection attempt.
+        connect_error: Exception | None = None
+        try:
+            for to_email, subject, html_body in messages:
+                if connect_error is not None:
+                    yield to_email, connect_error
+                    continue
+
+                error: Exception | None = None
+                for attempt in (1, 2):
+                    if server is None:
+                        try:
+                            server = self._open_smtp_session()
+                        except Exception as e:
+                            logger.error(f"Failed to open SMTP session: {str(e)}")
+                            connect_error = e
+                            error = e
+                            break
+
+                    try:
+                        server.send_message(
+                            self._build_html_message(to_email, subject, html_body)
+                        )
+                        error = None
+                        break
+                    except Exception as e:
+                        error = e
+                        if attempt == 2 or not _is_session_level_error(e):
+                            logger.error(
+                                f"Failed to send email to {to_email}: {str(e)}"
+                            )
+                            break
+                        logger.warning(
+                            f"SMTP session lost before {to_email}, reconnecting: {str(e)}"
+                        )
+                        _close_quietly(server)
+                        server = None
+
+                yield to_email, error
+        finally:
+            _close_quietly(server)
 
     def send_custom_email(
         self,

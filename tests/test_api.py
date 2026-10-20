@@ -22,6 +22,24 @@ from app.services.google_sheets import sheets_service
 client = TestClient(app)
 
 
+def _record_batch(recorder):
+    """Stand in for EmailService.send_html_batch without touching SMTP.
+
+    The real method is a generator yielding (to_email, error) per message, so a
+    plain MagicMock would not be iterable where the endpoint consumes it.
+    """
+
+    def send_html_batch(messages):
+        def run():
+            for to_email, subject, html_body in messages:
+                recorder.append((to_email, subject, html_body))
+                yield to_email, None
+
+        return run()
+
+    return send_html_batch
+
+
 @pytest.fixture
 def mock_google_sheets():
     """Mock Google Sheets service for testing"""
@@ -447,6 +465,7 @@ class TestSendWeeklyRemindersSkipLogic:
         mock_send.assert_not_called()
 
     def test_sends_when_a_slot_needs_filling(self, admin_client, mock_volunteer):
+        sent = []
         with (
             patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]),
             patch.object(
@@ -465,12 +484,13 @@ class TestSendWeeklyRemindersSkipLogic:
                 },
             ),
             patch.object(
-                email_service, "send_custom_email", return_value=True
-            ) as mock_send,
+                email_service, "send_html_batch", side_effect=_record_batch(sent)
+            ),
         ):
             response = admin_client.post("/admin/send-weekly-reminders")
 
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "success"
-        mock_send.assert_called_once()
+        assert body["details"] == {"sent": 1, "failed": 0, "skipped_already_sent": 0}
+        assert [to_email for to_email, _, _ in sent] == [mock_volunteer.email]
