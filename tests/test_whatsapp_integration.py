@@ -9,16 +9,19 @@ Covers:
 - ConfigHelper.get_invite_link_whatsapp() reads it from DB settings
 - Confirmation, weekly reminder and base footer render the WhatsApp link
 - An empty link hides the WhatsApp line rather than rendering a dead "#" link
-- Every renderer that passes INVITE_LINK_ZALO also passes INVITE_LINK_WHATSAPP
+- The confirmation, weekly reminder and admin bulk send render the configured link
 """
 
 import os
-import re
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from jinja2 import Environment, FileSystemLoader
 
+from app.services.email_service import EmailService, email_service
+from app.services.google_sheets import sheets_service
 from app.services.settings_service import (
     get_setting,
     initialize_default_settings,
@@ -112,16 +115,72 @@ class TestTemplatesOfferWhatsApp:
         assert "WhatsApp" not in html
 
 
-def test_every_renderer_that_passes_zalo_also_passes_whatsapp():
+class TestRenderersPassTheConfiguredLink:
     """The link is a render variable, so a call site that forgets it renders the
     template with the WhatsApp line silently hidden."""
-    for path in (REPO_ROOT / "app").rglob("*.py"):
-        text = path.read_text()
-        zalo = len(re.findall(r"INVITE_LINK_ZALO[\"']?\s*[=:]", text))
-        whatsapp = len(re.findall(r"INVITE_LINK_WHATSAPP[\"']?\s*[=:]", text))
-        if path.name == "settings_service.py":
-            continue
-        assert zalo == whatsapp, (
-            f"{path.relative_to(REPO_ROOT)} passes INVITE_LINK_ZALO {zalo} time(s) "
-            f"and INVITE_LINK_WHATSAPP {whatsapp} time(s)"
+
+    CONFIGURED = "https://chat.whatsapp.com/ConfiguredForTest"
+
+    @pytest.fixture(autouse=True)
+    def configured_link(self, test_db):
+        set_setting(test_db, "INVITE_LINK_WHATSAPP", self.CONFIGURED)
+        test_db.commit()
+
+    @pytest.fixture
+    def admin_client(self, client):
+        from app.dependencies.auth import get_current_admin_user
+        from app.main import app
+
+        app.dependency_overrides[get_current_admin_user] = lambda: {
+            "id": "test-admin",
+            "email": "admin@vietnamhearts.org",
+        }
+        yield client
+        app.dependency_overrides.pop(get_current_admin_user, None)
+
+    def test_confirmation_email(self, test_db, mock_volunteer):
+        with patch("app.services.email_service.smtplib.SMTP") as smtp:
+            assert EmailService().send_confirmation_email(test_db, mock_volunteer)
+
+        message = smtp.return_value.__enter__.return_value.send_message.call_args[0][0]
+        html = next(
+            part.get_payload(decode=True).decode()
+            for part in message.walk()
+            if part.get_content_type() == "text/html"
         )
+        assert self.CONFIGURED in _body_of(html)
+
+    def test_weekly_reminder(self, test_db, mock_volunteer):
+        with (
+            patch.object(sheets_service, "get_schedule_blocks", return_value=[]),
+            patch.object(sheets_service, "get_schedule_sheets", return_value=[]),
+        ):
+            html, _ = EmailService().build_weekly_reminder_content(
+                mock_volunteer, test_db
+            )
+        assert self.CONFIGURED in _body_of(html)
+
+    def test_admin_weekly_reminder_send(self, admin_client, mock_volunteer):
+        with (
+            patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]),
+            patch.object(
+                sheets_service,
+                "get_current_schedule_dates",
+                return_value=(datetime.now(), datetime.now()),
+            ),
+            patch.object(
+                email_service,
+                "build_class_table",
+                return_value={
+                    "class_name": "Test Class",
+                    "table_html": "<table></table>",
+                    "has_data": True,
+                    "needs_volunteers": True,
+                },
+            ),
+            patch.object(email_service, "send_custom_email") as send,
+        ):
+            response = admin_client.post("/admin/send-weekly-reminders")
+
+        assert response.json()["status"] == "success"
+        assert self.CONFIGURED in _body_of(send.call_args.kwargs["html_body"])
