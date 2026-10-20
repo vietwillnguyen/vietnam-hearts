@@ -212,6 +212,7 @@ async def send_weekly_reminder_emails(request: Request):
                         db_volunteer, db
                     ),
                     INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
+                    INVITE_LINK_WHATSAPP=ConfigHelper.get_invite_link_whatsapp(db),
                     ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db)
                     or "#",
                     INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
