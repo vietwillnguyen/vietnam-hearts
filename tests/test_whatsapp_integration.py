@@ -81,8 +81,8 @@ def _record_batch(recorder):
 
     def send_html_batch(messages):
         def run():
-            for to_email, subject, html_body in messages:
-                recorder.append((to_email, subject, html_body))
+            for to_email, subject, html_body, unsubscribe_link in messages:
+                recorder.append((to_email, subject, html_body, unsubscribe_link))
                 yield to_email, None
 
         return run()
@@ -195,6 +195,7 @@ class TestRenderersPassTheConfiguredLink:
                     "table_html": "<table></table>",
                     "has_data": True,
                     "needs_volunteers": True,
+                    "open_slot_count": 2,
                 },
             ),
             patch.object(

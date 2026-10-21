@@ -249,6 +249,7 @@
                                 <th>Email</th>
                                 <th>Status</th>
                                 <th>Weekly Reminders</th>
+                                <th>Last Signed Up</th>
                                 <th>All Emails</th>
                                 <th>Confirmation Sent</th>
                                 <th>Last Confirmation</th>
@@ -275,6 +276,19 @@
                                     <span class="status-badge status-sent">Subscribed</span>
                                     {% else %}
                                     <span class="status-badge status-failed">Unsubscribed</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {# Flagged for review, never acted on: the sheet records
+                                       typed names, so a volunteer the matcher cannot place
+                                       reads as lapsed while still turning up every week. #}
+                                    {% if volunteer.last_active_at %}
+                                    {{ volunteer.last_active_at.strftime('%d/%m/%Y') }}
+                                    {% else %}
+                                    <span class="text-muted">Never matched</span>
+                                    {% endif %}
+                                    {% if volunteer.lapsed %}
+                                    <span class="status-badge status-pending" title="Aged out of the weekly reminder (REMINDER_ACTIVE_WEEKS). Review - nothing has been changed automatically.">Lapsed</span>
                                     {% endif %}
                                 </td>
                                 <td>

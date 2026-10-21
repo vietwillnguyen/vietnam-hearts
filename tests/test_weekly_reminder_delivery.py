@@ -144,6 +144,7 @@ def sending_week():
                 "table_html": "<table></table>",
                 "has_data": True,
                 "needs_volunteers": True,
+                "open_slot_count": 2,
             },
         ),
     ):
@@ -269,7 +270,7 @@ class TestResumeAfterAnAbandonedRun:
         self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
     ):
         already, pending = subscribed_volunteers(2)
-        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY)
+        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY, 2)
         test_db.add(
             EmailCommunicationModel(
                 volunteer_id=already.id,
@@ -287,11 +288,44 @@ class TestResumeAfterAnAbandonedRun:
         assert response.status_code == 200
         assert smtp.sent == [pending.email]
 
+    def test_does_not_resend_when_the_open_slot_count_changed(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        """A resumed run must not be fooled by its own subject changing.
+
+        The subject now leads with the number of open slots, and that number
+        moves the instant anyone signs up. A run killed at the deadline, then
+        retried after a volunteer signed up, would compute a different subject
+        - so keying the resume on the whole subject would re-email everyone the
+        first attempt had already reached. The week's date range is the key
+        instead.
+        """
+        already, pending = subscribed_volunteers(2)
+        test_db.add(
+            EmailCommunicationModel(
+                volunteer_id=already.id,
+                recipient_email=already.email,
+                email_type="weekly_reminder",
+                # Same week, a count no longer current.
+                subject=email_service.get_reminder_subject(
+                    WEEK_MONDAY, WEEK_FRIDAY, 99
+                ),
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
+        test_db.commit()
+
+        response = admin_client.post("/admin/send-weekly-reminders")
+
+        assert response.status_code == 200
+        assert smtp.sent == [pending.email]
+
     def test_resends_a_volunteer_whose_send_failed(
         self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
     ):
         (volunteer,) = subscribed_volunteers(1)
-        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY)
+        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY, 2)
         test_db.add(
             EmailCommunicationModel(
                 volunteer_id=volunteer.id,
@@ -318,7 +352,7 @@ class TestResumeAfterAnAbandonedRun:
                 recipient_email=volunteer.email,
                 email_type="weekly_reminder",
                 subject=email_service.get_reminder_subject(
-                    WEEK_MONDAY - timedelta(days=7), WEEK_FRIDAY - timedelta(days=7)
+                    WEEK_MONDAY - timedelta(days=7), WEEK_FRIDAY - timedelta(days=7), 2
                 ),
                 status="sent",
                 sent_at=datetime.now() - timedelta(days=7),
@@ -540,7 +574,7 @@ class TestDryRunRecording:
         self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
     ):
         (volunteer,) = subscribed_volunteers(1)
-        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY)
+        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY, 2)
         with (
             patch.object(ConfigHelper, "get_dry_run", return_value=True),
             patch.object(
@@ -848,7 +882,11 @@ class TestDryRunRowsNeverReadAsARealRun:
             patch.object(
                 email_service,
                 "build_class_table",
-                return_value={"table_html": "", "needs_volunteers": False},
+                return_value={
+                    "table_html": "",
+                    "needs_volunteers": False,
+                    "open_slot_count": 0,
+                },
             ),
         ):
             admin_client.post("/admin/send-weekly-reminders")

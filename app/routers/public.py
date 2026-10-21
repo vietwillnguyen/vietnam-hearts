@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -140,6 +140,67 @@ def unsubscribe_volunteer_page(
                 "error_message": "An error occurred while loading your preferences. Please try again or contact us for assistance.",
             },
         )
+
+
+@public_router.post("/unsubscribe/one-click")
+def one_click_unsubscribe(token: str, db: Session = Depends(get_db)):
+    """RFC 8058 one-click unsubscribe from the weekly reminder.
+
+    The mail provider POSTs this URL from the List-Unsubscribe header when a
+    volunteer uses the provider's own "Unsubscribe" control. Nobody sees a
+    page, so there is no confirmation step and no form: a single POST must do
+    the whole thing, which is the entire point of the RFC.
+
+    Registered for POST only. Mail clients and security scanners prefetch
+    links, so an unsubscribe reachable by GET unsubscribes volunteers who never
+    clicked anything - a GET here gets a 405.
+
+    It stops the weekly reminder and nothing else. The control appears in a
+    weekly reminder, so that is the mail being declined; the volunteer keeps
+    announcements and keeps their account, and can still turn everything off
+    from the preferences page.
+
+    Repeat POSTs succeed. Providers retry, and a retry is not an error.
+    """
+    volunteer = (
+        db.query(VolunteerModel)
+        .filter(VolunteerModel.email_unsubscribe_token == token)
+        .first()
+    )
+
+    if not volunteer:
+        logger.warning("Invalid one-click unsubscribe token attempted")
+        return JSONResponse(
+            {"status": "error", "message": "Invalid or expired unsubscribe link."},
+            status_code=400,
+        )
+
+    already_unsubscribed = not volunteer.weekly_reminders_subscribed
+    if not already_unsubscribed:
+        volunteer.weekly_reminders_subscribed = False
+        db.add(
+            EmailCommunicationModel(
+                volunteer_id=volunteer.id,
+                recipient_email=volunteer.email,
+                email_type="preference_update_one_click",
+                subject="Email Preference Update - One-Click Unsubscribe",
+                template_name=None,
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
+        db.commit()
+        logger.info(
+            f"Volunteer id={volunteer.id} unsubscribed from weekly reminders "
+            "via one-click"
+        )
+
+    return JSONResponse(
+        {
+            "status": "success",
+            "message": "You have been unsubscribed from weekly reminders.",
+        }
+    )
 
 
 @public_router.post("/unsubscribe", response_class=HTMLResponse)

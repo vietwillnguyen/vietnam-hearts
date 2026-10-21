@@ -29,6 +29,18 @@ from app.utils.schedule_dates import is_teaching_day
 
 logger = get_api_logger()
 
+
+# The reminder subject leads with the number of open slots, which changes the
+# moment anyone signs up. The week's date range is the part that does not, and
+# two things key off it: resuming a run cut off at the Cloud Run deadline, and
+# grouping a run's rows in the health report. Both would re-email or
+# mis-report a whole list if they keyed on the volatile part, so the week key
+# is named here rather than left implicit in the subject string.
+def reminder_week_key(start_date: datetime, end_date: datetime) -> str:
+    """The stable `(dd/mm-dd/mm)` suffix identifying the week a reminder is for."""
+    return f"({start_date.strftime('%d/%m')}-{end_date.strftime('%d/%m')})"
+
+
 # Errors that mean the SMTP session itself is gone, so the message is worth
 # retrying on a fresh connection. A rejected recipient or a refused message is
 # deliberately absent: the session still works, so reconnecting would only buy
@@ -73,8 +85,11 @@ class EmailService:
 
         # Email subjects
         self.welcome_email_subject = "[ACTION REQUIRED] Welcome to Vietnam Hearts! ❤️🇻🇳"
+        # Leads with what the volunteer needs to decide whether to open it.
+        # The trailing week key must stay last: reminder_week_key_of() reads it
+        # off the end to identify the run.
         self.reminder_email_subject_template = (
-            "🗓️ Weekly Volunteer Reminder – Schedule Update ({start_date} to {end_date})"
+            "{open_slots} open slot{plural} this week {week_key}"
         )
 
         # External links - these will be loaded dynamically from database
@@ -117,15 +132,48 @@ class EmailService:
         from app.config import API_URL
 
         base_url = f"{API_URL.rstrip('/')}/unsubscribe"
-        logger.info(
-            f"Unsubscribe link: {base_url}?token={volunteer.email_unsubscribe_token}"
-        )
+        # The token is the whole credential for this link, so it is not logged.
+        # CredentialRedactingFilter does rewrite "?token=..." to "***" on every
+        # sink, but a call site should not hand a secret to the logger and rely
+        # on the net catching it - and at one line per recipient this was also
+        # the noisiest INFO in a Sunday run.
+        logger.info(f"Built unsubscribe link for volunteer id={volunteer.id}")
         return f"{base_url}?token={volunteer.email_unsubscribe_token}"
 
-    def get_reminder_subject(self, start_date: datetime, end_date: datetime) -> str:
-        """Generate the reminder email subject with date range"""
+    def get_one_click_unsubscribe_link(
+        self, volunteer: VolunteerModel, db: Session
+    ) -> str:
+        """The RFC 8058 one-click URL for this volunteer's List-Unsubscribe header.
+
+        Separate from the preferences page because the two are different
+        things: that page is a form a human reads, while this URL is POSTed by
+        the mail provider with no interface at all, and stops the weekly
+        reminder only.
+        """
+        if not volunteer.email_unsubscribe_token:
+            volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
+
+        from app.config import API_URL
+
+        return (
+            f"{API_URL.rstrip('/')}/unsubscribe/one-click"
+            f"?token={volunteer.email_unsubscribe_token}"
+        )
+
+    def get_reminder_subject(
+        self, start_date: datetime, end_date: datetime, open_slots: int
+    ) -> str:
+        """The reminder subject: how many slots are open, and for which week.
+
+        ``open_slots`` is required rather than defaulted because the count is
+        the point of the line - a silent default would announce a wrong number
+        to the whole list. Callers get it by summing ``open_slot_count`` over
+        the week's class tables.
+        """
         return self.reminder_email_subject_template.format(
-            start_date=start_date.strftime("%d/%m"), end_date=end_date.strftime("%d/%m")
+            open_slots=open_slots,
+            plural="" if open_slots == 1 else "s",
+            week_key=reminder_week_key(start_date, end_date),
         )
 
     def build_class_table(
@@ -149,8 +197,13 @@ class EmailService:
 
         The returned dict includes a `needs_volunteers` flag (True if any day is
         missing a teacher, head TA, or assistant) that callers use to decide
-        whether a class still has an open slot. On parse failure the flag
-        defaults to True so a parsing bug never silently suppresses a reminder.
+        whether a class still has an open slot, and `open_slot_count`, how many
+        unfilled roles there are - a teaching day missing its teacher, its head
+        TA and its assistants counts three - and the reminder's subject line is
+        the sum of those over the week's classes. On parse failure the flag defaults to True so
+        a parsing bug never silently suppresses a reminder, and the count to 1
+        so the subject cannot announce "0 open slots" on an email sent
+        precisely because slots might be open.
         """
         try:
             days = block.days
@@ -180,6 +233,7 @@ class EmailService:
             table_html += "</tr></thead><tbody>"
 
             needs_volunteers = False
+            open_slot_count = 0
 
             for i, day in enumerate(days):
                 teacher = teachers[i] if i < len(teachers) else ""
@@ -199,6 +253,16 @@ class EmailService:
                 teacher_lower = teacher.strip().lower() if teacher else ""
                 head_ta_lower = head_ta.strip().lower() if head_ta else ""
                 assistant_lower = assistant.strip().lower() if assistant else ""
+                teacher_missing = (
+                    not teacher_lower or "need volunteers" in teacher_lower
+                )
+                head_ta_missing = block.has_head_ta and (
+                    not head_ta or "need volunteers" in head_ta_lower
+                )
+                assistants_missing = "need volunteers" in assistant_lower
+                day_open_slots = sum(
+                    (teacher_missing, head_ta_missing, assistants_missing)
+                )
 
                 if "optional" in teacher_lower:
                     status = (
@@ -212,11 +276,12 @@ class EmailService:
                         else "No class"
                     )
                     bg_color = "#f5f5f5"
-                elif not teacher_lower or "need volunteers" in teacher_lower:
+                elif teacher_missing:
                     if is_teaching_day(day, teaching_days, week_monday):
                         status = "❌ Missing Teacher"
                         bg_color = "#ffcccc"
                         needs_volunteers = True
+                        open_slot_count += day_open_slots
                     else:
                         # Days the organization does not teach on keep their
                         # column in the sheet and are simply left blank, so an
@@ -226,16 +291,16 @@ class EmailService:
                         # neutrally and raises no call for volunteers.
                         status = "No class"
                         bg_color = "#f5f5f5"
-                elif block.has_head_ta and (
-                    not head_ta or "need volunteers" in head_ta_lower
-                ):
+                elif head_ta_missing:
                     status = "❌ Missing Head TA"
                     bg_color = "#ffe5b4"
                     needs_volunteers = True
-                elif "need volunteers" in assistant_lower:
+                    open_slot_count += day_open_slots
+                elif assistants_missing:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
                     needs_volunteers = True
+                    open_slot_count += day_open_slots
                 elif max_assistants is None:
                     status = f"✅ {current_assistants} assistant(s) signed up - No limit, TA's welcome to join"
                     bg_color = "#d4edda"
@@ -261,6 +326,7 @@ class EmailService:
                 "table_html": table_html,
                 "has_data": True,
                 "needs_volunteers": needs_volunteers,
+                "open_slot_count": open_slot_count,
             }
 
         except Exception as e:
@@ -273,6 +339,7 @@ class EmailService:
                 "table_html": f"<p>Error loading data for {getattr(block, 'name', 'this class')}</p>",
                 "has_data": False,
                 "needs_volunteers": True,
+                "open_slot_count": 1,
             }
 
     def build_weekly_reminder_content(
@@ -308,7 +375,9 @@ class EmailService:
             for block in class_blocks
         ]
 
-        subject = self.get_reminder_subject(start_date, end_date)
+        subject = self.get_reminder_subject(
+            start_date, end_date, sum(ct["open_slot_count"] for ct in class_tables)
+        )
 
         # Get volunteer's first name
         first_name = volunteer.name.split()[0] if volunteer.name else "there"
@@ -521,19 +590,42 @@ class EmailService:
         return server
 
     def _build_html_message(
-        self, to_email: str, subject: str, html_body: str
+        self,
+        to_email: str,
+        subject: str,
+        html_body: str,
+        one_click_unsubscribe_link: str | None = None,
     ) -> MIMEMultipart:
         message = MIMEMultipart()
         message["From"] = f"{self.sender_name} <{self.email_sender}>"
         message["To"] = to_email
         message["Subject"] = subject
+        if one_click_unsubscribe_link:
+            # RFC 8058. Gmail and Yahoo's bulk-sender rules expect these on a
+            # subscribed mailing, and together they put the provider's own
+            # "Unsubscribe" control next to the sender name - a far more
+            # visible way out than a link at the foot of the mail, and one that
+            # is not reported as spam instead.
+            #
+            # Only set for list mail. Advertising a list unsubscribe on a
+            # confirmation email would offer to unsubscribe someone from a list
+            # they are not on.
+            message["List-Unsubscribe"] = f"<{one_click_unsubscribe_link}>"
+            message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         message.attach(MIMEText(html_body, "html"))
         return message
 
     def send_html_batch(
-        self, messages: Iterable[tuple[str, str, str]]
+        self, messages: Iterable[tuple[str, str, str, str | None]]
     ) -> Iterator[tuple[str, Exception | None]]:
-        """Deliver (to_email, subject, html_body) triples over one SMTP session.
+        """Deliver (to_email, subject, html_body, unsubscribe_link) rows over one
+        SMTP session.
+
+        The fourth element is this recipient's RFC 8058 one-click unsubscribe
+        URL, or None for mail that is not a subscribed list mailing. It travels
+        per message rather than being looked up from the address, because
+        volunteers.email has no unique constraint - the same reason outcomes
+        below are paired to rows by position.
 
         Yields (to_email, error) per message, error being None on success, so
         the caller can record each outcome as it happens rather than inferring
@@ -559,7 +651,7 @@ class EmailService:
         # instead of each paying for another doomed connection attempt.
         connect_error: Exception | None = None
         try:
-            for to_email, subject, html_body in messages:
+            for to_email, subject, html_body, unsubscribe_link in messages:
                 if connect_error is not None:
                     yield to_email, connect_error
                     continue
@@ -577,7 +669,9 @@ class EmailService:
 
                     try:
                         server.send_message(
-                            self._build_html_message(to_email, subject, html_body)
+                            self._build_html_message(
+                                to_email, subject, html_body, unsubscribe_link
+                            )
                         )
                         error = None
                         break
