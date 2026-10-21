@@ -60,12 +60,13 @@ _PARENTHETICAL = re.compile(r"\(([^)]*)\)")
 # been decomposed away. Keeping digits matters for names like "Anthony T 2".
 _NON_NAME_CHARS = re.compile(r"[^0-9a-z ]+")
 
-# Cell values that stand for an empty slot rather than a person. The wordings
-# are matched as substrings of the normalized cell, as build_class_table
-# already matches them, so "No class: holiday" and "NEED VOLUNTEERS!" are
-# caught too. The list stays narrow on purpose: a fragment that appears inside
-# a real name would silently stop crediting that volunteer, so only wordings
-# the sheet actually uses belong here.
+# Cell values that stand for an empty slot rather than a person. Each wording
+# opens the placeholder cells the sheet uses, so they are matched as a prefix
+# of the normalized value: "No class: holiday" and "NEED VOLUNTEERS!" are
+# caught, while "Juno Classen", which merely contains "no class", is a name.
+# The list stays narrow on purpose: a wording that catches a real name would
+# silently stop crediting that volunteer, whereas a placeholder it misses is
+# only reported as an unmatched name.
 _PLACEHOLDER_FRAGMENTS = (
     "need volunteer",
     "no class",
@@ -105,8 +106,8 @@ def normalize_name(name: str) -> str:
 
 
 def _is_placeholder(normalized: str) -> bool:
-    return normalized in _PLACEHOLDER_VALUES or any(
-        fragment in normalized for fragment in _PLACEHOLDER_FRAGMENTS
+    return normalized in _PLACEHOLDER_VALUES or normalized.startswith(
+        _PLACEHOLDER_FRAGMENTS
     )
 
 

@@ -86,6 +86,8 @@ class TestSignupNameCandidates:
             "Optional",
             "No class",
             "No class: holiday",
+            "NEED VOLUNTEERS!",
+            "Optional day, volunteers welcome",
             "TBD",
             "N/A",
             "-",
@@ -100,6 +102,10 @@ class TestSignupNameCandidates:
     def test_a_name_holding_the_letters_of_n_a_is_still_a_name(self, cell):
         # "N/A" normalizes to "n a", which is also the middle of these names.
         assert signup_name_candidates(cell) == [cell]
+
+    def test_a_name_holding_a_placeholder_wording_is_still_a_name(self):
+        # "juno classen" contains "no class" but does not open with it.
+        assert signup_name_candidates("Juno Classen") == ["Juno Classen"]
 
     def test_a_name_holding_n_a_does_not_take_its_cellmates_with_it(self):
         assert signup_name_candidates("Lan Anh, Nico") == ["Lan Anh", "Nico"]
