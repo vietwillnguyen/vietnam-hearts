@@ -60,21 +60,23 @@ _PARENTHETICAL = re.compile(r"\(([^)]*)\)")
 # been decomposed away. Keeping digits matters for names like "Anthony T 2".
 _NON_NAME_CHARS = re.compile(r"[^0-9a-z ]+")
 
-# Cell values that stand for an empty slot rather than a person. Matched as
-# substrings of the normalized cell, as build_class_table already matches them,
-# so "No class: holiday" and "NEED VOLUNTEERS!" are caught too. The list stays
-# narrow on purpose: a fragment that appears inside a real name would silently
-# stop crediting that volunteer, so only wordings the sheet actually uses
-# belong here.
+# Cell values that stand for an empty slot rather than a person. The wordings
+# are matched as substrings of the normalized cell, as build_class_table
+# already matches them, so "No class: holiday" and "NEED VOLUNTEERS!" are
+# caught too. The list stays narrow on purpose: a fragment that appears inside
+# a real name would silently stop crediting that volunteer, so only wordings
+# the sheet actually uses belong here.
 _PLACEHOLDER_FRAGMENTS = (
     "need volunteer",
     "no class",
     "holiday",
     "optional",
-    "tba",
-    "tbd",
-    "n a",
 )
+
+# Placeholders too short to search for inside a cell. "n a" is what "N/A"
+# normalizes to, and it is also the middle of "Tuan Anh" and "Lan Anh", so
+# these only count when they are the whole normalized value.
+_PLACEHOLDER_VALUES = frozenset({"tba", "tbd", "n a"})
 
 # A single character is never enough to identify anyone, and splitting a cell
 # can leave stray initials behind.
@@ -103,7 +105,9 @@ def normalize_name(name: str) -> str:
 
 
 def _is_placeholder(normalized: str) -> bool:
-    return any(fragment in normalized for fragment in _PLACEHOLDER_FRAGMENTS)
+    return normalized in _PLACEHOLDER_VALUES or any(
+        fragment in normalized for fragment in _PLACEHOLDER_FRAGMENTS
+    )
 
 
 def signup_name_candidates(cell: str) -> list[str]:
@@ -188,6 +192,27 @@ def _is_same_person(
     )
 
 
+def _volunteer_name_words(db: Session) -> list[tuple[int, list[str]]]:
+    """Every volunteer's id with their normalized name words, read once per scan."""
+    return [
+        (volunteer.id, _name_words(normalize_name(volunteer.name)))
+        for volunteer in db.query(VolunteerModel).all()
+    ]
+
+
+def _match_name_words(
+    name: str, volunteers: Sequence[tuple[int, Sequence[str]]]
+) -> list[int]:
+    signup_words = _name_words(normalize_name(name))
+    if not signup_words:
+        return []
+    return sorted(
+        volunteer_id
+        for volunteer_id, volunteer_words in volunteers
+        if _is_same_person(signup_words, volunteer_words)
+    )
+
+
 def match_signup_name(db: Session, name: str) -> list[int]:
     """Volunteer ids the typed ``name`` could belong to, as a sorted list.
 
@@ -196,16 +221,7 @@ def match_signup_name(db: Session, name: str) -> list[int]:
     sunset policy already deactivated is recognised the moment they appear on
     the sheet again.
     """
-    signup_words = _name_words(normalize_name(name))
-    if not signup_words:
-        return []
-
-    matches = [
-        volunteer.id
-        for volunteer in db.query(VolunteerModel).all()
-        if _is_same_person(signup_words, _name_words(normalize_name(volunteer.name)))
-    ]
-    return sorted(matches)
+    return _match_name_words(name, _volunteer_name_words(db))
 
 
 def record_week_activity(
@@ -225,9 +241,10 @@ def record_week_activity(
     """
     stamped: set[int] = set()
     unmatched: list[str] = []
+    volunteer_names = _volunteer_name_words(db)
 
     for name in names:
-        volunteer_ids = match_signup_name(db, name)
+        volunteer_ids = _match_name_words(name, volunteer_names)
         if not volunteer_ids:
             unmatched.append(name)
             continue

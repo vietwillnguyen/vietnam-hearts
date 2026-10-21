@@ -2,11 +2,12 @@
 """
 Backfill volunteers.last_active_at from the schedule spreadsheet's history.
 
-The weekly reminder now only goes to volunteers active within
+The weekly reminder can be limited to volunteers active within
 REMINDER_ACTIVE_WEEKS, and last_active_at starts out NULL for everyone. Until
 this has run, recency falls back to each volunteer's sign-up date, so a
-long-serving volunteer who joined two years ago reads as lapsed. Run this once
-after deploying, before raising REMINDER_ACTIVE_WEEKS off 0.
+long-serving volunteer who joined two years ago reads as lapsed. The setting
+ships as 0 (no recency filter) for that reason: run this once after deploying,
+before raising REMINDER_ACTIVE_WEEKS off 0.
 
 Run read-only first (the default) and read what it says it would write:
 

@@ -96,6 +96,43 @@ class TestOpenSlotCount:
         )
         assert EmailService().build_class_table(block)["open_slot_count"] == 1
 
+    def test_counts_every_unfilled_role_on_one_day(self):
+        # The row still shows one label, but the subject counts roles: no
+        # teacher, no head TA and a call for assistants are three open slots.
+        block = _block(
+            has_head_ta=True,
+            days=["Tuesday"],
+            teacher=[""],
+            head_ta=[""],
+            assistants=["Need Volunteers"],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["open_slot_count"] == 3
+        assert "Missing Teacher" in result["table_html"]
+        assert "Missing Head TA" not in result["table_html"]
+
+    def test_counts_a_missing_head_ta_and_assistants_together(self):
+        block = _block(
+            has_head_ta=True,
+            days=["Tuesday"],
+            teacher=["A Teacher"],
+            head_ta=[""],
+            assistants=["Need Volunteers"],
+        )
+        assert EmailService().build_class_table(block)["open_slot_count"] == 2
+
+    def test_a_no_class_day_counts_nothing_however_empty(self):
+        block = _block(
+            has_head_ta=True,
+            days=["Tuesday"],
+            teacher=["No class: holiday"],
+            head_ta=[""],
+            assistants=["Need Volunteers"],
+        )
+        result = EmailService().build_class_table(block)
+        assert result["open_slot_count"] == 0
+        assert result["needs_volunteers"] is False
+
     def test_a_covered_week_has_no_open_slots(self):
         block = _block(
             max_assistants=1,

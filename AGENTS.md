@@ -160,7 +160,7 @@ on both the create and update paths of `scripts/create-or-update-scheduler-jobs.
 
 ## Who the weekly reminder goes to
 
-The sign-up form has no opt-in question, so every accepted volunteer is auto-subscribed; `volunteer_activity.select_weekly_reminder_recipients` adds a recency window (`REMINDER_ACTIVE_WEEKS`, default 8, `0` disables) on top of the subscription flags.
+The sign-up form has no opt-in question, so every accepted volunteer is auto-subscribed; `volunteer_activity.select_weekly_reminder_recipients` adds a recency window (`REMINDER_ACTIVE_WEEKS`; default `0`, which disables it, until the backfill below has run and the captain raises it) on top of the subscription flags.
 Recency comes from `volunteers.last_active_at`, the Monday of the most recent schedule week the volunteer is signed up on, and NULL there means the name matcher has never placed them - so recency falls back to their sign-up date rather than reading as inactive.
 Fill it for existing volunteers with `scripts/backfill_volunteer_activity.py --include-hidden` (dry-run by default); the `review-and-sync` cron keeps it current from the visible weeks and reports the signup names it could not place.
 

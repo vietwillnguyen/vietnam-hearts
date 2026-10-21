@@ -193,13 +193,13 @@ class ConfigHelper:
         return get_setting(db, "DRY_RUN_EMAIL_RECIPIENT", default) or default
 
     @staticmethod
-    def get_reminder_active_weeks(db: Session, default: int = 8) -> int:
+    def get_reminder_active_weeks(db: Session, default: int = 0) -> int:
         """How recently a volunteer must have been active to get the reminder.
 
-        0 disables the recency filter, restoring the previous behaviour of
-        emailing every subscribed volunteer. A value that will not parse falls
-        back to the default rather than to 0, because a typo in the admin
-        settings should not quietly widen the send back to the whole list.
+        0 disables the recency filter, emailing every subscribed volunteer. It
+        is the default because last_active_at is empty until the backfill has
+        run, and a window applied before then would drop long-serving
+        volunteers. A value that will not parse falls back to the default.
         """
         if db is None:
             return default

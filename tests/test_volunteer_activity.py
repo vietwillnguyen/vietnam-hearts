@@ -38,6 +38,14 @@ def make_volunteer(db, name: str, **kwargs) -> VolunteerModel:
     return volunteer
 
 
+@pytest.fixture
+def eight_week_window(test_db):
+    """Turn the recency window on, since it ships off until the backfill has run."""
+    from app.services.settings_service import set_setting
+
+    set_setting(test_db, "REMINDER_ACTIVE_WEEKS", "8")
+
+
 class TestNormalizeName:
     def test_strips_diacritics_case_and_padding(self):
         assert normalize_name(" Mỹ Hạnh Trần ") == "my hanh tran"
@@ -85,6 +93,16 @@ class TestSignupNameCandidates:
     )
     def test_placeholders_are_not_people(self, cell):
         assert signup_name_candidates(cell) == []
+
+    @pytest.mark.parametrize(
+        "cell", ["Tuấn Anh", "Tuan Anh", "Lan Anh", "Văn Anh", "Ryan Andrews"]
+    )
+    def test_a_name_holding_the_letters_of_n_a_is_still_a_name(self, cell):
+        # "N/A" normalizes to "n a", which is also the middle of these names.
+        assert signup_name_candidates(cell) == [cell]
+
+    def test_a_name_holding_n_a_does_not_take_its_cellmates_with_it(self):
+        assert signup_name_candidates("Lan Anh, Nico") == ["Lan Anh", "Nico"]
 
 
 class TestExtractSignupNames:
@@ -209,6 +227,24 @@ class TestRecordWeekActivity:
         assert result.matched == 1
 
 
+class TestShippedRecencyDefault:
+    now = datetime(2026, 10, 21)
+
+    def test_the_window_is_off_until_the_captain_sets_it(self, test_db):
+        # last_active_at is NULL for everyone until the backfill has run, so a
+        # window on by default would drop long-serving volunteers at deploy.
+        from app.services.settings_service import initialize_default_settings
+
+        initialize_default_settings(test_db)
+        volunteer = make_volunteer(test_db, "Joined Long Ago")
+        volunteer.created_at = self.now - timedelta(weeks=100)
+        test_db.commit()
+
+        recipients = select_weekly_reminder_recipients(test_db, now=self.now)
+        assert [v.id for v in recipients] == [volunteer.id]
+
+
+@pytest.mark.usefixtures("eight_week_window")
 class TestSelectWeeklyReminderRecipients:
     now = datetime(2026, 10, 21, tzinfo=UTC).replace(tzinfo=None)
 
@@ -367,6 +403,7 @@ class TestRecordActivityFromScheduleSheets:
         assert test_db.query(VolunteerModel).one().last_active_at is None
 
 
+@pytest.mark.usefixtures("eight_week_window")
 class TestWeeklyReminderSendHonoursTheWindow:
     """The recency window has to hold on the real send path, not just in the query.
 
@@ -465,6 +502,7 @@ class TestWeeklyReminderSendHonoursTheWindow:
         )
 
 
+@pytest.mark.usefixtures("eight_week_window")
 class TestSelectLapsedVolunteers:
     """Who the recency window has dropped, for the captain to look at.
 
@@ -554,6 +592,7 @@ class TestSelectLapsedVolunteers:
         assert result["active_weeks"] == 0
 
 
+@pytest.mark.usefixtures("eight_week_window")
 class TestLapsedVolunteersEndpoint:
     @pytest.fixture
     def admin_client(self, client):

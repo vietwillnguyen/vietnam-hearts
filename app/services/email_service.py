@@ -198,8 +198,9 @@ class EmailService:
         The returned dict includes a `needs_volunteers` flag (True if any day is
         missing a teacher, head TA, or assistant) that callers use to decide
         whether a class still has an open slot, and `open_slot_count`, how many
-        such slots there are - the reminder's subject line is the sum of those
-        over the week's classes. On parse failure the flag defaults to True so
+        unfilled roles there are - a teaching day missing its teacher, its head
+        TA and its assistants counts three - and the reminder's subject line is
+        the sum of those over the week's classes. On parse failure the flag defaults to True so
         a parsing bug never silently suppresses a reminder, and the count to 1
         so the subject cannot announce "0 open slots" on an email sent
         precisely because slots might be open.
@@ -252,6 +253,16 @@ class EmailService:
                 teacher_lower = teacher.strip().lower() if teacher else ""
                 head_ta_lower = head_ta.strip().lower() if head_ta else ""
                 assistant_lower = assistant.strip().lower() if assistant else ""
+                teacher_missing = (
+                    not teacher_lower or "need volunteers" in teacher_lower
+                )
+                head_ta_missing = block.has_head_ta and (
+                    not head_ta or "need volunteers" in head_ta_lower
+                )
+                assistants_missing = "need volunteers" in assistant_lower
+                day_open_slots = sum(
+                    (teacher_missing, head_ta_missing, assistants_missing)
+                )
 
                 if "optional" in teacher_lower:
                     status = (
@@ -265,12 +276,12 @@ class EmailService:
                         else "No class"
                     )
                     bg_color = "#f5f5f5"
-                elif not teacher_lower or "need volunteers" in teacher_lower:
+                elif teacher_missing:
                     if is_teaching_day(day, teaching_days, week_monday):
                         status = "❌ Missing Teacher"
                         bg_color = "#ffcccc"
                         needs_volunteers = True
-                        open_slot_count += 1
+                        open_slot_count += day_open_slots
                     else:
                         # Days the organization does not teach on keep their
                         # column in the sheet and are simply left blank, so an
@@ -280,18 +291,16 @@ class EmailService:
                         # neutrally and raises no call for volunteers.
                         status = "No class"
                         bg_color = "#f5f5f5"
-                elif block.has_head_ta and (
-                    not head_ta or "need volunteers" in head_ta_lower
-                ):
+                elif head_ta_missing:
                     status = "❌ Missing Head TA"
                     bg_color = "#ffe5b4"
                     needs_volunteers = True
-                    open_slot_count += 1
-                elif "need volunteers" in assistant_lower:
+                    open_slot_count += day_open_slots
+                elif assistants_missing:
                     status = "❌ Missing TA's"
                     bg_color = "#fff3cd"
                     needs_volunteers = True
-                    open_slot_count += 1
+                    open_slot_count += day_open_slots
                 elif max_assistants is None:
                     status = f"✅ {current_assistants} assistant(s) signed up - No limit, TA's welcome to join"
                     bg_color = "#d4edda"
