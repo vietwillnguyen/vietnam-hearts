@@ -772,3 +772,91 @@ class TestBatchDatabaseCost:
             f"{len(reads)} reads of email_communications for 6 messages; the "
             "batch should not re-select each row after every commit"
         )
+
+
+class TestDryRunRowsNeverReadAsARealRun:
+    """A DRY_RUN test's row must stay out of run health whatever its outcome."""
+
+    def dry_run_bulk(self, admin_client, recipient):
+        with (
+            patch.object(ConfigHelper, "get_dry_run", return_value=True),
+            patch.object(
+                ConfigHelper, "get_dry_run_email_recipient", return_value=recipient
+            ),
+        ):
+            admin_client.post("/admin/send-weekly-reminders")
+
+    def test_a_failed_dry_run_send_is_not_the_last_run(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        captain, _ = subscribed_volunteers(2)
+        smtp.reject_every_send = True
+        self.dry_run_bulk(admin_client, captain.email)
+
+        assert status_counts(test_db) == {"failed": 1}
+
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+
+        assert body["status"] == "stale"
+        assert body["last_run"] is None
+
+    def test_a_failed_dry_run_send_does_not_fail_a_clean_real_run(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        (volunteer,) = subscribed_volunteers(1)
+        captain = VolunteerModel(
+            name="Captain",
+            email="captain@example.com",
+            positions=["Teacher"],
+            email_unsubscribe_token=secrets.token_urlsafe(32),
+            weekly_reminders_subscribed=False,
+            all_emails_subscribed=True,
+            is_active=True,
+        )
+        test_db.add(captain)
+        test_db.commit()
+        smtp.reject_every_send = True
+        self.dry_run_bulk(admin_client, captain.email)
+        smtp.reject_every_send = False
+
+        admin_client.post("/admin/send-weekly-reminders")
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+
+        assert smtp.sent == [volunteer.email]
+        assert body["status"] == "ok"
+        assert body["last_run"]["recipients"] == 1
+
+    def test_an_abandoned_dry_run_row_reaped_failed_is_not_a_run(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        captain, _ = subscribed_volunteers(2)
+
+        def cut_off_before_sending(messages):
+            raise RuntimeError("request cut off before the first send")
+            yield
+
+        with patch.object(email_service, "send_html_batch", cut_off_before_sending):
+            self.dry_run_bulk(admin_client, captain.email)
+
+        (row,) = reminder_rows(test_db)
+        assert row.status == "PENDING"
+        row.created_at = datetime.now() - timedelta(days=1)
+        test_db.commit()
+
+        with (
+            patch.object(sheets_service, "get_schedule_blocks", return_value=[]),
+            patch.object(
+                email_service,
+                "build_class_table",
+                return_value={"table_html": "", "needs_volunteers": False},
+            ),
+        ):
+            admin_client.post("/admin/send-weekly-reminders")
+        test_db.expire_all()
+
+        assert status_counts(test_db) == {"failed": 1}
+
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+
+        assert body["status"] == "stale"
+        assert body["last_run"] is None

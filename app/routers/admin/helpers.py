@@ -126,6 +126,9 @@ ABANDONED_PENDING_REMINDER_AGE = timedelta(hours=6)
 # The bulk run records the template it rendered; a per-volunteer manual send
 # does not, which is what keeps one manual send from reading as a whole run.
 WEEKLY_REMINDER_BULK_TEMPLATE = "weekly-reminder-email.html"
+# A bulk run under DRY_RUN stamps this instead, on the row it writes, so the
+# row never reads as a real run whatever its outcome or later DRY_RUN setting.
+WEEKLY_REMINDER_DRY_RUN_TEMPLATE = "dry-run:weekly-reminder-email.html"
 
 
 def get_weekly_reminder_run_health(db) -> dict:
@@ -140,9 +143,10 @@ def get_weekly_reminder_run_health(db) -> dict:
     captain still wants to know no reminder has gone out in over a week, and
     weeks_seen shows which weeks did send.
 
-    Under DRY_RUN the bulk run reaches only the dry-run recipient and records
-    its row "dry_run", which is never a run here; while DRY_RUN is on the
-    verdict is "dry_run" whatever the rows say: no volunteer is being reminded.
+    Under DRY_RUN the bulk run reaches only the dry-run recipient and stamps
+    its row with the dry-run template, which is never a run here; while
+    DRY_RUN is on the verdict is "dry_run" whatever the rows say: no
+    volunteer is being reminded.
     """
     from app.models import EmailCommunication as EmailCommunicationModel
     from app.utils.config_helper import ConfigHelper
@@ -153,7 +157,6 @@ def get_weekly_reminder_run_health(db) -> dict:
         .filter(
             EmailCommunicationModel.email_type == "weekly_reminder",
             EmailCommunicationModel.template_name == WEEKLY_REMINDER_BULK_TEMPLATE,
-            EmailCommunicationModel.status != "dry_run",
         )
         .all()
     )

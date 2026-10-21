@@ -17,6 +17,7 @@ from app.models import (
 from app.routers.admin.helpers import (
     ABANDONED_PENDING_REMINDER_AGE,
     WEEKLY_REMINDER_BULK_TEMPLATE,
+    WEEKLY_REMINDER_DRY_RUN_TEMPLATE,
     get_email_summary,
     get_weekly_reminder_run_health,
 )
@@ -307,7 +308,11 @@ async def send_weekly_reminder_emails(request: Request):
                     recipient_email=volunteer["email"],
                     email_type="weekly_reminder",
                     subject=subject,
-                    template_name=WEEKLY_REMINDER_BULK_TEMPLATE,
+                    template_name=(
+                        WEEKLY_REMINDER_DRY_RUN_TEMPLATE
+                        if dry_run
+                        else WEEKLY_REMINDER_BULK_TEMPLATE
+                    ),
                     status="PENDING",
                 )
                 email_communications.append((email_comm, html_body))

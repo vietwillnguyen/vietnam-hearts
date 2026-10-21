@@ -131,6 +131,7 @@ Neither the resume skip nor run health counts a `dry_run` row as delivered, what
 
 `GET /admin/weekly-reminder-health` reports the last bulk run, and `/admin/health` degrades on anything but `ok`, because Cloud Scheduler only keeps the last attempt.
 Bulk rows are the ones with `template_name` `weekly-reminder-email.html`; a manual per-volunteer send leaves it empty, so it can never stand in for a failed Sunday.
+A bulk run under DRY_RUN stamps `dry-run:weekly-reminder-email.html` on every row it writes, so its sent, failed or abandoned rows never read as a real run after DRY_RUN is switched off.
 The verdict is per recipient: a recipient counts as delivered if any of their rows that week is `sent`, so a resumed run clears it.
 With DRY_RUN on the verdict is `dry_run` and the payload carries `"dry_run": true`, since no volunteer is being reminded.
 
