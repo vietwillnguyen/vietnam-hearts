@@ -123,8 +123,13 @@ WEEKLY_REMINDER_STALE_AFTER_DAYS = 8
 ABANDONED_PENDING_REMINDER_AGE = timedelta(hours=6)
 
 
+# The bulk run records the template it rendered; a per-volunteer manual send
+# does not, which is what keeps one manual send from reading as a whole run.
+WEEKLY_REMINDER_BULK_TEMPLATE = "weekly-reminder-email.html"
+
+
 def get_weekly_reminder_run_health(db) -> dict:
-    """Summarize the most recent weekly-reminder run from its email rows.
+    """Summarize the most recent bulk weekly-reminder run from its email rows.
 
     Cloud Scheduler's job status is otherwise the only place a failed Sunday
     shows, and it keeps just the last attempt - which is how the job stayed
@@ -134,36 +139,55 @@ def get_weekly_reminder_run_health(db) -> dict:
     rows, so it reads here as "stale" rather than "ok". That is deliberate: the
     captain still wants to know no reminder has gone out in over a week, and
     weeks_seen shows which weeks did send.
+
+    Under DRY_RUN the bulk run reaches only the dry-run recipient, so the
+    verdict is "dry_run" whatever the rows say: no volunteer is being reminded.
     """
     from app.models import EmailCommunication as EmailCommunicationModel
+    from app.utils.config_helper import ConfigHelper
 
+    dry_run = ConfigHelper.get_dry_run(db)
     reminders = (
         db.query(EmailCommunicationModel)
-        .filter(EmailCommunicationModel.email_type == "weekly_reminder")
+        .filter(
+            EmailCommunicationModel.email_type == "weekly_reminder",
+            EmailCommunicationModel.template_name == WEEKLY_REMINDER_BULK_TEMPLATE,
+        )
         .all()
     )
     if not reminders:
-        return {
+        health = {
             "status": "stale",
-            "message": "No weekly reminder emails have ever been recorded",
+            "message": "No weekly reminder run has ever been recorded",
             "last_run": None,
             "days_since_last_run": None,
             "weeks_seen": 0,
             "stale_after_days": WEEKLY_REMINDER_STALE_AFTER_DAYS,
         }
+        return _with_dry_run(health, dry_run)
 
     def row_time(row):
         return row.created_at or row.sent_at
 
-    latest = max(reminders, key=lambda row: (row_time(row) or datetime.min, row.id))
+    def row_order(row):
+        return (row_time(row) or datetime.min, row.id)
+
+    latest = max(reminders, key=row_order)
     # The subject carries the week's date range, so it identifies the run that
     # produced a row without depending on when that row happened to be written.
     run_rows = [row for row in reminders if row.subject == latest.subject]
 
+    # A resumed run adds rows for the recipients an earlier attempt missed, so
+    # judge each recipient rather than each row: delivered if any attempt was
+    # sent, otherwise whatever their newest attempt says.
+    by_recipient = {}
+    for row in sorted(run_rows, key=row_order):
+        if by_recipient.get(row.recipient_email) != "sent":
+            by_recipient[row.recipient_email] = (row.status or "").lower()
+
     counts = {"sent": 0, "failed": 0, "pending": 0, "other": 0}
-    for row in run_rows:
-        key = (row.status or "").lower()
-        counts[key if key in counts else "other"] += 1
+    for status in by_recipient.values():
+        counts[status if status in counts else "other"] += 1
 
     run_times = [row_time(row) for row in run_rows if row_time(row)]
     last_run_at = max(run_times) if run_times else None
@@ -187,19 +211,30 @@ def get_weekly_reminder_run_health(db) -> dict:
         status = "ok"
         message = f"The last weekly reminder run sent {counts['sent']} emails"
 
-    return {
+    health = {
         "status": status,
         "message": message,
         "last_run": {
             "subject": latest.subject,
             "at": last_run_at.isoformat() if last_run_at else None,
-            "recipients": len(run_rows),
+            "recipients": len(by_recipient),
             **counts,
         },
         "days_since_last_run": days_since,
         "weeks_seen": len({row.subject for row in reminders}),
         "stale_after_days": WEEKLY_REMINDER_STALE_AFTER_DAYS,
     }
+    return _with_dry_run(health, dry_run)
+
+
+def _with_dry_run(health: dict, dry_run: bool) -> dict:
+    health["dry_run"] = dry_run
+    if dry_run:
+        health["status"] = "dry_run"
+        health["message"] = (
+            "DRY_RUN is on, so weekly reminders reach only the dry-run recipient"
+        )
+    return health
 
 
 def _as_naive_utc(value: datetime) -> datetime:

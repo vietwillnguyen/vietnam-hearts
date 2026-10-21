@@ -123,13 +123,15 @@ that method for anything bulk; `send_custom_email` opens its own connection and,
 the batch sender, reports a refused send as `False` rather than raising, so a caller that
 ignores the return value records a failure as "sent".
 
-Rows are committed PENDING before the batch is sent so a cut-off run can be resumed:
-the next run skips any volunteer with a `sent` row carrying the same subject (the subject
-holds the week's date range, so it is the run key), and
-`fail_abandoned_pending_reminders` resolves PENDING rows older than six hours. Outcomes
-are paired to rows by position, never by address - `volunteers.email` has no unique
-constraint. `GET /admin/weekly-reminder-health` reports the last run, and
-`/admin/health` degrades on it, because Cloud Scheduler only keeps the last attempt.
+Rows are committed PENDING before the batch is sent, and each outcome is committed as it is yielded, so a run cut off at the deadline leaves only its unsent remainder PENDING.
+The next run skips any volunteer with a `sent` row carrying the same subject (the subject holds the week's date range, so it is the run key), and `fail_abandoned_pending_reminders` resolves PENDING rows older than six hours to `failed`.
+Outcomes are paired to rows by position, never by address - `volunteers.email` has no unique constraint.
+Under DRY_RUN, `send_custom_email` records a skipped send as `dry_run`, which neither the resume skip nor run health counts as delivered.
+
+`GET /admin/weekly-reminder-health` reports the last bulk run, and `/admin/health` degrades on anything but `ok`, because Cloud Scheduler only keeps the last attempt.
+Bulk rows are the ones with `template_name` `weekly-reminder-email.html`; a manual per-volunteer send leaves it empty, so it can never stand in for a failed Sunday.
+The verdict is per recipient: a recipient counts as delivered if any of their rows that week is `sent`, so a resumed run clears it.
+With DRY_RUN on the verdict is `dry_run` and the payload carries `"dry_run": true`, since no volunteer is being reminded.
 
 No test may open a real SMTP connection; `tests/conftest.py::forbid_real_smtp` raises a
 `BaseException` subclass if one tries, deliberately not an `Exception`, which the batch

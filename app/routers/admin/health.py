@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import ENVIRONMENT
@@ -135,7 +136,7 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
         }
 
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             health_status["services"]["database"] = "connected"
         except Exception as e:
             health_status["services"]["database"] = f"error: {str(e)}"
@@ -168,15 +169,15 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
 
         try:
             from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
-            from app.services.admin_service import admin_service
+            from app.services.auth_service import auth_service
 
             supabase_configured = bool(SUPABASE_URL and SUPABASE_SECRET_KEY)
-            supabase_client_initialized = admin_service.admin_supabase is not None
+            supabase_client_initialized = auth_service.admin_supabase is not None
             admin_service_available = False
             if supabase_configured and supabase_client_initialized:
                 try:
                     await asyncio.wait_for(
-                        admin_service._check_admin_db("test@example.com"), timeout=5.0
+                        auth_service._check_admin_db("test@example.com"), timeout=5.0
                     )
                     admin_service_available = True
                 except (TimeoutError, Exception):

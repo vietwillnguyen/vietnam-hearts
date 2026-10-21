@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.routers.admin.helpers import (
     ABANDONED_PENDING_REMINDER_AGE,
+    WEEKLY_REMINDER_BULK_TEMPLATE,
     get_email_summary,
     get_weekly_reminder_run_health,
 )
@@ -60,7 +61,8 @@ def get_reminder_stats(db: Session = Depends(get_db)):
             .filter(EmailCommunicationModel.email_type == "weekly_reminder")
             .all()
         )
-        total_sent = len(reminder_emails)
+        dry_run = sum(1 for e in reminder_emails if e.status == "dry_run")
+        total_sent = len(reminder_emails) - dry_run
         successful = sum(1 for e in reminder_emails if e.status == "sent")
         failed = sum(1 for e in reminder_emails if e.status == "failed")
 
@@ -74,7 +76,15 @@ def get_reminder_stats(db: Session = Depends(get_db)):
             week_start = email.sent_at - timedelta(days=email.sent_at.weekday())
             week_key = week_start.strftime("%Y-%m-%d")
             if week_key not in weekly_stats:
-                weekly_stats[week_key] = {"total": 0, "successful": 0, "failed": 0}
+                weekly_stats[week_key] = {
+                    "total": 0,
+                    "successful": 0,
+                    "failed": 0,
+                    "dry_run": 0,
+                }
+            if email.status == "dry_run":
+                weekly_stats[week_key]["dry_run"] += 1
+                continue
             weekly_stats[week_key]["total"] += 1
             if email.status == "sent":
                 weekly_stats[week_key]["successful"] += 1
@@ -87,6 +97,7 @@ def get_reminder_stats(db: Session = Depends(get_db)):
                 "total_sent": total_sent,
                 "successful": successful,
                 "failed": failed,
+                "dry_run": dry_run,
                 "success_rate": (successful / total_sent * 100)
                 if total_sent > 0
                 else 0,
@@ -273,7 +284,7 @@ async def send_weekly_reminder_emails(request: Request):
                     db_volunteer.name.split()[0] if db_volunteer.name else "Volunteer"
                 )
                 html_body = email_service.email_env.get_template(
-                    "weekly-reminder-email.html"
+                    WEEKLY_REMINDER_BULK_TEMPLATE
                 ).render(
                     first_name=first_name,
                     class_tables=[ct["table_html"] for ct in class_tables],
@@ -295,6 +306,7 @@ async def send_weekly_reminder_emails(request: Request):
                     recipient_email=volunteer["email"],
                     email_type="weekly_reminder",
                     subject=subject,
+                    template_name=WEEKLY_REMINDER_BULK_TEMPLATE,
                     status="PENDING",
                 )
                 email_communications.append((email_comm, html_body))
@@ -315,6 +327,8 @@ async def send_weekly_reminder_emails(request: Request):
             # Pair outcomes with rows by position, not by address: volunteer
             # emails carry no unique constraint, so keying on the address would
             # strand one of two volunteers who share one at PENDING forever.
+            # Each outcome is committed as it arrives so a run cut off at the
+            # deadline leaves only the untouched remainder PENDING.
             for (email_comm, _), (_, error) in zip(
                 email_communications, outcomes, strict=True
             ):
@@ -326,8 +340,7 @@ async def send_weekly_reminder_emails(request: Request):
                     email_comm.status = "failed"
                     email_comm.error_message = str(error)
                     failed_count += 1
-
-            db.commit()
+                db.commit()
 
         logger.info(
             f"Weekly reminder run finished: {sent_count} sent, {failed_count} failed"

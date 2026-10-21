@@ -635,12 +635,11 @@ class EmailService:
                     email_type=email_type,
                     subject=subject,
                     template_name=None,
-                    status="sent",
+                    status="dry_run",
                     sent_at=datetime.now(),
                 )
-                if db is not None:
-                    db.add(email_comm)
-                    db.commit()
+                db.add(email_comm)
+                db.commit()
                 return True
 
             message = MIMEMultipart()

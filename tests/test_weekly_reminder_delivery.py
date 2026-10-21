@@ -16,13 +16,14 @@ The delivery half of that failure was cost and bookkeeping:
 import secrets
 import smtplib
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.main import app
 from app.models import EmailCommunication as EmailCommunicationModel
 from app.models import Volunteer as VolunteerModel
+from app.routers.admin.helpers import WEEKLY_REMINDER_BULK_TEMPLATE
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
 from app.utils.config_helper import ConfigHelper
@@ -144,6 +145,31 @@ def sending_week():
                 "needs_volunteers": True,
             },
         ),
+    ):
+        yield
+
+
+@pytest.fixture
+def other_services_healthy():
+    """Keep /admin/health off the network so only the reminder verdict moves it."""
+    bot = MagicMock()
+    bot.return_value.get_knowledge_status = AsyncMock(
+        return_value={
+            "knowledge_service_available": True,
+            "embeddings_available": True,
+            "gemini_available": True,
+            "document_service_available": True,
+            "supabase_available": True,
+            "documents_count": 1,
+        }
+    )
+    with (
+        patch("app.services.auth_service.auth_service.admin_supabase", object()),
+        patch(
+            "app.services.auth_service.auth_service._check_admin_db",
+            AsyncMock(return_value=True),
+        ),
+        patch("app.services.bot_service.BotService", bot),
     ):
         yield
 
@@ -386,6 +412,7 @@ class TestWeeklyReminderRunHealth:
             recipient_email=volunteer.email,
             email_type="weekly_reminder",
             subject="🗓️ Weekly Volunteer Reminder – Schedule Update (21/09 to 25/09)",
+            template_name=WEEKLY_REMINDER_BULK_TEMPLATE,
             status="sent",
             sent_at=datetime.now() - timedelta(days=30),
         )
@@ -474,3 +501,212 @@ class TestSmtpUnavailable:
             "run should stop paying a connect per recipient once it is clear "
             "no session can be opened"
         )
+
+
+class TestRunCutOffMidBatch:
+    """Delivered rows must survive a run that dies before the batch ends."""
+
+    def test_delivered_rows_read_sent_and_the_rerun_skips_them(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        volunteers = subscribed_volunteers(5)
+        send_html_batch = email_service.send_html_batch
+
+        def cut_off_after_two(messages):
+            outcomes = send_html_batch(messages)
+            yield next(outcomes)
+            yield next(outcomes)
+            raise RuntimeError("request cut off mid-batch")
+
+        with patch.object(email_service, "send_html_batch", cut_off_after_two):
+            body = admin_client.post("/admin/send-weekly-reminders").json()
+        test_db.expire_all()
+
+        assert body["status"] == "error"
+        assert smtp.sent == [volunteers[0].email, volunteers[1].email]
+        assert status_counts(test_db) == {"sent": 2, "PENDING": 3}
+
+        smtp.sent = []
+        admin_client.post("/admin/send-weekly-reminders")
+
+        assert smtp.sent == [v.email for v in volunteers[2:]]
+
+
+class TestDryRunRecording:
+    """A send DRY_RUN skipped must not read as delivered."""
+
+    def test_dry_run_row_does_not_make_the_real_run_skip_the_volunteer(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        (volunteer,) = subscribed_volunteers(1)
+        subject = email_service.get_reminder_subject(WEEK_MONDAY, WEEK_FRIDAY)
+        with (
+            patch.object(ConfigHelper, "get_dry_run", return_value=True),
+            patch.object(
+                ConfigHelper,
+                "get_dry_run_email_recipient",
+                return_value="captain@example.com",
+            ),
+        ):
+            recorded = email_service.send_custom_email(
+                to_email=volunteer.email,
+                subject=subject,
+                html_body="<p>hi</p>",
+                db=test_db,
+                volunteer_id=volunteer.id,
+                email_type="weekly_reminder",
+            )
+
+        assert recorded is True
+        assert smtp.sent == []
+        assert status_counts(test_db) == {"dry_run": 1}
+
+        admin_client.post("/admin/send-weekly-reminders")
+
+        assert smtp.sent == [volunteer.email]
+
+    def test_reminder_stats_count_dry_run_separately(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        subscribed_volunteers(1)
+        admin_client.post("/admin/send-weekly-reminders")
+        (volunteer,) = subscribed_volunteers(1)
+        with (
+            patch.object(ConfigHelper, "get_dry_run", return_value=True),
+            patch.object(
+                ConfigHelper,
+                "get_dry_run_email_recipient",
+                return_value="captain@example.com",
+            ),
+        ):
+            email_service.send_custom_email(
+                to_email=volunteer.email,
+                subject="manual",
+                html_body="<p>hi</p>",
+                db=test_db,
+                volunteer_id=volunteer.id,
+                email_type="weekly_reminder",
+            )
+
+        stats = admin_client.get("/admin/reminder-stats").json()["statistics"]
+
+        assert stats["total_sent"] == 1
+        assert stats["successful"] == 1
+        assert stats["failed"] == 0
+        assert stats["dry_run"] == 1
+        assert stats["success_rate"] == 100
+
+
+class TestRunHealthPerRecipient:
+    """A resumed run that reaches everyone must clear the failure."""
+
+    def test_reports_ok_after_a_resume_delivers_the_failed_sends(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        subscribed_volunteers(3)
+        smtp.reject_every_send = True
+        admin_client.post("/admin/send-weekly-reminders")
+        smtp.reject_every_send = False
+        admin_client.post("/admin/send-weekly-reminders")
+
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+
+        assert body["status"] == "ok"
+        assert body["last_run"]["recipients"] == 3
+        assert body["last_run"]["sent"] == 3
+        assert body["last_run"]["failed"] == 0
+
+    def test_a_manual_send_does_not_mask_a_failed_bulk_run(
+        self,
+        admin_client,
+        test_db,
+        smtp,
+        sending_week,
+        subscribed_volunteers,
+        other_services_healthy,
+    ):
+        volunteer, _ = subscribed_volunteers(2)
+        smtp.reject_every_send = True
+        admin_client.post("/admin/send-weekly-reminders")
+        smtp.reject_every_send = False
+
+        manual = admin_client.post(
+            f"/admin/volunteers/{volunteer.id}/send-weekly-reminder"
+        )
+        assert manual.status_code == 200
+
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+        assert body["status"] == "failed"
+        assert body["last_run"]["recipients"] == 2
+
+        health = admin_client.get("/admin/health").json()
+        assert health["services"]["weekly_reminders"]["status"] == "failed"
+        assert health["status"] == "degraded"
+
+    def test_a_manual_send_alone_is_not_a_run(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        (volunteer,) = subscribed_volunteers(1)
+
+        admin_client.post(f"/admin/volunteers/{volunteer.id}/send-weekly-reminder")
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+
+        assert body["status"] == "stale"
+        assert body["last_run"] is None
+
+
+class TestRunHealthUnderDryRun:
+    """DRY_RUN left on in prod means no volunteer is reminded."""
+
+    def test_reports_dry_run_rather_than_ok(
+        self,
+        admin_client,
+        test_db,
+        smtp,
+        sending_week,
+        subscribed_volunteers,
+        other_services_healthy,
+    ):
+        captain, _ = subscribed_volunteers(2)
+        with (
+            patch.object(ConfigHelper, "get_dry_run", return_value=True),
+            patch.object(
+                ConfigHelper, "get_dry_run_email_recipient", return_value=captain.email
+            ),
+        ):
+            admin_client.post("/admin/send-weekly-reminders")
+            body = admin_client.get("/admin/weekly-reminder-health").json()
+            health = admin_client.get("/admin/health").json()
+
+        assert smtp.sent == [captain.email]
+        assert body["status"] == "dry_run"
+        assert body["dry_run"] is True
+        assert health["status"] == "degraded"
+
+    def test_reports_dry_run_off_in_the_payload(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        subscribed_volunteers(1)
+        admin_client.post("/admin/send-weekly-reminders")
+
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+
+        assert body["status"] == "ok"
+        assert body["dry_run"] is False
+
+    def test_admin_health_is_healthy_after_a_clean_run(
+        self,
+        admin_client,
+        test_db,
+        smtp,
+        sending_week,
+        subscribed_volunteers,
+        other_services_healthy,
+    ):
+        subscribed_volunteers(1)
+        admin_client.post("/admin/send-weekly-reminders")
+
+        health = admin_client.get("/admin/health").json()
+
+        assert health["services"]["weekly_reminders"]["status"] == "ok"
+        assert health["status"] == "healthy", health["services"]
