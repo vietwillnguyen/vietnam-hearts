@@ -132,3 +132,32 @@ def mock_inactive_volunteer(test_db):
     test_db.commit()
     test_db.refresh(volunteer)
     return volunteer
+
+
+class RealSmtpConnectionAttempted(BaseException):
+    """Raised when a test reaches for a real SMTP server."""
+
+
+@pytest.fixture(autouse=True)
+def forbid_real_smtp():
+    """Fail loudly rather than opening a real SMTP connection from a test.
+
+    Two tests that patched the endpoint's old per-message sender kept passing
+    silently when the send path moved to EmailService.send_html_batch, and then
+    started dialling smtp.gmail.com for real. A test that reaches the network
+    should say so, not depend on the connection failing.
+    """
+
+    class ForbiddenSMTP:
+        def __init__(self, host, port, *args, **kwargs):
+            # BaseException, not Exception: the batch sender treats a failed
+            # connect as a per-run error and reports every recipient failed,
+            # which would turn this guard into a quietly red-but-passing test.
+            raise RealSmtpConnectionAttempted(
+                f"test tried to open a real SMTP connection to {host}:{port}; "
+                "patch app.services.email_service.smtplib.SMTP or "
+                "EmailService.send_html_batch instead"
+            )
+
+    with patch("app.services.email_service.smtplib.SMTP", ForbiddenSMTP):
+        yield

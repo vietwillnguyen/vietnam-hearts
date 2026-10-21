@@ -177,6 +177,15 @@ class AuthService:
         # Get authenticated user
         user = await self.get_current_user(request)
 
+        # The service-role key is the app's own highest credential, so holding
+        # it already settles admin access. Sending it through admin_users
+        # instead is what denied Cloud Scheduler for four Sundays running
+        # (2026-09-27..2026-10-18): that lookup fails closed, so an absent row
+        # or a slow Supabase turned every cron call into a 403.
+        if user.get("is_service_account"):
+            logger.info("Admin access granted to service account via service-role key")
+            return user
+
         # Check admin status (with caching)
         is_admin = await self._is_admin_cached(user["email"])
 
@@ -238,7 +247,9 @@ class AuthService:
             logger.warning("Rejected apikey auth attempt: key is invalid or mismatched")
             raise HTTPException(status_code=401, detail="Invalid service role key")
 
-        # Return service account user info
+        # Return service account user info. is_service_account marks this
+        # identity as already holding the highest privilege the app has, so the
+        # admin gate does not put it through the admin_users lookup.
         return {
             "id": "service-account-auto-scheduler",
             "email": "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com",
@@ -247,6 +258,7 @@ class AuthService:
             "email_verified": True,
             "created_at": "2024-01-01T00:00:00Z",
             "last_sign_in": "2024-01-01T00:00:00Z",
+            "is_service_account": True,
         }
 
     def _is_secret_key(self, token: str) -> bool:

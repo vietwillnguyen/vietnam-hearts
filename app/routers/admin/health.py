@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import ENVIRONMENT
@@ -20,7 +21,11 @@ from app.models import (
 from app.models import (
     Volunteer as VolunteerModel,
 )
-from app.routers.admin.helpers import get_email_summary, get_volunteer_summary
+from app.routers.admin.helpers import (
+    get_email_summary,
+    get_volunteer_summary,
+    get_weekly_reminder_run_health,
+)
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
 from app.utils.config_helper import ConfigHelper
@@ -131,7 +136,7 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
         }
 
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             health_status["services"]["database"] = "connected"
         except Exception as e:
             health_status["services"]["database"] = f"error: {str(e)}"
@@ -154,16 +159,25 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
             health_status["status"] = "degraded"
 
         try:
+            reminder_health = get_weekly_reminder_run_health(db)
+            health_status["services"]["weekly_reminders"] = reminder_health
+            if reminder_health["status"] != "ok":
+                health_status["status"] = "degraded"
+        except Exception as e:
+            health_status["services"]["weekly_reminders"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+
+        try:
             from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
-            from app.services.admin_service import admin_service
+            from app.services.auth_service import auth_service
 
             supabase_configured = bool(SUPABASE_URL and SUPABASE_SECRET_KEY)
-            supabase_client_initialized = admin_service.admin_supabase is not None
+            supabase_client_initialized = auth_service.admin_supabase is not None
             admin_service_available = False
             if supabase_configured and supabase_client_initialized:
                 try:
                     await asyncio.wait_for(
-                        admin_service._check_admin_db("test@example.com"), timeout=5.0
+                        auth_service._check_admin_db("test@example.com"), timeout=5.0
                     )
                     admin_service_available = True
                 except (TimeoutError, Exception):

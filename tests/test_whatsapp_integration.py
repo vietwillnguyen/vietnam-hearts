@@ -72,6 +72,24 @@ def _body_of(html):
     return html.split('class="email-footer"')[0]
 
 
+def _record_batch(recorder):
+    """Stand in for EmailService.send_html_batch without touching SMTP.
+
+    The real method is a generator yielding (to_email, error) per message, so a
+    plain MagicMock would not be iterable where the endpoint consumes it.
+    """
+
+    def send_html_batch(messages):
+        def run():
+            for to_email, subject, html_body in messages:
+                recorder.append((to_email, subject, html_body))
+                yield to_email, None
+
+        return run()
+
+    return send_html_batch
+
+
 class TestWhatsAppSetting:
     def test_default_settings_seed_the_whatsapp_community_link(self, test_db):
         initialize_default_settings(test_db)
@@ -161,6 +179,7 @@ class TestRenderersPassTheConfiguredLink:
         assert self.CONFIGURED in _body_of(html)
 
     def test_admin_weekly_reminder_send(self, admin_client, mock_volunteer):
+        sent = []
         with (
             patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]),
             patch.object(
@@ -178,9 +197,11 @@ class TestRenderersPassTheConfiguredLink:
                     "needs_volunteers": True,
                 },
             ),
-            patch.object(email_service, "send_custom_email") as send,
+            patch.object(
+                email_service, "send_html_batch", side_effect=_record_batch(sent)
+            ),
         ):
             response = admin_client.post("/admin/send-weekly-reminders")
 
         assert response.json()["status"] == "success"
-        assert self.CONFIGURED in _body_of(send.call_args.kwargs["html_body"])
+        assert self.CONFIGURED in _body_of(sent[0][2])

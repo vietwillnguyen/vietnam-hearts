@@ -112,6 +112,49 @@ sentence - Google specifies it verbatim. The text, contact address, disclosure a
 date are constants at the top of `app/routers/public.py`; `tests/test_privacy_policy.py` pins both
 properties, and the README's "Privacy policy URL" section covers the console step.
 
+## Sending a batch of emails
+
+The weekly reminder send goes through `EmailService.send_html_batch`, which holds one
+authenticated SMTP session open for the whole batch and yields a per-message outcome.
+A connection per message cost about 1.85s (TCP + STARTTLS + AUTH against Gmail), so the
+Sunday run grew with the volunteer list and died at Cloud Run's 300s request timeout once
+it passed roughly 160 recipients - four Sundays in a row, 2026-09-27 to 2026-10-18. Use
+that method for anything bulk; `send_custom_email` opens its own connection and, unlike
+the batch sender, reports a refused send as `False` rather than raising, so a caller that
+ignores the return value records a failure as "sent".
+
+Rows are committed PENDING before the batch is sent, and each outcome is committed as it is yielded, so a run cut off at the deadline leaves only its unsent remainder PENDING.
+The next run skips any volunteer with a `sent` row carrying the same subject (the subject holds the week's date range, so it is the run key), and `fail_abandoned_pending_reminders` resolves PENDING rows older than six hours to `failed`.
+Outcomes are paired to rows by position, never by address - `volunteers.email` has no unique constraint.
+A successful send made while DRY_RUN is on is recorded `dry_run`: the sends `send_custom_email` skips, and the bulk run's real send to the dry-run recipient, since no volunteer received it.
+A per-volunteer send to the dry-run recipient under DRY_RUN really goes out and is recorded `sent`.
+Every bulk row written under DRY_RUN also carries the dry-run template stamp below whatever its outcome, so a failed or abandoned one reads `failed` yet still counts as a dry run.
+`helpers.py::is_dry_run_email` (status `dry_run` or the stamp) is the one definition of a dry-run row; reminder-stats and the email log use it, and resume and run health never count such a row as delivered, whatever DRY_RUN is set to later.
+
+`GET /admin/weekly-reminder-health` reports the last bulk run, and `/admin/health` degrades on anything but `ok`, because Cloud Scheduler only keeps the last attempt.
+Bulk rows are the ones with `template_name` `weekly-reminder-email.html`; a manual per-volunteer send leaves it empty, so it can never stand in for a failed Sunday.
+A bulk run under DRY_RUN stamps `dry-run:weekly-reminder-email.html` on every row it writes, so its sent, failed or abandoned rows never read as a real run after DRY_RUN is switched off.
+The verdict is per recipient: a recipient counts as delivered if any of their rows that week is `sent`, so a resumed run clears it.
+With DRY_RUN on the verdict is `dry_run` and the payload carries `"dry_run": true`, since no volunteer is being reminded.
+
+No test may open a real SMTP connection; `tests/conftest.py::forbid_real_smtp` raises a
+`BaseException` subclass if one tries, deliberately not an `Exception`, which the batch
+sender would catch and report as a run of failed sends.
+
+## Admin auth for the cron jobs
+
+Cloud Scheduler authenticates with the `apikey` header holding `SUPABASE_SECRET_KEY`.
+A wrong key is a 401; a **403 means the key was right** and the admin gate rejected the
+caller, so a 403 on a cron endpoint is never a credential to rotate. That gate used to
+put the synthetic service-account email through the `admin_users` lookup, which fails
+closed, so an absent row or a slow Supabase denied every scheduled run -
+`get_current_admin_user` now short-circuits on `is_service_account`.
+
+Cloud Scheduler's default 180s attempt deadline is shorter than Cloud Run's 300s request
+timeout, so it recorded failures for runs the service was still serving.
+`SCHEDULER_ATTEMPT_DEADLINE` in `scripts/deploy.config` pins the two together and is sent
+on both the create and update paths of `scripts/create-or-update-scheduler-jobs.sh`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

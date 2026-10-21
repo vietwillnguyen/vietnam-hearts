@@ -37,6 +37,10 @@
             background-color: #dc3545;
             color: white;
         }
+        .status-dry_run {
+            background-color: #6c757d;
+            color: white;
+        }
         .table {
             font-size: 0.9em;
         }
@@ -385,6 +389,9 @@
                                     <span class="status-badge status-{{ email.status }}">
                                         {{ email.status }}
                                     </span>
+                                    {% if email.dry_run and email.status != "dry_run" %}
+                                    <span class="status-badge status-dry_run">dry run</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ email.sent_at }}</td>
                             </tr>
@@ -1300,18 +1307,23 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    let message = `Success: ${result.message}\n\nStatus: ${result.status}`;
-                    if (result.emails_sent !== undefined) {
-                        message += `\nEmails sent: ${result.emails_sent}`;
-                    }
-                    if (result.volunteers_processed !== undefined) {
-                        message += `\nVolunteers processed: ${result.volunteers_processed}`;
-                    }
-                    if (result.emails_failed !== undefined && result.emails_failed > 0) {
-                        message += `\nEmails failed: ${result.emails_failed}`;
-                    }
-                    if (result.failed_emails && result.failed_emails.length > 0) {
-                        message += `\nFailed emails: ${result.failed_emails.join(', ')}`;
+                    // "success" is not the only 200 outcome: the run also
+                    // reports "skipped" (nothing needed filling) and "partial"
+                    // (some sends failed), and calling either one a success is
+                    // how a send that did not happen looked like one.
+                    const heading = {
+                        success: 'Success',
+                        partial: 'Partly sent',
+                        skipped: 'Skipped',
+                    }[result.status] || 'Status';
+                    let message = `${heading}: ${result.message}`;
+                    const details = result.details;
+                    if (details && details.sent !== undefined) {
+                        message += `\n\nEmails sent: ${details.sent}`;
+                        message += `\nEmails failed: ${details.failed}`;
+                        if (details.skipped_already_sent > 0) {
+                            message += `\nAlready sent earlier this week: ${details.skipped_already_sent}`;
+                        }
                     }
                     alert(message);
                     location.reload(); // Refresh to show updated status
