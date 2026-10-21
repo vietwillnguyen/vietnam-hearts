@@ -218,7 +218,8 @@ async def send_weekly_reminder_emails(request: Request):
                     "message": "No volunteer slots need filling this week, weekly reminder emails were not sent.",
                 }
 
-            if ConfigHelper.get_dry_run(db):
+            dry_run = ConfigHelper.get_dry_run(db)
+            if dry_run:
                 logger.info(
                     "DRY_RUN is enabled, sending emails to dry run email recipient only"
                 )
@@ -311,8 +312,14 @@ async def send_weekly_reminder_emails(request: Request):
                 )
                 email_communications.append((email_comm, html_body))
 
+            messages = [
+                (comm.recipient_email, comm.subject, html_body)
+                for comm, html_body in email_communications
+            ]
             for email_comm, _ in email_communications:
                 db.add(email_comm)
+            db.flush()
+            row_ids = [email_comm.id for email_comm, _ in email_communications]
             db.commit()
 
             # One shared SMTP session for the batch. A connection per message
@@ -320,26 +327,25 @@ async def send_weekly_reminder_emails(request: Request):
             # both the scheduler deadline and Cloud Run's 300s request limit.
             sent_count = 0
             failed_count = 0
-            outcomes = email_service.send_html_batch(
-                (comm.recipient_email, comm.subject, html_body)
-                for comm, html_body in email_communications
-            )
+            outcomes = email_service.send_html_batch(messages)
             # Pair outcomes with rows by position, not by address: volunteer
             # emails carry no unique constraint, so keying on the address would
             # strand one of two volunteers who share one at PENDING forever.
             # Each outcome is committed as it arrives so a run cut off at the
             # deadline leaves only the untouched remainder PENDING.
-            for (email_comm, _), (_, error) in zip(
-                email_communications, outcomes, strict=True
-            ):
+            for row_id, (_, error) in zip(row_ids, outcomes, strict=True):
                 if error is None:
-                    email_comm.status = "sent"
-                    email_comm.sent_at = datetime.now()
+                    outcome = {
+                        "status": "dry_run" if dry_run else "sent",
+                        "sent_at": datetime.now(),
+                    }
                     sent_count += 1
                 else:
-                    email_comm.status = "failed"
-                    email_comm.error_message = str(error)
+                    outcome = {"status": "failed", "error_message": str(error)}
                     failed_count += 1
+                db.query(EmailCommunicationModel).filter(
+                    EmailCommunicationModel.id == row_id
+                ).update(outcome, synchronize_session=False)
                 db.commit()
 
         logger.info(

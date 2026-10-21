@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import event
 
 from app.main import app
 from app.models import EmailCommunication as EmailCommunicationModel
@@ -710,3 +711,64 @@ class TestRunHealthUnderDryRun:
 
         assert health["services"]["weekly_reminders"]["status"] == "ok"
         assert health["status"] == "healthy", health["services"]
+
+    def test_a_dry_run_bulk_test_does_not_pass_for_a_later_real_run(
+        self,
+        admin_client,
+        test_db,
+        smtp,
+        sending_week,
+        subscribed_volunteers,
+        other_services_healthy,
+    ):
+        captain, other = subscribed_volunteers(2)
+        with (
+            patch.object(ConfigHelper, "get_dry_run", return_value=True),
+            patch.object(
+                ConfigHelper, "get_dry_run_email_recipient", return_value=captain.email
+            ),
+        ):
+            admin_client.post("/admin/send-weekly-reminders")
+
+        assert status_counts(test_db) == {"dry_run": 1}
+
+        body = admin_client.get("/admin/weekly-reminder-health").json()
+        health = admin_client.get("/admin/health").json()
+
+        assert body["status"] != "ok"
+        assert body["last_run"] is None
+        assert health["status"] == "degraded"
+
+        smtp.sent = []
+        admin_client.post("/admin/send-weekly-reminders")
+
+        assert smtp.sent == [captain.email, other.email]
+
+
+class TestBatchDatabaseCost:
+    """Per-outcome commits must not cost a row reload per message."""
+
+    def test_does_not_reload_reminder_rows_while_sending(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        subscribed_volunteers(6)
+        reads = []
+
+        def count_reads(conn, cursor, statement, *args):
+            if statement.lstrip().upper().startswith("SELECT") and (
+                "email_communications" in statement
+            ):
+                reads.append(statement)
+
+        engine = test_db.get_bind()
+        event.listen(engine, "before_cursor_execute", count_reads)
+        try:
+            admin_client.post("/admin/send-weekly-reminders")
+        finally:
+            event.remove(engine, "before_cursor_execute", count_reads)
+
+        assert status_counts(test_db) == {"sent": 6}
+        assert len(reads) <= 2, (
+            f"{len(reads)} reads of email_communications for 6 messages; the "
+            "batch should not re-select each row after every commit"
+        )

@@ -140,7 +140,8 @@ def get_weekly_reminder_run_health(db) -> dict:
     captain still wants to know no reminder has gone out in over a week, and
     weeks_seen shows which weeks did send.
 
-    Under DRY_RUN the bulk run reaches only the dry-run recipient, so the
+    Under DRY_RUN the bulk run reaches only the dry-run recipient and records
+    its row "dry_run", which is never a run here; while DRY_RUN is on the
     verdict is "dry_run" whatever the rows say: no volunteer is being reminded.
     """
     from app.models import EmailCommunication as EmailCommunicationModel
@@ -152,6 +153,7 @@ def get_weekly_reminder_run_health(db) -> dict:
         .filter(
             EmailCommunicationModel.email_type == "weekly_reminder",
             EmailCommunicationModel.template_name == WEEKLY_REMINDER_BULK_TEMPLATE,
+            EmailCommunicationModel.status != "dry_run",
         )
         .all()
     )
