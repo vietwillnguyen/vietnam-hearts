@@ -389,6 +389,9 @@
                                     <span class="status-badge status-{{ email.status }}">
                                         {{ email.status }}
                                     </span>
+                                    {% if email.dry_run and email.status != "dry_run" %}
+                                    <span class="status-badge status-dry_run">dry run</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ email.sent_at }}</td>
                             </tr>

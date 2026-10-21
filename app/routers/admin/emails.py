@@ -20,6 +20,7 @@ from app.routers.admin.helpers import (
     WEEKLY_REMINDER_DRY_RUN_TEMPLATE,
     get_email_summary,
     get_weekly_reminder_run_health,
+    is_dry_run_email,
 )
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
@@ -62,10 +63,11 @@ def get_reminder_stats(db: Session = Depends(get_db)):
             .filter(EmailCommunicationModel.email_type == "weekly_reminder")
             .all()
         )
-        dry_run = sum(1 for e in reminder_emails if e.status == "dry_run")
-        total_sent = len(reminder_emails) - dry_run
-        successful = sum(1 for e in reminder_emails if e.status == "sent")
-        failed = sum(1 for e in reminder_emails if e.status == "failed")
+        real_emails = [e for e in reminder_emails if not is_dry_run_email(e)]
+        dry_run = len(reminder_emails) - len(real_emails)
+        total_sent = len(real_emails)
+        successful = sum(1 for e in real_emails if e.status == "sent")
+        failed = sum(1 for e in real_emails if e.status == "failed")
 
         four_weeks_ago = datetime.now() - timedelta(weeks=4)
         recent_emails = [
@@ -83,7 +85,7 @@ def get_reminder_stats(db: Session = Depends(get_db)):
                     "failed": 0,
                     "dry_run": 0,
                 }
-            if email.status == "dry_run":
+            if is_dry_run_email(email):
                 weekly_stats[week_key]["dry_run"] += 1
                 continue
             weekly_stats[week_key]["total"] += 1

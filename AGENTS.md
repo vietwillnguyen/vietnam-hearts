@@ -126,8 +126,10 @@ ignores the return value records a failure as "sent".
 Rows are committed PENDING before the batch is sent, and each outcome is committed as it is yielded, so a run cut off at the deadline leaves only its unsent remainder PENDING.
 The next run skips any volunteer with a `sent` row carrying the same subject (the subject holds the week's date range, so it is the run key), and `fail_abandoned_pending_reminders` resolves PENDING rows older than six hours to `failed`.
 Outcomes are paired to rows by position, never by address - `volunteers.email` has no unique constraint.
-Any weekly reminder written while DRY_RUN is on is recorded `dry_run`, never `sent`: the skipped sends `send_custom_email` logs, and also the bulk run's real send to the dry-run recipient, since no volunteer received it.
-Neither the resume skip nor run health counts a `dry_run` row as delivered, whatever DRY_RUN is set to later.
+A successful send made while DRY_RUN is on is recorded `dry_run`: the sends `send_custom_email` skips, and the bulk run's real send to the dry-run recipient, since no volunteer received it.
+A per-volunteer send to the dry-run recipient under DRY_RUN really goes out and is recorded `sent`.
+Every bulk row written under DRY_RUN also carries the dry-run template stamp below whatever its outcome, so a failed or abandoned one reads `failed` yet still counts as a dry run.
+`helpers.py::is_dry_run_email` (status `dry_run` or the stamp) is the one definition of a dry-run row; reminder-stats and the email log use it, and resume and run health never count such a row as delivered, whatever DRY_RUN is set to later.
 
 `GET /admin/weekly-reminder-health` reports the last bulk run, and `/admin/health` degrades on anything but `ok`, because Cloud Scheduler only keeps the last attempt.
 Bulk rows are the ones with `template_name` `weekly-reminder-email.html`; a manual per-volunteer send leaves it empty, so it can never stand in for a failed Sunday.

@@ -860,3 +860,35 @@ class TestDryRunRowsNeverReadAsARealRun:
 
         assert body["status"] == "stale"
         assert body["last_run"] is None
+
+
+class TestDryRunRowsStayOutOfReminderStats:
+    """A DRY_RUN test is never a real failure in the stats the captain reads."""
+
+    def test_a_failed_dry_run_bulk_send_is_not_counted_as_a_failure(
+        self, admin_client, test_db, smtp, sending_week, subscribed_volunteers
+    ):
+        captain, _ = subscribed_volunteers(2)
+        smtp.reject_every_send = True
+        with (
+            patch.object(ConfigHelper, "get_dry_run", return_value=True),
+            patch.object(
+                ConfigHelper, "get_dry_run_email_recipient", return_value=captain.email
+            ),
+        ):
+            admin_client.post("/admin/send-weekly-reminders")
+        (row,) = reminder_rows(test_db)
+        row.sent_at = datetime.now()
+        test_db.commit()
+
+        assert status_counts(test_db) == {"failed": 1}
+
+        stats = admin_client.get("/admin/reminder-stats").json()["statistics"]
+        logs = admin_client.get("/admin/email-logs").json()["emails"]
+
+        assert stats["failed"] == 0
+        assert stats["total_sent"] == 0
+        assert stats["dry_run"] == 1
+        assert all(week["failed"] == 0 for week in stats["weekly_stats"].values())
+        assert sum(week["dry_run"] for week in stats["weekly_stats"].values()) == 1
+        assert [(e["status"], e["dry_run"]) for e in logs] == [("failed", True)]

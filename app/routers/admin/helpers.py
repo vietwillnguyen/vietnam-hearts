@@ -73,6 +73,7 @@ def get_email_summary(communications):
                 "email_type": comm.email_type,
                 "subject": comm.subject,
                 "status": comm.status,
+                "dry_run": is_dry_run_email(comm),
                 "sent_at": comm.sent_at,
                 "delivered_at": comm.delivered_at,
             }
@@ -129,6 +130,14 @@ WEEKLY_REMINDER_BULK_TEMPLATE = "weekly-reminder-email.html"
 # A bulk run under DRY_RUN stamps this instead, on the row it writes, so the
 # row never reads as a real run whatever its outcome or later DRY_RUN setting.
 WEEKLY_REMINDER_DRY_RUN_TEMPLATE = "dry-run:weekly-reminder-email.html"
+
+
+def is_dry_run_email(comm) -> bool:
+    """Whether a row records a send made while DRY_RUN was on, whatever its outcome."""
+    return (
+        comm.status == "dry_run"
+        or comm.template_name == WEEKLY_REMINDER_DRY_RUN_TEMPLATE
+    )
 
 
 def get_weekly_reminder_run_health(db) -> dict:
