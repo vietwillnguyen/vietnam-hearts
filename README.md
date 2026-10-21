@@ -278,7 +278,7 @@ Each job stores its own copy of that key in an HTTP header, so a rotated key lea
 
 This script owns job *existence* and *credentials*.
 The job *cadence* is owned by the `CRON_*` settings and applied by `POST /admin/sync-cron-schedules`; the schedule and timezone in this script are only bootstrap defaults, sent when creating a job that does not exist yet.
-Re-running the script against existing jobs refreshes the `apikey` header, URI, and description but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
+Re-running the script against existing jobs refreshes the `apikey` header, URI, description, and attempt deadline (`SCHEDULER_ATTEMPT_DEADLINE`) but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
 
 ### `run.sh`
 Local application runner (no Docker):
