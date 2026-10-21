@@ -135,6 +135,13 @@ class TestLapsedVolunteerFlag:
     from someone who has genuinely stopped coming.
     """
 
+    @pytest.fixture(autouse=True)
+    def eight_week_window(self, test_db):
+        """Turn the recency window on, since it ships off until the backfill has run."""
+        from app.services.settings_service import set_setting
+
+        set_setting(test_db, "REMINDER_ACTIVE_WEEKS", "8")
+
     def _volunteer(self, db, name, email, **kwargs):
         from app.models import Volunteer as VolunteerModel
 
