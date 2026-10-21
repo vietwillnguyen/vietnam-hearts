@@ -22,7 +22,7 @@ from app.routers.admin.helpers import (
     get_weekly_reminder_run_health,
     is_dry_run_email,
 )
-from app.services.email_service import email_service
+from app.services.email_service import email_service, reminder_week_key
 from app.services.google_sheets import sheets_service
 from app.services.volunteer_activity import select_weekly_reminder_recipients
 from app.utils.config_helper import ConfigHelper
@@ -216,7 +216,10 @@ async def send_weekly_reminder_emails(request: Request):
                 email_service.build_class_table(block, teaching_days, current_monday)
                 for block in sheets_service.get_schedule_blocks(db)
             ]
-            subject = email_service.get_reminder_subject(current_monday, current_friday)
+            open_slots = sum(ct["open_slot_count"] for ct in class_tables)
+            subject = email_service.get_reminder_subject(
+                current_monday, current_friday, open_slots
+            )
 
             if not any(ct.get("needs_volunteers") for ct in class_tables):
                 logger.info(
@@ -249,12 +252,18 @@ async def send_weekly_reminder_emails(request: Request):
                 volunteers = [{"email": v.email, "name": v.name} for v in db_volunteers]
                 volunteer_lookup = {v.email: v for v in db_volunteers}
 
+            # Matched on the week, not the whole subject: the subject leads
+            # with the open-slot count, so a volunteer signing up between a run
+            # cut off at the deadline and its resume would change it - and an
+            # exact match would then re-email everyone the first attempt had
+            # already reached.
+            week_key = reminder_week_key(current_monday, current_friday)
             already_sent = {
                 row.recipient_email
                 for row in db.query(EmailCommunicationModel.recipient_email)
                 .filter(
                     EmailCommunicationModel.email_type == "weekly_reminder",
-                    EmailCommunicationModel.subject == subject,
+                    EmailCommunicationModel.subject.like(f"%{week_key}"),
                     EmailCommunicationModel.status == "sent",
                 )
                 .all()
@@ -318,16 +327,22 @@ async def send_weekly_reminder_emails(request: Request):
                     ),
                     status="PENDING",
                 )
-                email_communications.append((email_comm, html_body))
+                email_communications.append(
+                    (
+                        email_comm,
+                        html_body,
+                        email_service.get_one_click_unsubscribe_link(db_volunteer, db),
+                    )
+                )
 
             messages = [
-                (comm.recipient_email, comm.subject, html_body)
-                for comm, html_body in email_communications
+                (comm.recipient_email, comm.subject, html_body, unsubscribe_link)
+                for comm, html_body, unsubscribe_link in email_communications
             ]
-            for email_comm, _ in email_communications:
+            for email_comm, _, _ in email_communications:
                 db.add(email_comm)
             db.flush()
-            row_ids = [email_comm.id for email_comm, _ in email_communications]
+            row_ids = [email_comm.id for email_comm, _, _ in email_communications]
             db.commit()
 
             # One shared SMTP session for the batch. A connection per message

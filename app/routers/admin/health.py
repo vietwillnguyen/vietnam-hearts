@@ -28,6 +28,7 @@ from app.routers.admin.helpers import (
 )
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
+from app.services.volunteer_activity import select_lapsed_volunteers
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 from app.utils.timeout import timeout_handler
@@ -52,7 +53,8 @@ async def admin_dashboard(
             .options(joinedload(VolunteerModel.email_communications))
             .all()
         )
-        volunteer_data = get_volunteer_summary(volunteers)
+        lapsed_ids = {v["id"] for v in select_lapsed_volunteers(db)["volunteers"]}
+        volunteer_data = get_volunteer_summary(volunteers, lapsed_ids)
 
         communications = (
             db.query(EmailCommunicationModel)
@@ -150,8 +152,10 @@ async def comprehensive_health_check(db: Session = Depends(get_db)):
             health_status["status"] = "degraded"
 
         try:
+            # Exercising the formatter, not reporting a real week: the count
+            # is arbitrary and this subject is never sent.
             email_service.get_reminder_subject(
-                datetime.now().date(), datetime.now().date()
+                datetime.now().date(), datetime.now().date(), 1
             )
             health_status["services"]["email_service"] = "available"
         except Exception as e:

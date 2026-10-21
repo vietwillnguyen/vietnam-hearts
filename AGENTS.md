@@ -124,7 +124,10 @@ the batch sender, reports a refused send as `False` rather than raising, so a ca
 ignores the return value records a failure as "sent".
 
 Rows are committed PENDING before the batch is sent, and each outcome is committed as it is yielded, so a run cut off at the deadline leaves only its unsent remainder PENDING.
-The next run skips any volunteer with a `sent` row carrying the same subject (the subject holds the week's date range, so it is the run key), and `fail_abandoned_pending_reminders` resolves PENDING rows older than six hours to `failed`.
+The next run skips any volunteer with a `sent` row for the same week, and `fail_abandoned_pending_reminders` resolves PENDING rows older than six hours to `failed`.
+The run key is the subject's trailing `(dd/mm-dd/mm)`, read by `helpers.py::reminder_week_key_of` and built by `email_service.reminder_week_key` - not the whole subject, which now leads with an open-slot count that moves the moment anyone signs up.
+Matching the whole subject would make a resumed run whose count had changed re-email everyone the first attempt reached, and would split one run's rows into two in the health report.
+A subject with no trailing `(...)` keys on itself, so rows written before the subject changed still group as they did.
 Outcomes are paired to rows by position, never by address - `volunteers.email` has no unique constraint.
 A successful send made while DRY_RUN is on is recorded `dry_run`: the sends `send_custom_email` skips, and the bulk run's real send to the dry-run recipient, since no volunteer received it.
 A per-volunteer send to the dry-run recipient under DRY_RUN really goes out and is recorded `sent`.
@@ -154,6 +157,21 @@ Cloud Scheduler's default 180s attempt deadline is shorter than Cloud Run's 300s
 timeout, so it recorded failures for runs the service was still serving.
 `SCHEDULER_ATTEMPT_DEADLINE` in `scripts/deploy.config` pins the two together and is sent
 on both the create and update paths of `scripts/create-or-update-scheduler-jobs.sh`.
+
+## Who the weekly reminder goes to
+
+The sign-up form has no opt-in question, so every accepted volunteer is auto-subscribed; `volunteer_activity.select_weekly_reminder_recipients` adds a recency window (`REMINDER_ACTIVE_WEEKS`, default 8, `0` disables) on top of the subscription flags.
+Recency comes from `volunteers.last_active_at`, the Monday of the most recent schedule week the volunteer is signed up on, and NULL there means the name matcher has never placed them - so recency falls back to their sign-up date rather than reading as inactive.
+Fill it for existing volunteers with `scripts/backfill_volunteer_activity.py --include-hidden` (dry-run by default); the `review-and-sync` cron keeps it current from the visible weeks and reports the signup names it could not place.
+
+Attribution is name matching and nothing else, because the sheet records a name a volunteer typed and never an email.
+It is lossy: one live week held 21 distinct signup names of which 6 were nickname-only and 4 of those had no parenthetical alias, so roughly a fifth of *active* volunteers can be unplaceable.
+Two rules therefore hold throughout `volunteer_activity.py`, and both exist so an attribution error never unsubscribes someone: an ambiguous name credits every candidate rather than guessing one, and a name that cannot be placed is reported rather than dropped.
+For the same reason the captain ruled on 2026-10-22 that lapsed volunteers are only ever flagged for review - `GET /admin/volunteers/lapsed` and the dashboard's "Lapsed" badge - and never deactivated automatically.
+
+The reminder is list mail, so each message carries RFC 8058 `List-Unsubscribe` and `List-Unsubscribe-Post` headers pointing at `POST /unsubscribe/one-click`, which Gmail and Yahoo's bulk-sender rules expect and which renders their own unsubscribe control.
+That endpoint is POST-only on purpose (clients and scanners prefetch links), is idempotent because providers retry, and stops the weekly reminder *only* - the volunteer keeps announcements and their account.
+The link travels as the fourth element of each `send_html_batch` row rather than being looked up from the address, for the same reason outcomes are paired by position: `volunteers.email` has no unique constraint.
 
 ## Maintaining this file
 

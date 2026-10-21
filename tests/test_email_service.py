@@ -480,9 +480,9 @@ class TestWeeklyReminderSubject:
             mock_volunteer,
             [self._visible_tab("Schedule 27/07/2026")],
         )
-        assert "(27/07 to 02/08)" in subject
+        assert "(27/07-02/08)" in subject
         assert subject == EmailService().get_reminder_subject(
-            datetime(2026, 7, 27), datetime(2026, 7, 27) + timedelta(days=6)
+            datetime(2026, 7, 27), datetime(2026, 7, 27) + timedelta(days=6), 0
         )
 
     def test_subject_falls_back_to_the_shared_anchor_with_no_visible_tab(
@@ -495,9 +495,9 @@ class TestWeeklyReminderSubject:
 
         assert expected_monday == datetime(2026, 8, 3)
         subject = self._subject(test_db, mock_volunteer)
-        assert "(03/08 to 09/08)" in subject
+        assert "(03/08-09/08)" in subject
         assert subject == EmailService().get_reminder_subject(
-            expected_monday, expected_monday + timedelta(days=6)
+            expected_monday, expected_monday + timedelta(days=6), 0
         )
 
     def test_fallback_week_is_evaluated_in_the_org_timezone(
@@ -506,10 +506,10 @@ class TestWeeklyReminderSubject:
         # Same instant, different configured zone: a container-clock subject
         # would read the same either way.
         self._set_timezone(test_db, "UTC")
-        assert "(27/07 to 02/08)" in self._subject(test_db, mock_volunteer)
+        assert "(27/07-02/08)" in self._subject(test_db, mock_volunteer)
 
         self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
-        assert "(03/08 to 09/08)" in self._subject(test_db, mock_volunteer)
+        assert "(03/08-09/08)" in self._subject(test_db, mock_volunteer)
 
 
 class TestBareDayMonthLabels:

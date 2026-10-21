@@ -124,3 +124,64 @@ class TestCronFieldsRenderStoredValues:
 
         assert attr(tag, "value") == ""
         assert attr(tag, "placeholder") != "0 * * * *"
+
+
+class TestLapsedVolunteerFlag:
+    """The dashboard is where the captain reviews lapsed volunteers.
+
+    The 2026-10-22 ruling was to flag and never deactivate, so the flag has to
+    be visible somewhere the captain actually looks - and it has to say which
+    volunteers the matcher could not place, since that is a different problem
+    from someone who has genuinely stopped coming.
+    """
+
+    def _volunteer(self, db, name, email, **kwargs):
+        from app.models import Volunteer as VolunteerModel
+
+        volunteer = VolunteerModel(
+            name=name,
+            email=email,
+            is_active=True,
+            weekly_reminders_subscribed=True,
+            all_emails_subscribed=True,
+            **kwargs,
+        )
+        db.add(volunteer)
+        db.commit()
+        return volunteer
+
+    def test_a_lapsed_volunteer_is_flagged(self, admin_client, test_db):
+        from datetime import datetime, timedelta
+
+        self._volunteer(
+            test_db,
+            "Lapsed Volunteer",
+            "lapsed@example.com",
+            last_active_at=datetime.now() - timedelta(weeks=30),
+        )
+
+        html = admin_client.get("/admin/dashboard").text
+
+        assert ">Lapsed</span>" in html
+
+    def test_an_active_volunteer_is_not_flagged(self, admin_client, test_db):
+        from datetime import datetime, timedelta
+
+        self._volunteer(
+            test_db,
+            "Active Volunteer",
+            "active@example.com",
+            last_active_at=datetime.now() - timedelta(days=3),
+        )
+
+        html = admin_client.get("/admin/dashboard").text
+
+        assert ">Lapsed</span>" not in html
+        assert "Never matched" not in html
+
+    def test_a_volunteer_the_matcher_never_placed_says_so(self, admin_client, test_db):
+        self._volunteer(test_db, "Nickname Only", "nick@example.com")
+
+        html = admin_client.get("/admin/dashboard").text
+
+        assert "Never matched" in html

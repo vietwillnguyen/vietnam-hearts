@@ -325,6 +325,72 @@ def record_activity_from_schedule_sheets(
     return results
 
 
+def select_lapsed_volunteers(db: Session, now: datetime | None = None) -> dict:
+    """Subscribed volunteers the recency window is now excluding.
+
+    This is a report, not an action. The captain's ruling on 2026-10-22 was to
+    flag lapsed volunteers for review and never deactivate them automatically,
+    because attribution runs on name matching: of one live week's 21 signup
+    names, 6 were nickname-only and 4 of those had no alias to fall back on, so
+    an automatic sunset would retire volunteers who are still turning up every
+    week. Nothing here writes to a volunteer.
+
+    ``ever_matched_on_schedule`` is the distinction worth acting on. False
+    means the matcher has never placed this volunteer on the sheet at all, so
+    they are being measured from their sign-up date and the right fix is
+    usually their name record - not a conversation about whether they have
+    stopped volunteering.
+
+    Volunteers who unsubscribed themselves are left out: they are not being
+    dropped by this policy, and they are not the captain's to chase.
+    """
+    reference = now or datetime.now()
+    active_weeks = ConfigHelper.get_reminder_active_weeks(db)
+    cutoff = reference - timedelta(weeks=active_weeks)
+
+    if active_weeks <= 0:
+        return {"active_weeks": 0, "cutoff": None, "volunteers": []}
+
+    lapsed = (
+        db.query(VolunteerModel)
+        .filter(VolunteerModel.is_active.is_(True))
+        .filter(VolunteerModel.weekly_reminders_subscribed.is_(True))
+        .filter(
+            func.coalesce(VolunteerModel.last_active_at, VolunteerModel.created_at)
+            < cutoff
+        )
+        .order_by(VolunteerModel.name)
+        .all()
+    )
+
+    def weeks_since(volunteer: VolunteerModel) -> int | None:
+        measured_from = volunteer.last_active_at or volunteer.created_at
+        if measured_from is None:
+            return None
+        return (reference - measured_from).days // 7
+
+    return {
+        "active_weeks": active_weeks,
+        "cutoff": cutoff.date().isoformat(),
+        "volunteers": [
+            {
+                "id": volunteer.id,
+                "name": volunteer.name,
+                "email": volunteer.email,
+                "last_active_at": volunteer.last_active_at.isoformat()
+                if volunteer.last_active_at
+                else None,
+                "created_at": volunteer.created_at.isoformat()
+                if volunteer.created_at
+                else None,
+                "ever_matched_on_schedule": volunteer.last_active_at is not None,
+                "weeks_since_active": weeks_since(volunteer),
+            }
+            for volunteer in lapsed
+        ],
+    }
+
+
 def select_weekly_reminder_recipients(
     db: Session, now: datetime | None = None
 ) -> list[VolunteerModel]:

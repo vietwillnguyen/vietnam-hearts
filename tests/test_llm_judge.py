@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.models import Volunteer as VolunteerModel
+from app.services.email_service import email_service
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -726,6 +727,9 @@ class TestJudgePendingSubmissionsEndpoint:
                 "app.services.google_sheets.sheets_service.get_schedule_range",
                 return_value=[row[1:7] for row in CURRENT_WEEK_GRID],
             ),
+            # The volunteer created above has no confirmation email, so the
+            # sync step would try to send one.
+            patch.object(email_service, "send_confirmation_email", return_value=True),
             patch("time.sleep"),
         ):
             response = client.post("/admin/review-and-sync")

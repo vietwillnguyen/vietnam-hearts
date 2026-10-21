@@ -387,11 +387,24 @@ class TestWeeklyReminderSendHonoursTheWindow:
         app.dependency_overrides.pop(get_current_admin_user, None)
 
     def send(self, admin_client):
+        """Run the endpoint, returning (response, recipients handed to SMTP).
+
+        Stubs EmailService.send_html_batch rather than smtplib: these tests are
+        about recipient selection, and the batch sender's own delivery and
+        bookkeeping behaviour is pinned in test_weekly_reminder_delivery.py.
+        """
         from datetime import datetime as real_datetime
         from unittest.mock import patch
 
         from app.services.email_service import email_service
         from app.services.google_sheets import sheets_service
+
+        sent_to: list[str] = []
+
+        def fake_batch(messages):
+            for to_email, _subject, _html, _unsubscribe_link in messages:
+                sent_to.append(to_email)
+                yield to_email, None
 
         with (
             patch.object(sheets_service, "get_schedule_blocks", return_value=["block"]),
@@ -408,12 +421,13 @@ class TestWeeklyReminderSendHonoursTheWindow:
                     "table_html": "<table></table>",
                     "has_data": True,
                     "needs_volunteers": True,
+                    "open_slot_count": 2,
                 },
             ),
-            patch.object(email_service, "send_custom_email") as send_custom,
+            patch.object(email_service, "send_html_batch", side_effect=fake_batch),
         ):
             response = admin_client.post("/admin/send-weekly-reminders")
-        return response, [c.kwargs["to_email"] for c in send_custom.call_args_list]
+        return response, sent_to
 
     def test_a_lapsed_volunteer_gets_no_reminder(self, admin_client, test_db):
         lapsed = make_volunteer(test_db, "Lapsed One", email="lapsed@example.com")
@@ -449,3 +463,119 @@ class TestWeeklyReminderSendHonoursTheWindow:
             .count()
             == 0
         )
+
+
+class TestSelectLapsedVolunteers:
+    """Who the recency window has dropped, for the captain to look at.
+
+    The captain's ruling was explicit: flag only, never deactivate. So this is
+    a read - nothing here may change is_active or any subscription flag, and
+    the test below pins that.
+    """
+
+    now = datetime(2026, 10, 21)
+
+    def test_lists_a_volunteer_the_window_excludes(self, test_db):
+        lapsed = make_volunteer(test_db, "Lapsed One")
+        lapsed.last_active_at = self.now - timedelta(weeks=20)
+        active = make_volunteer(test_db, "Active One", email="a@example.com")
+        active.last_active_at = self.now - timedelta(days=2)
+        test_db.commit()
+
+        from app.services.volunteer_activity import select_lapsed_volunteers
+
+        result = select_lapsed_volunteers(test_db, now=self.now)
+        assert [v["email"] for v in result["volunteers"]] == [lapsed.email]
+
+    def test_says_whether_the_sheet_ever_placed_them(self, test_db):
+        # The distinction the captain needs: someone who used to turn up and
+        # stopped is a different conversation from someone whose name the
+        # matcher has never been able to place.
+        seen = make_volunteer(test_db, "Once Seen")
+        seen.last_active_at = self.now - timedelta(weeks=20)
+        seen.created_at = self.now - timedelta(weeks=30)
+        never = make_volunteer(test_db, "Never Placed", email="n@example.com")
+        never.created_at = self.now - timedelta(weeks=30)
+        test_db.commit()
+
+        from app.services.volunteer_activity import select_lapsed_volunteers
+
+        by_email = {
+            v["email"]: v
+            for v in select_lapsed_volunteers(test_db, now=self.now)["volunteers"]
+        }
+        assert by_email[seen.email]["ever_matched_on_schedule"] is True
+        assert by_email[never.email]["ever_matched_on_schedule"] is False
+
+    def test_reports_the_policy_it_applied(self, test_db):
+        from app.services.volunteer_activity import select_lapsed_volunteers
+
+        result = select_lapsed_volunteers(test_db, now=self.now)
+        assert result["active_weeks"] == 8
+        assert result["cutoff"] == (self.now - timedelta(weeks=8)).date().isoformat()
+
+    def test_leaves_an_already_unsubscribed_volunteer_out(self, test_db):
+        # They are not being dropped by the recency window; they chose this.
+        opted_out = make_volunteer(
+            test_db, "Opted Out", weekly_reminders_subscribed=False
+        )
+        opted_out.last_active_at = self.now - timedelta(weeks=20)
+        test_db.commit()
+
+        from app.services.volunteer_activity import select_lapsed_volunteers
+
+        assert select_lapsed_volunteers(test_db, now=self.now)["volunteers"] == []
+
+    def test_changes_nothing_about_the_volunteer(self, test_db):
+        lapsed = make_volunteer(test_db, "Lapsed Two")
+        lapsed.last_active_at = self.now - timedelta(weeks=52)
+        test_db.commit()
+
+        from app.services.volunteer_activity import select_lapsed_volunteers
+
+        select_lapsed_volunteers(test_db, now=self.now)
+
+        test_db.refresh(lapsed)
+        assert lapsed.is_active is True
+        assert lapsed.weekly_reminders_subscribed is True
+        assert lapsed.all_emails_subscribed is True
+
+    def test_is_empty_when_the_filter_is_off(self, test_db):
+        from app.services.settings_service import set_setting
+        from app.services.volunteer_activity import select_lapsed_volunteers
+
+        lapsed = make_volunteer(test_db, "Long Gone")
+        lapsed.last_active_at = self.now - timedelta(weeks=52)
+        test_db.commit()
+        set_setting(test_db, "REMINDER_ACTIVE_WEEKS", "0")
+
+        result = select_lapsed_volunteers(test_db, now=self.now)
+        assert result["volunteers"] == []
+        assert result["active_weeks"] == 0
+
+
+class TestLapsedVolunteersEndpoint:
+    @pytest.fixture
+    def admin_client(self, client):
+        from app.dependencies.auth import get_current_admin_user
+        from app.main import app
+
+        app.dependency_overrides[get_current_admin_user] = lambda: {
+            "id": "test-admin",
+            "email": "admin@vietnamhearts.org",
+        }
+        yield client
+        app.dependency_overrides.pop(get_current_admin_user, None)
+
+    def test_reports_the_lapsed_volunteers(self, admin_client, test_db):
+        lapsed = make_volunteer(test_db, "Lapsed Three")
+        lapsed.last_active_at = datetime.now() - timedelta(weeks=30)
+        test_db.commit()
+
+        response = admin_client.get("/admin/volunteers/lapsed")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "success"
+        assert [v["email"] for v in body["volunteers"]] == [lapsed.email]
+        assert body["active_weeks"] == 8

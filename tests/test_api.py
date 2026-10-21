@@ -31,8 +31,8 @@ def _record_batch(recorder):
 
     def send_html_batch(messages):
         def run():
-            for to_email, subject, html_body in messages:
-                recorder.append((to_email, subject, html_body))
+            for to_email, subject, html_body, unsubscribe_link in messages:
+                recorder.append((to_email, subject, html_body, unsubscribe_link))
                 yield to_email, None
 
         return run()
@@ -453,6 +453,7 @@ class TestSendWeeklyRemindersSkipLogic:
                     "table_html": "<table></table>",
                     "has_data": True,
                     "needs_volunteers": False,
+                    "open_slot_count": 0,
                 },
             ),
             patch.object(email_service, "send_custom_email") as mock_send,
@@ -481,6 +482,7 @@ class TestSendWeeklyRemindersSkipLogic:
                     "table_html": "<table></table>",
                     "has_data": True,
                     "needs_volunteers": True,
+                    "open_slot_count": 2,
                 },
             ),
             patch.object(
@@ -493,4 +495,4 @@ class TestSendWeeklyRemindersSkipLogic:
         body = response.json()
         assert body["status"] == "success"
         assert body["details"] == {"sent": 1, "failed": 0, "skipped_already_sent": 0}
-        assert [to_email for to_email, _, _ in sent] == [mock_volunteer.email]
+        assert [to_email for to_email, *_ in sent] == [mock_volunteer.email]

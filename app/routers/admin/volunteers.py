@@ -17,6 +17,7 @@ from app.models import (
 from app.routers.admin.helpers import get_volunteer_summary
 from app.schemas import Volunteer
 from app.services.email_service import email_service
+from app.services.volunteer_activity import select_lapsed_volunteers
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 
@@ -55,6 +56,32 @@ def view_volunteers(db: Session = Depends(get_db)):
 def list_active_volunteers(db: Session = Depends(get_db)):
     """Get only active volunteers"""
     return db.query(VolunteerModel).filter(VolunteerModel.is_active.is_(True)).all()
+
+
+@router.get(
+    "/volunteers/lapsed",
+    summary="Volunteers the weekly reminder's recency window now excludes",
+)
+def list_lapsed_volunteers(db: Session = Depends(get_db)):
+    """Report subscribed volunteers who have aged out of the reminder.
+
+    Review only - this never changes a volunteer. Check
+    `ever_matched_on_schedule` first: False means the schedule-sheet name
+    matcher has never placed them, so the fix is usually their name record
+    rather than a conversation about whether they still volunteer.
+    """
+    try:
+        result = select_lapsed_volunteers(db)
+        return {
+            "status": "success",
+            "total_lapsed": len(result["volunteers"]),
+            **result,
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch lapsed volunteers: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch lapsed volunteers: {str(e)}"
+        ) from e
 
 
 @router.get("/volunteers/announcement-recipients")
