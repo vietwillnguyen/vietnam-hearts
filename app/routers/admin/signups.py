@@ -449,7 +449,7 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
 
 
 @router.post("/sync-volunteers")
-async def sync_volunteers(request: Request, db: Session = Depends(get_db)):
+def sync_volunteers(request: Request, db: Session = Depends(get_db)):
     """Sync volunteers from Google Sheets and process new signups"""
     try:
         result = get_signup_form_submissions(db=db, process_new=True)

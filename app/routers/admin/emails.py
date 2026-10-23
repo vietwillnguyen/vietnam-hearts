@@ -116,7 +116,7 @@ def get_reminder_stats(db: Session = Depends(get_db)):
 
 
 @router.post("/send-confirmation-emails")
-async def send_confirmation_emails(request: Request, db: Session = Depends(get_db)):
+def send_confirmation_emails(request: Request, db: Session = Depends(get_db)):
     """Bulk send confirmation emails to new volunteers"""
     try:
         email_service.send_confirmation_emails(db)
@@ -183,7 +183,7 @@ def weekly_reminder_health(db: Session = Depends(get_db)):
 
 
 @router.post("/send-weekly-reminders")
-async def send_weekly_reminder_emails(request: Request):
+def send_weekly_reminder_emails(request: Request):
     """Send weekly reminder emails to recently active subscribed volunteers.
 
     Recipients come from select_weekly_reminder_recipients, which adds a
