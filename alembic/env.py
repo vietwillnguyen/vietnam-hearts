@@ -11,9 +11,11 @@ from app.models import Base
 config = context.config
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# The app runs migrations from init_db() at startup, after every app logger
+# already exists, and fileConfig's default disables all existing loggers -
+# which silenced the app in Cloud Logging for everything after startup.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Use the app's runtime DATABASE_URL instead of the static value in
 # alembic.ini, so migrations always target whatever database the app itself
