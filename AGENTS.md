@@ -91,6 +91,9 @@ set, so Cloud Logging parses severity), a rotating file under `logs/`, and - unl
 Anything logged therefore lands in Cloud Logging (~30-day default retention) *and* in the
 database the admin dashboard reads, so treat a log line as published to both.
 
+Startup runs `alembic upgrade head`, and `alembic/env.py` must keep `disable_existing_loggers=False` on its `fileConfig` call.
+Without it every app logger created before the migration is disabled, and production logs nothing after the startup banner.
+
 `CredentialRedactingFilter` rewrites a record so a URL password, a credential-shaped query
 parameter, a Bearer token, or an Authorization value is redacted to `***` even if a call
 site forgets. `install_credential_redaction()` runs on import of `logging_config` and puts
