@@ -3,6 +3,7 @@ Google Sheets Integration Service
 """
 
 import ssl
+import threading
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -193,6 +194,39 @@ class GoogleSheetsService:
         self._sheet = None
         self._initialized = False
         logger.info("Google Sheets service created")
+
+    # The built client sends every request through one httplib2.Http, which
+    # is not thread-safe, and this service is a process-wide singleton used
+    # from FastAPI's threadpool and the event loop thread at once. Sharing it
+    # is what failed rotations with "'NoneType' object has no attribute
+    # 'read'" whenever review-and-sync ran in the same minute. Each thread
+    # therefore builds and keeps its own client.
+    def _thread_state(self) -> threading.local:
+        return self.__dict__.setdefault("_local", threading.local())
+
+    @property
+    def _service(self) -> Any:
+        return getattr(self._thread_state(), "service", None)
+
+    @_service.setter
+    def _service(self, value: Any) -> None:
+        self._thread_state().service = value
+
+    @property
+    def _sheet(self) -> Any:
+        return getattr(self._thread_state(), "sheet", None)
+
+    @_sheet.setter
+    def _sheet(self, value: Any) -> None:
+        self._thread_state().sheet = value
+
+    @property
+    def _initialized(self) -> bool:
+        return getattr(self._thread_state(), "initialized", False)
+
+    @_initialized.setter
+    def _initialized(self, value: bool) -> None:
+        self._thread_state().initialized = value
 
     def _validate_config(self, db: Session | None = None):
         """Validate Google Sheets configuration"""
