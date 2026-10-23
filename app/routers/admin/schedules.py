@@ -58,7 +58,7 @@ def get_schedule_status(db: Session = Depends(get_db)):
 
 
 @router.post("/rotate-schedule")
-async def rotate_schedule_sheets(
+def rotate_schedule_sheets(
     request: Request,
     display_weeks: int = Query(
         None, description="Number of weeks to display (1-12), overrides default setting"
