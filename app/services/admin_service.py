@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from supabase import create_client
 
 from app.config import SUPABASE_SECRET_KEY, SUPABASE_URL
-from app.utils.logging_config import get_logger
+from app.utils.logging_config import get_logger, mask_email
 
 logger = get_logger("admin_service")
 
@@ -174,7 +174,7 @@ class AdminService:
             )
 
             if existing.data:
-                logger.warning(f"Admin user {email} already exists")
+                logger.warning(f"Admin user {mask_email(email)} already exists")
                 return False
 
             # Add new admin user
@@ -187,14 +187,14 @@ class AdminService:
                 timeout=10.0,
             )
 
-            logger.info(f"Added new admin user: {email} with role: {role}")
+            logger.info(f"Added new admin user: {mask_email(email)} with role: {role}")
             return True
 
         except TimeoutError:
-            logger.error(f"Timeout adding admin user {email}")
+            logger.error(f"Timeout adding admin user {mask_email(email)}")
             return False
         except Exception as e:
-            logger.error(f"Failed to add admin user {email}: {e}")
+            logger.error(f"Failed to add admin user {mask_email(email)}: {e}")
             return False
 
     async def remove_admin_user(self, email: str, removed_by_email: str) -> bool:
@@ -235,14 +235,14 @@ class AdminService:
                 timeout=10.0,
             )
 
-            logger.info(f"Deactivated admin user: {email}")
+            logger.info(f"Deactivated admin user: {mask_email(email)}")
             return True
 
         except TimeoutError:
-            logger.error(f"Timeout removing admin user {email}")
+            logger.error(f"Timeout removing admin user {mask_email(email)}")
             return False
         except Exception as e:
-            logger.error(f"Failed to remove admin user {email}: {e}")
+            logger.error(f"Failed to remove admin user {mask_email(email)}: {e}")
             return False
 
     async def delete_admin_user(self, email: str, deleted_by_email: str) -> bool:
@@ -278,14 +278,14 @@ class AdminService:
                 timeout=10.0,
             )
 
-            logger.info(f"Permanently deleted admin user: {email}")
+            logger.info(f"Permanently deleted admin user: {mask_email(email)}")
             return True
 
         except TimeoutError:
-            logger.error(f"Timeout deleting admin user {email}")
+            logger.error(f"Timeout deleting admin user {mask_email(email)}")
             return False
         except Exception as e:
-            logger.error(f"Failed to delete admin user {email}: {e}")
+            logger.error(f"Failed to delete admin user {mask_email(email)}: {e}")
             return False
 
     async def update_admin_role(
@@ -328,14 +328,14 @@ class AdminService:
                 timeout=10.0,
             )
 
-            logger.info(f"Updated admin user {email} role to: {new_role}")
+            logger.info(f"Updated admin user {mask_email(email)} role to: {new_role}")
             return True
 
         except TimeoutError:
-            logger.error(f"Timeout updating admin role for {email}")
+            logger.error(f"Timeout updating admin role for {mask_email(email)}")
             return False
         except Exception as e:
-            logger.error(f"Failed to update admin role for {email}: {e}")
+            logger.error(f"Failed to update admin role for {mask_email(email)}: {e}")
             return False
 
 

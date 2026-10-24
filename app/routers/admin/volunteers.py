@@ -250,7 +250,7 @@ def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
             )
         )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} resubscribed to all emails by admin")
+        logger.info(f"Volunteer id={volunteer.id} resubscribed to all emails by admin")
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been resubscribed to all emails",
@@ -291,7 +291,7 @@ def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db
         )
         db.commit()
         logger.info(
-            f"Volunteer {volunteer.email} resubscribed to weekly reminders by admin"
+            f"Volunteer id={volunteer.id} resubscribed to weekly reminders by admin"
         )
         return {
             "status": "success",
@@ -340,7 +340,7 @@ def deactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
             )
         )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} deactivated by admin")
+        logger.info(f"Volunteer id={volunteer.id} deactivated by admin")
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been deactivated",
@@ -387,7 +387,7 @@ def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
             )
         )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} reactivated by admin")
+        logger.info(f"Volunteer id={volunteer.id} reactivated by admin")
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been reactivated",
@@ -440,7 +440,7 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
             email_type="weekly_reminder",
         )
         if success:
-            logger.info(f"Weekly reminder email sent to {volunteer.email}")
+            logger.info(f"Weekly reminder email sent to id={volunteer.id}")
             return {
                 "status": "success",
                 "message": f"Weekly reminder email sent to {volunteer.email}",

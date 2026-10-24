@@ -94,9 +94,10 @@ database the admin dashboard reads, so treat a log line as published to both.
 Startup runs `alembic upgrade head`, and `alembic/env.py` must keep `disable_existing_loggers=False` on its `fileConfig` call.
 Without it every app logger created before the migration is disabled, and production logs nothing after the startup banner.
 
-`CredentialRedactingFilter` rewrites a record so a URL password, a credential-shaped query
-parameter, a Bearer token, or an Authorization value is redacted to `***` even if a call
-site forgets. `install_credential_redaction()` runs on import of `logging_config` and puts
+Log identifiers and counts (`volunteer id=`, `rows=`, `cols=`), never addresses, names, phone numbers, cell values, request bodies or tokens; `mask_email` gives the `n***@domain` form when only an address identifies the subject.
+`CredentialRedactingFilter` is the safety net when a call site forgets: it masks URL passwords, credential-shaped query parameters and name=value pairs, Bearer tokens, Authorization values, JWTs, Google/Supabase API keys, email addresses and phone numbers, in msg, args and the rendered traceback.
+Sentry runs with `send_default_pii=False` and `sentry_config.scrub_event` applies the same redaction to every event.
+`install_credential_redaction()` runs on import of `logging_config` and puts
 it on every sink in the process: `logging.lastResort`, the root logger, the handlers already
 on any logger (uvicorn's access and error handlers exist before the app is imported), and
 any handler added later via a one-time `Logger.addHandler` wrap. It redacts msg and each str

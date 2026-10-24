@@ -265,10 +265,11 @@ def record_week_activity(
 
     if unmatched:
         logger.warning(
-            "Schedule week %s: %d signup name(s) matched no volunteer record: %s",
+            # Names stay out of the log; the endpoint response lists them for
+            # the admin who has to fix the records.
+            "Schedule week %s: %d signup name(s) matched no volunteer record",
             week_monday.date().isoformat(),
             len(unmatched),
-            ", ".join(sorted(unmatched)),
         )
 
     return ActivityScanResult(matched=len(stamped), unmatched=sorted(unmatched))

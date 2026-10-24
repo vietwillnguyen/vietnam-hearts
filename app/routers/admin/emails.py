@@ -284,7 +284,7 @@ def send_weekly_reminder_emails(request: Request):
                 db_volunteer = volunteer_lookup.get(volunteer["email"])
                 if not db_volunteer:
                     logger.warning(
-                        f"Volunteer {volunteer['email']} not found in database, skipping"
+                        "A selected reminder recipient has no volunteer record, skipping"
                     )
                     continue
 
