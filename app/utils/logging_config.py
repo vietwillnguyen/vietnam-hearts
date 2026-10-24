@@ -116,26 +116,75 @@ _HEADER_AUTHORIZATION_RE = re.compile(
     r"(?P<prefix>\bauthorization:[ \t]*)[^\r\n]+", re.IGNORECASE
 )
 
+# api_key=..., "refresh_token": "...", password: ... - the value after any
+# credential-shaped name in free text, a dict repr or JSON.
+_SENSITIVE_PAIR_RE = re.compile(
+    r"(?P<prefix>\b[\w.-]*(?:token|secret|password|passwd|api_?key|apikey)[\w.-]*"
+    r"['\"]?\s*[:=]\s*['\"]?)(?!\*\*\*)[^\s'\",&}\]]+",
+    re.IGNORECASE,
+)
+
+# Credentials recognizable by shape alone, wherever they appear.
+_TOKEN_SHAPE_RE = re.compile(
+    r"(?P<prefix>)(?:"
+    r"\beyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,}"  # JWT (Supabase access tokens)
+    r"|\bAIza[\w-]{30,}"  # Google API key
+    r"|\bsb_(?:secret|publishable)_[\w-]{10,}"  # Supabase API key
+    r")"
+)
+
+# nguyen.van.an@example.com -> n***@example.com: the first letter and the
+# domain are enough to tell two addresses apart while debugging.
+_EMAIL_RE = re.compile(
+    r"(?P<prefix>[A-Za-z0-9])[A-Za-z0-9._%+-]*"
+    r"(?=@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})"
+)
+
+# Phone numbers in the shapes volunteers actually type: international (+84 ...),
+# Vietnamese local (a leading 0, 10-11 digits) and North American 3-3-4. A bare
+# digit run without a leading 0 or + is deliberately left alone - sheet ids,
+# row counts and epoch-like numbers look exactly like that.
+_PHONE_RE = re.compile(
+    r"(?P<prefix>)(?:"
+    r"(?<![\w+])\+\d{1,3}(?:[\s.-]?\(?\d{1,4}\)?){2,5}(?!\w)"
+    r"|(?<![\w.:/-])0\d{2,3}[\s.-]?\d{3}[\s.-]?\d{3,4}(?![\w.:/-])"
+    r"|(?<![\w.:/-])\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?![\w.:/-])"
+    r")"
+)
+
 _REDACTIONS = (
     _URL_CREDENTIALS_RE,
     _SENSITIVE_QUERY_RE,
     _BEARER_RE,
     _QUOTED_AUTHORIZATION_RE,
     _HEADER_AUTHORIZATION_RE,
+    _SENSITIVE_PAIR_RE,
+    _TOKEN_SHAPE_RE,
+    _EMAIL_RE,
+    _PHONE_RE,
 )
 
 
 def redact_credentials(text: str) -> str:
-    """Strip credentials out of a string bound for a log sink.
+    """Strip credentials and personal data out of a string bound for a log sink.
 
     Covers a password embedded in a connection URL, a credential passed as a
-    query parameter, a Bearer token, and an Authorization header value.
+    query parameter or a name=value pair, a Bearer token, an Authorization
+    header value, JWT and Google/Supabase API keys, email addresses (kept as
+    first letter plus domain) and phone numbers.
     Idempotent, so it is safe to apply at a call site and again in the
     logging filter.
     """
     for pattern in _REDACTIONS:
         text = pattern.sub(lambda m: f"{m.group('prefix')}{REDACTED}", text)
     return text
+
+
+def mask_email(address: str | None) -> str:
+    """n***@domain for a log line that has to say which address it means."""
+    if not address:
+        return "unknown"
+    return _EMAIL_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}", address)
 
 
 def _redact_args(args):
@@ -173,6 +222,7 @@ class CredentialRedactingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
+            _redact_exception_text(record)
             if _is_clean(record):
                 return True
             redacted = redact_credentials(record.getMessage())
@@ -185,6 +235,22 @@ class CredentialRedactingFilter(logging.Filter):
         except Exception:  # noqa: BLE001 - logging must never raise
             pass
         return True
+
+
+def _redact_exception_text(record: logging.LogRecord) -> None:
+    """Render the traceback once, redacted, where every formatter will reuse it.
+
+    A traceback is formatted by each sink after the filters have run, from
+    record.exc_info, so an exception message carrying an address would
+    otherwise bypass msg/args redaction entirely. logging.Formatter reuses
+    record.exc_text when it is already set, and so does CloudRunJSONFormatter.
+    """
+    if record.exc_info and not record.exc_text:
+        record.exc_text = logging.Formatter().formatException(record.exc_info)
+    if record.exc_text:
+        record.exc_text = redact_credentials(record.exc_text)
+    if record.stack_info:
+        record.stack_info = redact_credentials(record.stack_info)
 
 
 # Stateless, so one instance is shared by every logger and handler it guards.
@@ -245,8 +311,11 @@ class CloudRunJSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         message = record.getMessage()
-        if record.exc_info:
-            message = f"{message}\n{self.formatException(record.exc_info)}"
+        if record.exc_info or record.exc_text:
+            # exc_text is the redacted rendering CredentialRedactingFilter
+            # leaves on the record; fall back for a record no filter saw.
+            exc_text = record.exc_text or self.formatException(record.exc_info)
+            message = f"{message}\n{exc_text}"
         return json.dumps(
             {
                 "severity": record.levelname,

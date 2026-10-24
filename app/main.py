@@ -101,7 +101,8 @@ async def lifespan(app: FastAPI):
             db = next(get_db())
             logger.info(f"- DRY_RUN={ConfigHelper.get_dry_run(db)}")
             logger.info(
-                f"- DRY_RUN_EMAIL_RECIPIENT={ConfigHelper.get_dry_run_email_recipient(db)}"
+                "- DRY_RUN_EMAIL_RECIPIENT="
+                f"{'set' if ConfigHelper.get_dry_run_email_recipient(db) else 'unset'}"
             )
         except Exception as e:
             logger.warning(f"Could not read dry run settings from database: {e}")

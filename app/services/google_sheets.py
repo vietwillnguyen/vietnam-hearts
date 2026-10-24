@@ -333,10 +333,12 @@ class GoogleSheetsService:
                 .execute()
             )
             values = result.get("values", [])
+            # Row and column counts only: the cell values are volunteer names
+            # and signup details, which must not be copied into the logs.
             logger.info(
-                f"Fetched range {range_name} from sheet {sheet_id} with {len(values)} rows"
+                f"Fetched range {range_name} from sheet {sheet_id}: "
+                f"rows={len(values)} cols={max((len(r) for r in values), default=0)}"
             )
-            logger.info(f"Values: {values}")
             return values
 
         try:
@@ -456,7 +458,7 @@ class GoogleSheetsService:
             # Process each row into a dictionary
             submissions = []
             skipped_count = 0
-            for cells in values:
+            for position, cells in enumerate(values, start=1):
                 row = [cell.get("formattedValue", "") for cell in cells]
                 # Pad row with empty strings if it's shorter than headers
                 row_data = row + [""] * (len(headers) - len(row))
@@ -466,7 +468,7 @@ class GoogleSheetsService:
                 email_address = submission.get("email_address", "").strip()
                 if not email_address:
                     logger.debug(
-                        f"Skipping submission with empty email address: {submission}"
+                        f"Skipping submission {position} of the range: empty email address"
                     )
                     skipped_count += 1
                     continue
@@ -484,7 +486,7 @@ class GoogleSheetsService:
 
                 if not has_meaningful_data:
                     logger.debug(
-                        f"Skipping submission with no meaningful data: {submission}"
+                        f"Skipping submission {position} of the range: no meaningful data"
                     )
                     skipped_count += 1
                     continue

@@ -80,7 +80,7 @@ async def chat(
 ):
     try:
         # Log interaction for monitoring (without user info)
-        logger.info(f"Public chat request: {request.message[:50]}...")
+        logger.info(f"Public chat request ({len(request.message)} chars)")
 
         result = await bot_service.chat(request.message, request.user_context)
 
@@ -148,7 +148,7 @@ async def sync_documents(
 ):
     try:
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} syncing document {request.doc_id}"
+            f"Admin id={current_admin.get('id', 'unknown')} syncing document {request.doc_id}"
         )
 
         result = await bot_service.sync_documents(request.doc_id, request.metadata)
@@ -170,7 +170,7 @@ async def sync_documents(
             raise HTTPException(status_code=400, detail=result["message"])
 
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} successfully synced document {request.doc_id}"
+            f"Admin id={current_admin.get('id', 'unknown')} successfully synced document {request.doc_id}"
         )
 
         return SyncDocumentResponse(
@@ -185,7 +185,7 @@ async def sync_documents(
         raise
     except Exception as e:
         logger.error(
-            f"Document sync error for admin {current_admin.get('email', 'unknown')}: {e}"
+            f"Document sync error for admin id={current_admin.get('id', 'unknown')}: {e}"
         )
         raise HTTPException(status_code=500, detail="Document sync failed") from e
 
@@ -198,19 +198,19 @@ async def get_knowledge_status(
 ):
     try:
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} checking knowledge status"
+            f"Admin id={current_admin.get('id', 'unknown')} checking knowledge status"
         )
 
         status = await bot_service.get_knowledge_status()
 
         logger.info(
-            f"Knowledge status retrieved for admin {current_admin.get('email', 'unknown')}: {status.get('documents_count', 0)} documents"
+            f"Knowledge status retrieved for admin id={current_admin.get('id', 'unknown')}: {status.get('documents_count', 0)} documents"
         )
 
         return KnowledgeStatusResponse(**status)
     except Exception as e:
         logger.error(
-            f"Failed to get knowledge status for admin {current_admin.get('email', 'unknown')}: {e}"
+            f"Failed to get knowledge status for admin id={current_admin.get('id', 'unknown')}: {e}"
         )
         raise HTTPException(
             status_code=500, detail="Failed to get knowledge status"
@@ -226,13 +226,13 @@ async def list_available_documents(
 ):
     try:
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} listing documents (folder: {folder_id})"
+            f"Admin id={current_admin.get('id', 'unknown')} listing documents (folder: {folder_id})"
         )
 
         docs = await bot_service.list_available_docs(folder_id)
 
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} retrieved {len(docs)} documents"
+            f"Admin id={current_admin.get('id', 'unknown')} retrieved {len(docs)} documents"
         )
 
         return {
@@ -243,7 +243,7 @@ async def list_available_documents(
         }
     except Exception as e:
         logger.error(
-            f"Failed to list documents for admin {current_admin.get('email', 'unknown')}: {e}"
+            f"Failed to list documents for admin id={current_admin.get('id', 'unknown')}: {e}"
         )
         raise HTTPException(status_code=500, detail="Failed to list documents") from e
 
@@ -260,7 +260,7 @@ async def inspect_knowledge_base_chunks(
     """
     try:
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} inspecting knowledge base chunks (limit: {limit})"
+            f"Admin id={current_admin.get('id', 'unknown')} inspecting knowledge base chunks (limit: {limit})"
         )
 
         # Get the knowledge service from bot service
@@ -296,7 +296,7 @@ async def inspect_knowledge_base_chunks(
             formatted_chunks.append(formatted_chunk)
 
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} retrieved {len(formatted_chunks)} chunks from knowledge base"
+            f"Admin id={current_admin.get('id', 'unknown')} retrieved {len(formatted_chunks)} chunks from knowledge base"
         )
 
         return {
@@ -309,7 +309,7 @@ async def inspect_knowledge_base_chunks(
 
     except Exception as e:
         logger.error(
-            f"Failed to inspect knowledge base chunks for admin {current_admin.get('email', 'unknown')}: {e}"
+            f"Failed to inspect knowledge base chunks for admin id={current_admin.get('id', 'unknown')}: {e}"
         )
         raise HTTPException(
             status_code=500, detail="Failed to inspect knowledge base chunks"
@@ -331,7 +331,7 @@ async def test_knowledge_base_search(
     try:
         query = request.message
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} testing knowledge base search: '{query}'"
+            f"Admin id={current_admin.get('id', 'unknown')} testing knowledge base search ({len(query)} chars)"
         )
 
         # Get the knowledge service from bot service
@@ -362,7 +362,7 @@ async def test_knowledge_base_search(
             formatted_results.append(formatted_chunk)
 
         logger.info(
-            f"Admin {current_admin.get('email', 'unknown')} search test found {len(formatted_results)} relevant chunks"
+            f"Admin id={current_admin.get('id', 'unknown')} search test found {len(formatted_results)} relevant chunks"
         )
 
         return {
@@ -377,7 +377,7 @@ async def test_knowledge_base_search(
 
     except Exception as e:
         logger.error(
-            f"Failed to test knowledge base search for admin {current_admin.get('email', 'unknown')}: {e}"
+            f"Failed to test knowledge base search for admin id={current_admin.get('id', 'unknown')}: {e}"
         )
         raise HTTPException(
             status_code=500, detail="Failed to test knowledge base search"

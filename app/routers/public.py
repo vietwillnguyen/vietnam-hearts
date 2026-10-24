@@ -99,7 +99,7 @@ def unsubscribe_volunteer_page(
         )
 
         if not volunteer:
-            logger.warning(f"Invalid unsubscribe token attempted: {token}")
+            logger.warning(f"Invalid unsubscribe token attempted (length={len(token)})")
             return templates.TemplateResponse(
                 request,
                 "unsubscribe/error.html",
@@ -219,7 +219,7 @@ def update_email_preferences(
         )
 
         if not volunteer:
-            logger.warning(f"Invalid unsubscribe token attempted: {token}")
+            logger.warning(f"Invalid unsubscribe token attempted (length={len(token)})")
             return templates.TemplateResponse(
                 request,
                 "unsubscribe/error.html",
@@ -288,7 +288,7 @@ def update_email_preferences(
         db.commit()
 
         logger.info(
-            f"Volunteer {volunteer.email} updated preferences to {unsubscribe_type}"
+            f"Volunteer id={volunteer.id} updated preferences to {unsubscribe_type}"
         )
 
         # Determine display status after update

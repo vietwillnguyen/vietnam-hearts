@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import time
+from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from google import genai
@@ -194,18 +195,22 @@ def get_signup_form_submissions(
             )
 
             if non_accepted_submissions > 0:
-                logger.info(
-                    f"Skipped non-accepted: {[{'email': s.get('email_address'), 'status': s.get('applicant_status')} for s in submissions if s.get('applicant_status', '').upper() != 'ACCEPTED']}"
+                skipped_statuses = Counter(
+                    (s.get("applicant_status") or "BLANK").upper()
+                    for s in submissions
+                    if s.get("applicant_status", "").upper() != "ACCEPTED"
                 )
+                logger.info(f"Skipped non-accepted by status: {dict(skipped_statuses)}")
 
             logger.info(f"Found {len(new_submissions)} new submissions to process")
 
-            for submission in new_submissions:
+            for index, submission in enumerate(new_submissions):
                 try:
                     new_volunteers.append(create_new_volunteer_object(submission))
                 except Exception as e:
                     logger.error(
-                        f"Failed to process submission for {submission.get('email_address', 'unknown')}: {str(e)}"
+                        f"Failed to process new submission {index + 1}/{len(new_submissions)} "
+                        f"(timestamp={submission.get('timestamp', 'unknown')}): {str(e)}"
                     )
                     failed_submissions.append(
                         {
@@ -221,8 +226,6 @@ def get_signup_form_submissions(
                     logger.info(
                         f"Added {len(new_volunteers)} new volunteers to database"
                     )
-                    for v in new_volunteers:
-                        logger.info(f"New Volunteer {v.email} created with id: {v.id}")
                 except Exception as e:
                     logger.error(f"Failed to save new volunteers to database: {str(e)}")
                     db.rollback()
@@ -315,17 +318,15 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
     processed = accepted = rejected = errors = 0
 
     for row_number, submission in pending_rows:
-        email = submission.get("email_address", "unknown")
         try:
             judgment = _judge_submission(submission)
             status = judgment.get("verdict", "REJECTED").upper()
             summary = judgment.get("summary", "")
             rating = int(judgment.get("rating", 0))
 
-            logger.info(
-                f"Judgment row {row_number} ({email}): "
-                f"{status} rating={rating} — {judgment.get('reasoning', '')}"
-            )
+            # The reasoning describes the applicant, so it goes to the sheet
+            # (below) and never into the logs.
+            logger.info(f"Judgment row {row_number}: {status} rating={rating}")
 
             if dry_run:
                 logger.info(
@@ -348,9 +349,7 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
                 rejected += 1
 
         except Exception as e:
-            logger.error(
-                f"Failed to judge row {row_number} ({email}): {e}", exc_info=True
-            )
+            logger.error(f"Failed to judge row {row_number}: {e}", exc_info=True)
             errors += 1
 
         # Gemini 3.5 Flash Tier 1: 150-300 RPM — 1s gap is safe.
