@@ -240,7 +240,7 @@ class BotService:
         guess: an ungrounded answer to a prospective volunteer is the harm
         this whole path is built to avoid.
         """
-        logger.info(f"Processing chat message: {message[:100]}...")
+        logger.info(f"Processing chat message ({len(message)} chars)")
 
         relevant_chunks = await self.knowledge_service.similarity_search(
             message, limit=3
@@ -312,7 +312,7 @@ class BotService:
         if not text:
             raise GenerationUnavailable("Gemini returned an empty response")
 
-        logger.info(f"Generated Gemini response: {text[:100]}...")
+        logger.info(f"Generated Gemini response ({len(text)} chars)")
         return text
 
     def _build_prompt(

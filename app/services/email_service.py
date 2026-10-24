@@ -24,7 +24,7 @@ from app.models import (
 )
 from app.services.schedule_parser import ClassBlock
 from app.utils.config_helper import config
-from app.utils.logging_config import get_api_logger
+from app.utils.logging_config import get_api_logger, mask_email
 from app.utils.schedule_dates import is_teaching_day
 
 logger = get_api_logger()
@@ -448,7 +448,7 @@ class EmailService:
                 db
             ) and to_email != config.get_dry_run_email_recipient(db):
                 logger.info(
-                    f"[DRY_RUN] Would send confirmation email to: {to_email} (subject: {subject}), logging email communications to database"
+                    f"[DRY_RUN] Would send confirmation email to volunteer id={volunteer.id} (subject: {subject}), logging email communications to database"
                 )
                 return True
 
@@ -523,7 +523,7 @@ class EmailService:
                 server.login(self.smtp_username, self.smtp_password)
                 server.send_message(message)
 
-            logger.info(f"Confirmation email sent to {to_email}")
+            logger.info(f"Confirmation email sent to volunteer id={volunteer.id}")
             # Log the email communication in database
             email_comm = EmailCommunicationModel(
                 volunteer_id=volunteer.id,
@@ -565,11 +565,11 @@ class EmailService:
             for volunteer in volunteers:
                 if "@" not in (volunteer.email or ""):
                     logger.warning(
-                        f"Skipping malformed email for volunteer id={volunteer.id}: {volunteer.email!r}"
+                        f"Skipping malformed email for volunteer id={volunteer.id}"
                     )
                     continue
                 logger.info(
-                    f"Volunteer is a volunteer without a confirmation email, sending confirmation email to {volunteer.email}"
+                    f"Volunteer is a volunteer without a confirmation email, sending confirmation email to volunteer id={volunteer.id}"
                 )
                 self.send_confirmation_email(db, volunteer)
 
@@ -679,11 +679,11 @@ class EmailService:
                         error = e
                         if attempt == 2 or not _is_session_level_error(e):
                             logger.error(
-                                f"Failed to send email to {to_email}: {str(e)}"
+                                f"Failed to send email to {mask_email(to_email)}: {str(e)}"
                             )
                             break
                         logger.warning(
-                            f"SMTP session lost before {to_email}, reconnecting: {str(e)}"
+                            f"SMTP session lost before {mask_email(to_email)}, reconnecting: {str(e)}"
                         )
                         _close_quietly(server)
                         server = None
@@ -721,7 +721,7 @@ class EmailService:
                 and to_email != config.get_dry_run_email_recipient(db)
             ):
                 logger.info(
-                    f"[DRY_RUN] Would send custom email to: {to_email} (subject: {subject}), logging email communications to database"
+                    f"[DRY_RUN] Would send custom email to: {mask_email(to_email)} (subject: {subject}), logging email communications to database"
                 )
                 email_comm = EmailCommunicationModel(
                     volunteer_id=volunteer_id,
@@ -761,7 +761,7 @@ class EmailService:
                 db.add(email_comm)
                 db.commit()
 
-            logger.info(f"Custom email sent to {to_email}")
+            logger.info(f"Custom email sent to {mask_email(to_email)}")
             return True
         except Exception as e:
             logger.error(f"Failed to send custom email: {str(e)}", exc_info=True)
