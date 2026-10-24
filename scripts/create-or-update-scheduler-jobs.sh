@@ -150,6 +150,14 @@ create_or_update_job \
     "/admin/rotate-schedule" \
     "Reconcile schedule sheets to the current week (hourly)"
 
+# system_logs keeps LOG_RETENTION_DAYS (default 30) of history. Deleting is
+# idempotent, so a missed day is simply caught up by the next run.
+create_or_update_job \
+    "prune-system-logs" \
+    "0 3 * * *" \
+    "/admin/prune-system-logs" \
+    "Delete system_logs rows older than the retention window (daily)"
+
 if [ ${#FAILED_JOBS[@]} -gt 0 ]; then
     echo -e "${RED}❌ ${#FAILED_JOBS[@]} job(s) failed: ${FAILED_JOBS[*]}${NC}"
     echo -e "${YELLOW}Final job status:${NC}"
