@@ -5,6 +5,7 @@ Admin email management endpoints
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import update
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db, get_db_session
@@ -340,21 +341,30 @@ def send_weekly_reminder_emails(request: Request):
             # emails carry no unique constraint, so keying on the address would
             # strand one of two volunteers who share one at PENDING forever.
             # Each outcome is committed as it arrives so a run cut off at the
-            # deadline leaves only the untouched remainder PENDING.
-            for row_id, (_, error) in zip(row_ids, outcomes, strict=True):
-                if error is None:
-                    outcome = {
-                        "status": "dry_run" if dry_run else "sent",
-                        "sent_at": datetime.now(),
-                    }
-                    sent_count += 1
-                else:
-                    outcome = {"status": "failed", "error_message": str(error)}
-                    failed_count += 1
-                db.query(EmailCommunicationModel).filter(
-                    EmailCommunicationModel.id == row_id
-                ).update(outcome, synchronize_session=False)
-                db.commit()
+            # deadline leaves only the untouched remainder PENDING. It is
+            # written on an autocommit connection: inside a session transaction
+            # every outcome cost three round trips (BEGIN, UPDATE, COMMIT),
+            # which at Supabase latency was most of the send phase.
+            with (
+                db.get_bind()
+                .connect()
+                .execution_options(isolation_level="AUTOCOMMIT")
+            ) as outcome_conn:
+                for row_id, (_, error) in zip(row_ids, outcomes, strict=True):
+                    if error is None:
+                        outcome = {
+                            "status": "dry_run" if dry_run else "sent",
+                            "sent_at": datetime.now(),
+                        }
+                        sent_count += 1
+                    else:
+                        outcome = {"status": "failed", "error_message": str(error)}
+                        failed_count += 1
+                    outcome_conn.execute(
+                        update(EmailCommunicationModel)
+                        .where(EmailCommunicationModel.id == row_id)
+                        .values(outcome)
+                    )
 
         logger.info(
             f"Weekly reminder run finished: {sent_count} sent, {failed_count} failed"

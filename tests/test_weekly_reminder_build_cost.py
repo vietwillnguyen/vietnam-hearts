@@ -295,6 +295,43 @@ class TestSharedContentIsBuiltOncePerRun:
             v.email_unsubscribe_token for v in test_db.query(VolunteerModel).all()
         )
 
+    def test_each_outcome_is_recorded_without_a_transaction_per_recipient(
+        self,
+        admin_client,
+        test_db,
+        test_engine,
+        sending_week,
+        counting_sheets,
+        subscribed_volunteers,
+    ):
+        subscribed_volunteers(RECIPIENTS)
+
+        transactions = []
+
+        def count_transactions(conn):
+            # On Postgres a transaction is a BEGIN and a COMMIT round trip on
+            # top of its statements; an autocommit write is the statement alone.
+            if conn.get_execution_options().get("isolation_level") != "AUTOCOMMIT":
+                transactions.append(conn)
+
+        event.listen(test_engine, "begin", count_transactions)
+        try:
+            response = admin_client.post("/admin/send-weekly-reminders")
+        finally:
+            event.remove(test_engine, "begin", count_transactions)
+
+        assert response.status_code == 200
+        assert len(transactions) < RECIPIENTS, (
+            f"{len(transactions)} transactions for {RECIPIENTS} recipients: "
+            "wrapping each outcome in its own transaction triples its round trips"
+        )
+        assert (
+            test_db.query(EmailCommunicationModel)
+            .filter(EmailCommunicationModel.status == "sent")
+            .count()
+            == RECIPIENTS
+        )
+
 
 class TestSingleRecipientPathStillWorks:
     """The preview/test-send endpoint builds the shared half for itself."""
