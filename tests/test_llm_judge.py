@@ -235,9 +235,9 @@ class TestGetPendingSubmissionsWithRows:
 
         get_call_kwargs = mock_sheet.values().get.call_args
         used_range = get_call_kwargs[1].get("range") or get_call_kwargs[0][1]
-        assert used_range.startswith(
-            "A2"
-        ), f"Range should start with 'A2', got: {used_range}"
+        assert used_range.startswith("A2"), (
+            f"Range should start with 'A2', got: {used_range}"
+        )
         # Must not use the old narrow ranges that drop columns S-X and beyond
         assert used_range not in ("A2:R", "A2:X"), f"Range is too narrow: {used_range}"
 

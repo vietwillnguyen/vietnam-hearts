@@ -52,9 +52,9 @@ class TestCronDefaultSettings:
         initialize_default_settings(db)
         keys = {s.key for s in get_all_settings(db)}
         for cron_key in CRON_KEYS:
-            assert (
-                cron_key in keys
-            ), f"{cron_key} missing after initialize_default_settings"
+            assert cron_key in keys, (
+                f"{cron_key} missing after initialize_default_settings"
+            )
 
     @pytest.mark.parametrize("key,expected", list(EXPECTED_DEFAULTS.items()))
     def test_cron_default_value(self, db, key: str, expected: str):

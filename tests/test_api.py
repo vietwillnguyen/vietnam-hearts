@@ -176,9 +176,9 @@ class TestAdminEndpoints:
         response = client.get("/admin/volunteers")
 
         # ✅ Security issue has been fixed - endpoint is now properly protected
-        assert (
-            response.status_code == 401
-        ), f"Expected 401 Unauthorized, got {response.status_code}"
+        assert response.status_code == 401, (
+            f"Expected 401 Unauthorized, got {response.status_code}"
+        )
 
         data = response.json()
         assert "detail" in data
@@ -193,9 +193,9 @@ class TestAdminEndpoints:
         response = client.get("/admin/dashboard")
 
         # ✅ Security issue has been fixed - endpoint now returns 401 Unauthorized
-        assert (
-            response.status_code == 401
-        ), f"Expected 401 Unauthorized, got {response.status_code}"
+        assert response.status_code == 401, (
+            f"Expected 401 Unauthorized, got {response.status_code}"
+        )
 
         data = response.json()
         assert "detail" in data
@@ -212,9 +212,9 @@ class TestAdminEndpoints:
         response = client.post("/admin/sync-volunteers")
 
         # ✅ Security issue has been fixed - endpoint is now properly protected
-        assert (
-            response.status_code == 401
-        ), f"Expected 401 Unauthorized, got {response.status_code}"
+        assert response.status_code == 401, (
+            f"Expected 401 Unauthorized, got {response.status_code}"
+        )
 
         data = response.json()
         assert "detail" in data
@@ -247,9 +247,9 @@ class TestAdminEndpoints:
                 response = client.post(endpoint)
 
             # All endpoints should return 401 Unauthorized when accessed without authentication
-            assert (
-                response.status_code == 401
-            ), f"{method} {endpoint} should return 401, got {response.status_code}"
+            assert response.status_code == 401, (
+                f"{method} {endpoint} should return 401, got {response.status_code}"
+            )
 
             # Verify error response format
             data = response.json()
