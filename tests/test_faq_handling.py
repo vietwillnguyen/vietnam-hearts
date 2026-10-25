@@ -155,7 +155,9 @@ class TestFAQHandling:
         response_lower = response_text.lower()
         assert any(
             keyword in response_lower for keyword in expected_response_contains
-        ), f"Response '{response_text}' should contain one of {expected_response_contains}"
+        ), (
+            f"Response '{response_text}' should contain one of {expected_response_contains}"
+        )
 
     @pytest.mark.parametrize(
         "postback_payload,expected_response_contains",
@@ -198,7 +200,9 @@ class TestFAQHandling:
         response_lower = response_text.lower()
         assert any(
             keyword in response_lower for keyword in expected_response_contains
-        ), f"Response '{response_text}' should contain one of {expected_response_contains}"
+        ), (
+            f"Response '{response_text}' should contain one of {expected_response_contains}"
+        )
 
     @pytest.mark.parametrize(
         "message,expected_behavior",
@@ -413,9 +417,9 @@ class TestFAQHandling:
         responses = [call[0][1] for call in calls]
 
         # All responses should be different
-        assert (
-            len(set(responses)) >= 2
-        ), "Should provide different responses to different questions"
+        assert len(set(responses)) >= 2, (
+            "Should provide different responses to different questions"
+        )
 
     def test_error_handling(self, client: TestClient, webhook_base_payload):
         """Test error handling in conversation"""
@@ -475,9 +479,9 @@ class TestFAQHandling:
             assert len(response_text) <= 500, f"Response too long: '{response_text}'"
 
             # Should not be empty or just whitespace
-            assert (
-                response_text.strip()
-            ), f"Response is empty or whitespace: '{response_text}'"
+            assert response_text.strip(), (
+                f"Response is empty or whitespace: '{response_text}'"
+            )
 
             # Should not contain obvious errors
             assert (

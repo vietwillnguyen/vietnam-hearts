@@ -53,11 +53,13 @@ class AdminService:
 
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("*")
-                    .eq("is_active", True)
-                    .order("created_at", desc=True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("*")
+                        .eq("is_active", True)
+                        .order("created_at", desc=True)
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -100,10 +102,12 @@ class AdminService:
 
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("*")
-                    .order("created_at", desc=True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("*")
+                        .order("created_at", desc=True)
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -150,11 +154,13 @@ class AdminService:
             if added_by_email:
                 result = await asyncio.wait_for(
                     asyncio.to_thread(
-                        lambda: self.admin_supabase.table("admin_users")
-                        .select("role")
-                        .eq("email", added_by_email.lower())
-                        .eq("is_active", True)
-                        .execute()
+                        lambda: (
+                            self.admin_supabase.table("admin_users")
+                            .select("role")
+                            .eq("email", added_by_email.lower())
+                            .eq("is_active", True)
+                            .execute()
+                        )
                     ),
                     timeout=10.0,
                 )
@@ -165,10 +171,12 @@ class AdminService:
             # Check if user already exists
             existing = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("email")
-                    .eq("email", email.lower())
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("email")
+                        .eq("email", email.lower())
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -180,9 +188,13 @@ class AdminService:
             # Add new admin user
             await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .insert({"email": email.lower(), "role": role, "is_active": True})
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .insert(
+                            {"email": email.lower(), "role": role, "is_active": True}
+                        )
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -207,11 +219,13 @@ class AdminService:
             # Check if requester is super admin
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("role")
-                    .eq("email", removed_by_email.lower())
-                    .eq("is_active", True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("role")
+                        .eq("email", removed_by_email.lower())
+                        .eq("is_active", True)
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -222,15 +236,17 @@ class AdminService:
             # Deactivate user instead of deleting
             await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .update(
-                        {
-                            "is_active": False,
-                            "updated_at": datetime.now(UTC).isoformat(),
-                        }
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .update(
+                            {
+                                "is_active": False,
+                                "updated_at": datetime.now(UTC).isoformat(),
+                            }
+                        )
+                        .eq("email", email.lower())
+                        .execute()
                     )
-                    .eq("email", email.lower())
-                    .execute()
                 ),
                 timeout=10.0,
             )
@@ -255,11 +271,13 @@ class AdminService:
             # Check if requester is super admin
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("role")
-                    .eq("email", deleted_by_email.lower())
-                    .eq("is_active", True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("role")
+                        .eq("email", deleted_by_email.lower())
+                        .eq("is_active", True)
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -270,10 +288,12 @@ class AdminService:
             # Permanently delete user
             await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .delete()
-                    .eq("email", email.lower())
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .delete()
+                        .eq("email", email.lower())
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -300,11 +320,13 @@ class AdminService:
             # Check if requester is super admin
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("role")
-                    .eq("email", updated_by_email.lower())
-                    .eq("is_active", True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("role")
+                        .eq("email", updated_by_email.lower())
+                        .eq("is_active", True)
+                        .execute()
+                    )
                 ),
                 timeout=10.0,
             )
@@ -315,15 +337,17 @@ class AdminService:
             # Update role
             await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .update(
-                        {
-                            "role": new_role,
-                            "updated_at": datetime.now(UTC).isoformat(),
-                        }
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .update(
+                            {
+                                "role": new_role,
+                                "updated_at": datetime.now(UTC).isoformat(),
+                            }
+                        )
+                        .eq("email", email.lower())
+                        .execute()
                     )
-                    .eq("email", email.lower())
-                    .execute()
                 ),
                 timeout=10.0,
             )

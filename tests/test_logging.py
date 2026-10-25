@@ -252,9 +252,9 @@ class TestStartupBannerRedaction:
 
         banner = [line for line in captured if "DATABASE_URL=" in line]
         assert banner, f"startup never logged the DATABASE_URL banner: {captured}"
-        assert not any(
-            self.PASSWORD in line for line in captured
-        ), "the DATABASE_URL password reached a log record"
+        assert not any(self.PASSWORD in line for line in captured), (
+            "the DATABASE_URL password reached a log record"
+        )
         assert banner[0] == (
             "- DATABASE_URL=postgresql://postgres.abc123:***@"
             "aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"

@@ -83,6 +83,7 @@ async def auth_callback(
         if error:
             logger.error(f"OAuth error: {error} - {error_description}")
             return templates.TemplateResponse(
+                request,
                 "auth/oauth_error.html",
                 {
                     "request": request,
@@ -109,6 +110,7 @@ async def auth_callback(
                 )
                 error_message = f"Access denied. The email {user_email} is not authorized to access the admin system."
                 return templates.TemplateResponse(
+                    request,
                     "auth/access_denied.html",
                     {"request": request, "error_message": error_message},
                     status_code=403,
@@ -123,6 +125,7 @@ async def auth_callback(
             # If admin check fails, deny access for security
             error_message = f"Unable to verify admin access for {user_email}. Please contact the system administrator."
             return templates.TemplateResponse(
+                request,
                 "auth/access_verification_failed.html",
                 {"request": request, "error_message": error_message},
                 status_code=500,
@@ -138,6 +141,7 @@ async def auth_callback(
         )
 
         return templates.TemplateResponse(
+            request,
             "auth/signin_success.html",
             {
                 "request": request,
@@ -151,6 +155,7 @@ async def auth_callback(
     except Exception as e:
         logger.error(f"Failed to handle auth callback: {str(e)}")
         return templates.TemplateResponse(
+            request,
             "auth/auth_failed.html",
             {"request": request, "error_message": str(e)},
             status_code=400,

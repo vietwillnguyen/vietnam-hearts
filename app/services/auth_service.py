@@ -335,11 +335,13 @@ class AuthService:
             # Use timeout to prevent hanging
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("email")
-                    .eq("email", email.lower())
-                    .eq("is_active", True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("email")
+                        .eq("email", email.lower())
+                        .eq("is_active", True)
+                        .execute()
+                    )
                 ),
                 timeout=5.0,  # Reduced timeout for better performance
             )

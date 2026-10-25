@@ -283,7 +283,7 @@ class BotService:
             for i, chunk in enumerate(chunks):
                 content = chunk.get("content", "").strip()
                 if content:
-                    context_parts.append(f"Context {i+1}:\n{content}\n")
+                    context_parts.append(f"Context {i + 1}:\n{content}\n")
 
             return "\n".join(context_parts)
 

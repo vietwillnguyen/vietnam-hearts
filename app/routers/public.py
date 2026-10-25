@@ -55,7 +55,7 @@ async def home_page(request: Request):
     from app.config import APPLICATION_VERSION
 
     return templates.TemplateResponse(
-        "home.html", {"request": request, "version": APPLICATION_VERSION}
+        request, "home.html", {"request": request, "version": APPLICATION_VERSION}
     )
 
 
@@ -70,6 +70,7 @@ async def privacy_policy_page(request: Request):
     from app.config import APPLICATION_VERSION
 
     return templates.TemplateResponse(
+        request,
         "privacy.html",
         {
             "request": request,

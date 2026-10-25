@@ -11,9 +11,9 @@ nothing at all, including the traceback of a failed schedule rotation.
 import logging
 
 import pytest
+from alembic.config import Config
 
 from alembic import command
-from alembic.config import Config
 from app.config import PROJECT_ROOT
 from app.utils.logging_config import get_logger
 
