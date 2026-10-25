@@ -19,6 +19,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import event
 
 from app.main import app
 from app.models import EmailCommunication as EmailCommunicationModel
@@ -250,6 +251,45 @@ class TestSharedContentIsBuiltOncePerRun:
         assert commits == [RECIPIENTS], (
             "tokens must be issued for the whole batch in one call: a commit "
             "per volunteer costs a round trip and expires every loaded row"
+        )
+        assert all(
+            v.email_unsubscribe_token for v in test_db.query(VolunteerModel).all()
+        )
+
+    def test_issuing_missing_tokens_does_not_reload_each_volunteer(
+        self,
+        admin_client,
+        test_db,
+        test_engine,
+        sending_week,
+        counting_sheets,
+        subscribed_volunteers,
+    ):
+        subscribed_volunteers(RECIPIENTS, with_token=False)
+
+        reloads = []
+
+        def count_reloads(conn, cursor, statement, parameters, context, many):
+            # Refreshing one expired row selects that volunteer by primary
+            # key; the run itself only ever loads the recipient list in bulk.
+            if (
+                statement.lstrip().upper().startswith("SELECT")
+                and "FROM volunteers" in statement
+                and "WHERE volunteers.id = " in statement
+            ):
+                reloads.append(statement)
+
+        event.listen(test_engine, "before_cursor_execute", count_reloads)
+        try:
+            response = admin_client.post("/admin/send-weekly-reminders")
+        finally:
+            event.remove(test_engine, "before_cursor_execute", count_reloads)
+
+        assert response.status_code == 200
+        assert reloads == [], (
+            f"{len(reloads)} single-volunteer reloads for {RECIPIENTS} "
+            "recipients: committing the issued tokens before rendering expires "
+            "every loaded volunteer, and each reload is a database round trip"
         )
         assert all(
             v.email_unsubscribe_token for v in test_db.query(VolunteerModel).all()

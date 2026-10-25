@@ -436,11 +436,12 @@ class EmailService:
     def ensure_unsubscribe_tokens(
         self, volunteers: Iterable[VolunteerModel], db: Session
     ) -> int:
-        """Give every volunteer that lacks one an unsubscribe token, in one commit.
+        """Give every volunteer that lacks one an unsubscribe token; the caller commits.
 
-        One commit per volunteer is two costs, not one: the round trip itself,
-        and the expiry of every loaded ORM object it triggers, which makes the
-        next volunteer's attributes reload from the database.
+        A commit is two costs, not one: the round trip itself, and the expiry
+        of every loaded ORM object it triggers, which makes each volunteer's
+        attributes reload from the database the next time they are read. The
+        caller therefore commits once it has finished reading the volunteers.
         """
         issued = 0
         for volunteer in volunteers:
@@ -448,7 +449,6 @@ class EmailService:
                 volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
                 issued += 1
         if issued:
-            db.commit()
             logger.info(f"Issued {issued} missing unsubscribe tokens")
         return issued
 
@@ -481,7 +481,8 @@ class EmailService:
             content.week_start, end_date, content.open_slots
         )
 
-        self.ensure_unsubscribe_tokens([volunteer], db)
+        if self.ensure_unsubscribe_tokens([volunteer], db):
+            db.commit()
         html_body = self.render_weekly_reminder(
             volunteer, content, db, default_first_name="there"
         )

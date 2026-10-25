@@ -286,9 +286,10 @@ def send_weekly_reminder_emails(request: Request):
                     continue
                 recipients.append((volunteer, db_volunteer))
 
-            # One commit for the whole batch rather than one per volunteer: a
-            # commit inside the loop also expires every loaded volunteer, so
-            # the next iteration reloads its row before it can read a name.
+            # Not committed here: a commit expires every loaded volunteer, so
+            # each one would reload its row before it could be rendered. The
+            # tokens persist with the PENDING rows' commit below, before any
+            # email carrying them is sent.
             email_service.ensure_unsubscribe_tokens(
                 [db_volunteer for _, db_volunteer in recipients], db
             )
