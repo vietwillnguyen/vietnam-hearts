@@ -346,9 +346,7 @@ def send_weekly_reminder_emails(request: Request):
             # every outcome cost three round trips (BEGIN, UPDATE, COMMIT),
             # which at Supabase latency was most of the send phase.
             with (
-                db.get_bind()
-                .connect()
-                .execution_options(isolation_level="AUTOCOMMIT")
+                db.get_bind().connect().execution_options(isolation_level="AUTOCOMMIT")
             ) as outcome_conn:
                 for row_id, (_, error) in zip(row_ids, outcomes, strict=True):
                     if error is None:
