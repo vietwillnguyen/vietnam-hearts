@@ -5,6 +5,7 @@ Admin email management endpoints
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import update
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db, get_db_session
@@ -23,7 +24,6 @@ from app.routers.admin.helpers import (
     is_dry_run_email,
 )
 from app.services.email_service import email_service, reminder_week_key
-from app.services.google_sheets import sheets_service
 from app.services.volunteer_activity import select_weekly_reminder_recipients
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
@@ -208,20 +208,18 @@ def send_weekly_reminder_emails(request: Request):
 
             fail_abandoned_pending_reminders(db)
 
-            teaching_days = ConfigHelper.get_schedule_teaching_days(db)
-            current_monday, current_friday = sheets_service.get_current_schedule_dates(
-                db
-            )
-            class_tables = [
-                email_service.build_class_table(block, teaching_days, current_monday)
-                for block in sheets_service.get_schedule_blocks(db)
-            ]
-            open_slots = sum(ct["open_slot_count"] for ct in class_tables)
+            # Everything that is the same for every recipient - both Sheets
+            # reads, every class table and every settings link - is built once
+            # here. Building it per volunteer cost ~6 Supabase round trips a
+            # head, which is what put a 176-recipient run past Cloud Run's
+            # 300s request limit even after the SMTP session was shared.
+            content = email_service.build_weekly_reminder_shared_content(db)
+            current_monday, current_friday = content.week_start, content.week_end
             subject = email_service.get_reminder_subject(
-                current_monday, current_friday, open_slots
+                current_monday, current_friday, content.open_slots
             )
 
-            if not any(ct.get("needs_volunteers") for ct in class_tables):
+            if not content.needs_volunteers:
                 logger.info(
                     "No open volunteer slots this week, skipping weekly reminder emails"
                 )
@@ -279,7 +277,7 @@ def send_weekly_reminder_emails(request: Request):
                 f"Sending weekly reminder emails to {len(volunteers)} volunteers"
             )
 
-            email_communications = []
+            recipients = []
             for volunteer in volunteers:
                 db_volunteer = volunteer_lookup.get(volunteer["email"])
                 if not db_volunteer:
@@ -287,32 +285,20 @@ def send_weekly_reminder_emails(request: Request):
                         "A selected reminder recipient has no volunteer record, skipping"
                     )
                     continue
+                recipients.append((volunteer, db_volunteer))
 
-                if not db_volunteer.email_unsubscribe_token:
-                    db_volunteer.email_unsubscribe_token = (
-                        email_service.generate_unsubscribe_token()
-                    )
-                    db.commit()
+            # Not committed here: a commit expires every loaded volunteer, so
+            # each one would reload its row before it could be rendered. The
+            # tokens persist with the PENDING rows' commit below, before any
+            # email carrying them is sent.
+            email_service.ensure_unsubscribe_tokens(
+                [db_volunteer for _, db_volunteer in recipients], db
+            )
 
-                first_name = (
-                    db_volunteer.name.split()[0] if db_volunteer.name else "Volunteer"
-                )
-                html_body = email_service.email_env.get_template(
-                    WEEKLY_REMINDER_BULK_TEMPLATE
-                ).render(
-                    first_name=first_name,
-                    class_tables=[ct["table_html"] for ct in class_tables],
-                    SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db)
-                    or "#",
-                    EMAIL_PREFERENCES_LINK=email_service.get_volunteer_unsubscribe_link(
-                        db_volunteer, db
-                    ),
-                    INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
-                    INVITE_LINK_WHATSAPP=ConfigHelper.get_invite_link_whatsapp(db),
-                    ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db)
-                    or "#",
-                    INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
-                    FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
+            email_communications = []
+            for volunteer, db_volunteer in recipients:
+                html_body = email_service.render_weekly_reminder(
+                    db_volunteer, content, db, default_first_name="Volunteer"
                 )
 
                 email_comm = EmailCommunicationModel(
@@ -355,21 +341,28 @@ def send_weekly_reminder_emails(request: Request):
             # emails carry no unique constraint, so keying on the address would
             # strand one of two volunteers who share one at PENDING forever.
             # Each outcome is committed as it arrives so a run cut off at the
-            # deadline leaves only the untouched remainder PENDING.
-            for row_id, (_, error) in zip(row_ids, outcomes, strict=True):
-                if error is None:
-                    outcome = {
-                        "status": "dry_run" if dry_run else "sent",
-                        "sent_at": datetime.now(),
-                    }
-                    sent_count += 1
-                else:
-                    outcome = {"status": "failed", "error_message": str(error)}
-                    failed_count += 1
-                db.query(EmailCommunicationModel).filter(
-                    EmailCommunicationModel.id == row_id
-                ).update(outcome, synchronize_session=False)
-                db.commit()
+            # deadline leaves only the untouched remainder PENDING. It is
+            # written on an autocommit connection: inside a session transaction
+            # every outcome cost three round trips (BEGIN, UPDATE, COMMIT),
+            # which at Supabase latency was most of the send phase.
+            with (
+                db.get_bind().connect().execution_options(isolation_level="AUTOCOMMIT")
+            ) as outcome_conn:
+                for row_id, (_, error) in zip(row_ids, outcomes, strict=True):
+                    if error is None:
+                        outcome = {
+                            "status": "dry_run" if dry_run else "sent",
+                            "sent_at": datetime.now(),
+                        }
+                        sent_count += 1
+                    else:
+                        outcome = {"status": "failed", "error_message": str(error)}
+                        failed_count += 1
+                    outcome_conn.execute(
+                        update(EmailCommunicationModel)
+                        .where(EmailCommunicationModel.id == row_id)
+                        .values(outcome)
+                    )
 
         logger.info(
             f"Weekly reminder run finished: {sent_count} sent, {failed_count} failed"

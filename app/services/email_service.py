@@ -7,6 +7,7 @@ import re
 import secrets
 import smtplib
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from datetime import datetime
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -39,6 +40,37 @@ logger = get_api_logger()
 def reminder_week_key(start_date: datetime, end_date: datetime) -> str:
     """The stable `(dd/mm-dd/mm)` suffix identifying the week a reminder is for."""
     return f"({start_date.strftime('%d/%m')}-{end_date.strftime('%d/%m')})"
+
+
+@dataclass(frozen=True)
+class WeeklyReminderContent:
+    """The parts of a weekly reminder that are identical for every recipient.
+
+    Built once per run and reused for all of it. Everything here costs a
+    network round trip to build - two Google Sheets reads for the schedule
+    plus one Supabase read per settings link - and none of it depends on who
+    is being emailed, so building it per volunteer is what put the Sunday run
+    past Cloud Run's 300s request limit at 176 recipients.
+    """
+
+    class_tables: list[dict]
+    # The Monday and Friday of the week the tables above were read from.
+    week_start: datetime
+    week_end: datetime
+    # Template variables that are the same for every recipient.
+    links: dict[str, str]
+
+    @property
+    def tables_html(self) -> list[str]:
+        return [table["table_html"] for table in self.class_tables]
+
+    @property
+    def open_slots(self) -> int:
+        return sum(table["open_slot_count"] for table in self.class_tables)
+
+    @property
+    def needs_volunteers(self) -> bool:
+        return any(table.get("needs_volunteers") for table in self.class_tables)
 
 
 # Errors that mean the SMTP session itself is gone, so the message is worth
@@ -342,23 +374,99 @@ class EmailService:
                 "open_slot_count": 1,
             }
 
-    def build_weekly_reminder_content(
-        self, volunteer: VolunteerModel, db: Session
-    ) -> tuple[str, str]:
-        """
-        Build the HTML content and subject for a weekly reminder email
+    def build_weekly_reminder_shared_content(
+        self, db: Session
+    ) -> WeeklyReminderContent:
+        """Build the recipient-independent half of this week's reminder.
 
-        Returns:
-            tuple: (html_body, subject)
+        Call this once per run, not once per recipient: it makes two Google
+        Sheets round trips and one Supabase read per settings link, and
+        returns the same thing every time within a run.
         """
-        from datetime import timedelta
-
         from app.services.google_sheets import sheets_service
         from app.utils.config_helper import ConfigHelper
 
         # Auto-discover class blocks from the schedule sheet (single source of truth)
         class_blocks = sheets_service.get_schedule_blocks(db)
         teaching_days = ConfigHelper.get_schedule_teaching_days(db)
+        week_start, week_end = sheets_service.get_current_schedule_dates(db)
+
+        return WeeklyReminderContent(
+            class_tables=[
+                self.build_class_table(block, teaching_days, week_start)
+                for block in class_blocks
+            ],
+            week_start=week_start,
+            week_end=week_end,
+            links={
+                "SCHEDULE_SIGNUP_LINK": ConfigHelper.get_schedule_signup_link(db)
+                or "#",
+                "INVITE_LINK_ZALO": ConfigHelper.get_invite_link_zalo(db) or "#",
+                "INVITE_LINK_WHATSAPP": ConfigHelper.get_invite_link_whatsapp(db),
+                "ONBOARDING_GUIDE_LINK": ConfigHelper.get_onboarding_guide_link(db)
+                or "#",
+                "INSTAGRAM_LINK": ConfigHelper.get_instagram_link(db) or "#",
+                "FACEBOOK_PAGE_LINK": ConfigHelper.get_facebook_page_link(db) or "#",
+            },
+        )
+
+    def render_weekly_reminder(
+        self,
+        volunteer: VolunteerModel,
+        content: WeeklyReminderContent,
+        db: Session,
+        *,
+        default_first_name: str,
+    ) -> str:
+        """Render one recipient's copy of an already-built weekly reminder.
+
+        Only the greeting and the preferences link vary per recipient, so this
+        is the whole of the per-volunteer work and makes no network call.
+        ``default_first_name`` differs between the bulk run and a single send
+        and is therefore the caller's to supply.
+        """
+        first_name = volunteer.name.split()[0] if volunteer.name else default_first_name
+        return self.email_env.get_template("weekly-reminder-email.html").render(
+            first_name=first_name,
+            class_tables=content.tables_html,
+            EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
+            **content.links,
+        )
+
+    def ensure_unsubscribe_tokens(
+        self, volunteers: Iterable[VolunteerModel], db: Session
+    ) -> int:
+        """Give every volunteer that lacks one an unsubscribe token; the caller commits.
+
+        A commit is two costs, not one: the round trip itself, and the expiry
+        of every loaded ORM object it triggers, which makes each volunteer's
+        attributes reload from the database the next time they are read. The
+        caller therefore commits once it has finished reading the volunteers.
+        """
+        issued = 0
+        for volunteer in volunteers:
+            if not volunteer.email_unsubscribe_token:
+                volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
+                issued += 1
+        if issued:
+            logger.info(f"Issued {issued} missing unsubscribe tokens")
+        return issued
+
+    def build_weekly_reminder_content(
+        self, volunteer: VolunteerModel, db: Session
+    ) -> tuple[str, str]:
+        """
+        Build the HTML content and subject for a weekly reminder email
+
+        Single-recipient path (preview and admin test sends); the bulk run
+        builds the shared content once itself and renders per volunteer.
+
+        Returns:
+            tuple: (html_body, subject)
+        """
+        from datetime import timedelta
+
+        content = self.build_weekly_reminder_shared_content(db)
 
         # The subject must name the week the tables above were actually read
         # from, and those come from the leading visible schedule tab. That tab
@@ -368,39 +476,16 @@ class EmailService:
         # as rotation lags. Reading the same tab the body did keeps the two
         # together and matches the bulk send; its own fallback is that shared
         # anchor, evaluated in the organization's timezone.
-        start_date, _ = sheets_service.get_current_schedule_dates(db)
-        end_date = start_date + timedelta(days=6)  # Sunday
-        class_tables = [
-            self.build_class_table(block, teaching_days, start_date)
-            for block in class_blocks
-        ]
-
+        end_date = content.week_start + timedelta(days=6)  # Sunday
         subject = self.get_reminder_subject(
-            start_date, end_date, sum(ct["open_slot_count"] for ct in class_tables)
+            content.week_start, end_date, content.open_slots
         )
 
-        # Get volunteer's first name
-        first_name = volunteer.name.split()[0] if volunteer.name else "there"
-
-        # Generate unsubscribe token if not exists
-        if not volunteer.email_unsubscribe_token:
-            volunteer.email_unsubscribe_token = self.generate_unsubscribe_token()
+        if self.ensure_unsubscribe_tokens([volunteer], db):
             db.commit()
-
-        # Render template with class tables and all variables
-        template = self.email_env.get_template("weekly-reminder-email.html")
-        html_body = template.render(
-            first_name=first_name,
-            class_tables=[ct["table_html"] for ct in class_tables],
-            SCHEDULE_SIGNUP_LINK=ConfigHelper.get_schedule_signup_link(db) or "#",
-            EMAIL_PREFERENCES_LINK=self.get_volunteer_unsubscribe_link(volunteer, db),
-            INVITE_LINK_ZALO=ConfigHelper.get_invite_link_zalo(db) or "#",
-            INVITE_LINK_WHATSAPP=ConfigHelper.get_invite_link_whatsapp(db),
-            ONBOARDING_GUIDE_LINK=ConfigHelper.get_onboarding_guide_link(db) or "#",
-            INSTAGRAM_LINK=ConfigHelper.get_instagram_link(db) or "#",
-            FACEBOOK_PAGE_LINK=ConfigHelper.get_facebook_page_link(db) or "#",
+        html_body = self.render_weekly_reminder(
+            volunteer, content, db, default_first_name="there"
         )
-
         return html_body, subject
 
     def send_confirmation_email(self, db: Session, volunteer: VolunteerModel) -> bool:
