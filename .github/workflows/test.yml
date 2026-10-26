@@ -7,9 +7,12 @@ on:
   pull_request:
     branches: [ main, master, develop ]
 
+# Jobs run on the runner the CI_RUNS_ON repository variable names (e.g.
+# `self-hosted`), and on ubuntu-latest when it is unset.
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-latest' }}
     
     strategy:
       matrix:
@@ -42,7 +45,10 @@ jobs:
         uv run alembic upgrade head
         uv run alembic check
       env:
-        DATABASE_URL: "sqlite:////tmp/alembic_check.db"
+        # Under the job's own temp dir, not /tmp: a self-hosted runner keeps
+        # /tmp between runs, and a database another branch already migrated
+        # would make this check answer about that branch instead.
+        DATABASE_URL: "sqlite:///${{ runner.temp }}/alembic_check.db"
         TESTING: "true"
         ENVIRONMENT: "test"
         PYTHONPATH: ${{ github.workspace }}
