@@ -90,6 +90,7 @@
             border-color: #dc3545;
             box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
         }
+        {% if bot_enabled %}
         .bot-test-section {
             background-color: #f8f9fa;
             border-radius: 8px;
@@ -103,6 +104,7 @@
             margin: 15px 0;
             border-radius: 4px;
         }
+        {% endif %}
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -158,11 +160,13 @@
                     Schedule Management
                 </a>
             </li>
+            {% if bot_enabled %}
             <li class="nav-item">
                 <a class="nav-link" id="bot-tab" data-bs-toggle="tab" href="#bot" role="tab">
                     Bot Management
                 </a>
             </li>
+            {% endif %}
             <li class="nav-item">
                 <a class="nav-link" id="logs-tab" data-bs-toggle="tab" href="#logs" role="tab">
                     System Logs
@@ -691,6 +695,9 @@
                 </div>
             </div>
 
+            {# Bot Management Tab - every control here calls app/routers/bot.py,
+               so the whole tab is rendered only while those routers are mounted. #}
+            {% if bot_enabled %}
             <!-- Bot Management Tab -->
             <div class="tab-pane fade" id="bot" role="tabpanel">
                 <div class="table-container">
@@ -907,6 +914,7 @@
                      </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- System Logs Tab -->
             <div class="tab-pane fade" id="logs" role="tabpanel">
@@ -1010,15 +1018,19 @@
             // Load schedule data when schedule tab is shown
             document.getElementById('schedule-tab').addEventListener('shown.bs.tab', loadScheduleData);
             
+            {% if bot_enabled %}
             // Load bot data when bot tab is shown
             document.getElementById('bot-tab').addEventListener('shown.bs.tab', loadBotData);
+            {% endif %}
 
             // Load system logs when logs tab is shown; stop auto-refresh when leaving it
             document.getElementById('logs-tab').addEventListener('shown.bs.tab', () => loadSystemLogs(1));
             document.getElementById('logs-tab').addEventListener('hidden.bs.tab', stopLogsAutoRefresh);
             
+            {% if bot_enabled %}
             // Add event listener for folder ID input to save changes
             document.getElementById('syncFolderId').addEventListener('input', saveFolderId);
+            {% endif %}
         });
         
         async function checkAuthentication() {
@@ -2201,6 +2213,7 @@
             }
         }
 
+        {% if bot_enabled %}
                 // Bot Management Functions
         async function loadBotData() {
             try {
@@ -2957,6 +2970,7 @@
             document.getElementById('debugResults').style.display = 'none';
             document.getElementById('debugContent').innerHTML = '';
         }
+        {% endif %}
 
         // ===== System Logs tab =====
         let logsCurrentPage = 1;

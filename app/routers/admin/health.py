@@ -22,6 +22,7 @@ from app.models import (
     Volunteer as VolunteerModel,
 )
 from app.routers.admin.helpers import (
+    bot_routes_mounted,
     get_email_summary,
     get_volunteer_summary,
     get_weekly_reminder_run_health,
@@ -84,6 +85,9 @@ async def admin_dashboard(
                 "emails": email_data,
                 "settings": settings,
                 "version": APPLICATION_VERSION,
+                # The Bot Management tab talks only to app/routers/bot.py, so
+                # it is rendered only while those routers are mounted.
+                "bot_enabled": bot_routes_mounted(request.app),
             },
         )
     except Exception as e:
