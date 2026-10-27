@@ -5,6 +5,8 @@ Shared helpers used across multiple admin sub-routers.
 import re
 from datetime import UTC, datetime, timedelta
 
+from starlette.routing import Match
+
 from app.models import Volunteer as VolunteerModel
 from app.utils.logging_config import get_api_logger
 
@@ -291,3 +293,55 @@ def _as_naive_utc(value: datetime) -> datetime:
     timestamps from a naive local clock.
     """
     return value.replace(tzinfo=None) if value.tzinfo else value
+
+
+# FastAPI 0.159 stopped flattening included routers into ``app.routes`` (they
+# arrive as one opaque wrapper each), so the only durable way to ask whether a
+# path is served is to put it through the router the way a request would go.
+MATCH_ORDER = {Match.NONE: 0, Match.PARTIAL: 1, Match.FULL: 2}
+
+
+def route_match(app, method: str, path: str) -> Match:
+    """How the app's routing table would answer ``method path``.
+
+    ``FULL`` is served, ``PARTIAL`` is a path that exists under another method
+    (405), and ``NONE`` is the bare 404 an unmounted route gives - routing is
+    resolved before dependencies, so that answer does not depend on the caller.
+    """
+    scope = {
+        "type": "http",
+        "method": method.upper(),
+        "path": path,
+        "root_path": "",
+        "headers": [],
+        "query_string": b"",
+    }
+    return max(
+        (route.matches(scope)[0] for route in app.routes),
+        key=MATCH_ORDER.__getitem__,
+        default=Match.NONE,
+    )
+
+
+# One endpoint from each router in app/routers/bot.py. Both are commented out
+# of app/main.py while the Messenger bot is paused on Meta App Review
+# (f5bea73), and the dashboard's Bot Management tab calls both, so the tab is
+# only safe to render when both answer.
+BOT_PROBE_ROUTES = (
+    ("POST", "/bot/chat"),
+    ("GET", "/admin/bot/knowledge-sync/status"),
+)
+
+
+def bot_routes_mounted(app) -> bool:
+    """Whether the bot routers are currently included on the app.
+
+    The dashboard gates its whole Bot Management tab on this instead of on a
+    setting of its own: read off the live routing table, the flag cannot drift
+    from what is actually mounted, so re-including the routers in app/main.py
+    brings the tab back with no second edit.
+    """
+    return all(
+        route_match(app, method, path) is Match.FULL
+        for method, path in BOT_PROBE_ROUTES
+    )
