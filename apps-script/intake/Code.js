@@ -402,7 +402,11 @@ function onIntakeEdit(e) {
         e.range.getLastColumn() < cDecision + 1) return;
 
     for (var r = Math.max(e.range.getRow(), 2); r <= e.range.getLastRow(); r++) {
-      decideRow_(sh, headers, r);
+      try {
+        decideRow_(sh, headers, r);
+      } catch (err) {
+        reportError_('onIntakeEdit row ' + r, err);
+      }
     }
   } catch (err) {
     reportError_('onIntakeEdit', err);

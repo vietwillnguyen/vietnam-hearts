@@ -116,7 +116,7 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 - **The four branches end with the same question in the same words.** Google Forms creates one response column per *item*, so this really does produce four identically-headed columns, one per branch, each empty for the rows that took another branch. That is the cost of asking it everywhere, and it is worth paying: it is the only question that lets a submitter say the thing the form did not think to ask. The `All work` tab reads `Decision note` rather than one of those four, and no `HEADER` needle matches their wording, so `col_()` never sees the ambiguity.
 - **No automated email states the school's address or hours, or promises a date.**
   The only place named is the public area, Thạnh Mỹ Tây, TP.HCM.
-  Both are checked by the harness.
+  All three are checked by the harness, on every mail and on the seeded handover block.
 - **No automated email contains a phone number.** The `Volunteers` tab maps a name to an email and the script reads nothing else from it. The harness asserts this across every message both handlers produce.
 
 ### Running the harnesses

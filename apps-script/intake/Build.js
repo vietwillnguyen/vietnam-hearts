@@ -641,6 +641,10 @@ function buildVolunteersTab_(ss, notes) {
   if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
 
   sh.getRange('A1:C1').setValues([['Name', 'Email', 'Notes']]).setFontWeight('bold');
+  sh.getRange(2, 2, 199, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireTextContains('@')
+      .setAllowInvalid(false)
+      .setHelpText('An email address, for example mai@example.com.').build());
   sh.getRange('E1').setValue(
     'One row per volunteer who can own a request. "Name" must match the Owner ' +
     'dropdown exactly. The Approved email names this person and sets Reply-To to ' +

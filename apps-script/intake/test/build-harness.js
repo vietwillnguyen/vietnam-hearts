@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { ADDRESS } = require('./address-shape');
+const { ADDRESS, HOURS, DATE_PROMISE } = require('./forbidden-shapes');
 
 const CODE = process.argv[2] || path.join(__dirname, '..', 'Code.js');
 const BUILD = process.argv[3] || path.join(__dirname, '..', 'Build.js');
@@ -361,7 +361,9 @@ function makeWorld(opts) {
             rule.range = r.getSheet().getName() + '!' + r.getA1Notation();
             return b;
           },
+          requireTextContains: (t) => { rule.kind = 'contains'; rule.values = [t]; return b; },
           setAllowInvalid: (v) => { rule.allowInvalid = v; return b; },
+          setHelpText: () => b,
           build: () => rule
         };
         return b;
@@ -580,6 +582,10 @@ check('the handover block was written into Standing needs!B2', termsText.length 
 check('it names the public area', /Thạnh Mỹ Tây/.test(termsText));
 check('it holds nothing shaped like a street address, in either language',
   !ADDRESS.test(termsText), (termsText.match(ADDRESS) || [''])[0]);
+check('it states no opening hours, in either language',
+  !HOURS.test(termsText), (termsText.match(HOURS) || [''])[0]);
+check('it promises no reply date, in either language',
+  !DATE_PROMISE.test(termsText), (termsText.match(DATE_PROMISE) || [''])[0]);
 check('the tab warns against putting the address in that cell',
   /DO NOT put the school address/.test(String(standingTab.getRange('A4').getValue())));
 check('the tab says the item list lives in the form, not here',
@@ -609,6 +615,11 @@ const ownerColumn = volunteersTab.getRange(2, 1, 199, 1).getValues()
   .map((r) => String(r[0] || '')).filter((v) => v.trim());
 check('the Owner dropdown range Volunteers!A2:A200 starts empty',
   ownerColumn.length === 0, ownerColumn.join(' | '));
+const emailRule = volunteersTab._meta.validations.filter((x) => x.col === 2)[0];
+check('the Volunteers Email column rejects anything without an @',
+  !!emailRule && emailRule.rule.kind === 'contains' &&
+  emailRule.rule.values[0] === '@' && emailRule.rule.allowInvalid === false &&
+  emailRule.row === 2, JSON.stringify(emailRule));
 check('the Volunteers instructions sit outside the Name column',
   /One row per volunteer/.test(String(volunteersTab.getRange('E1').getValue())));
 

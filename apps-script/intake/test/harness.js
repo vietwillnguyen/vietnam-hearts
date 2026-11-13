@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { ADDRESS, MUST_MATCH, MUST_NOT_MATCH } = require('./address-shape');
+const FORBIDDEN = require('./forbidden-shapes');
 
 const CODE = process.argv[2] || path.join(__dirname, '..', 'Code.js');
 
@@ -66,7 +66,9 @@ function makeWorld(opts) {
   Object.assign(row, opts.preset || {});
 
   const grid = [HEADERS.slice()];
-  for (let i = 0; i < (opts.rows || 1); i++) grid.push(row.slice());
+  for (let i = 0; i < (opts.rows || 1); i++) {
+    grid.push(Object.assign(row.slice(), (opts.rowPresets || [])[i] || {}));
+  }
   const mails = [];
   const logs = [];
 
@@ -123,7 +125,12 @@ function makeWorld(opts) {
     },
     MailApp: {
       getRemainingDailyQuota: () => (opts.quota === undefined ? 90 : opts.quota),
-      sendEmail: (o) => mails.push(o)
+      sendEmail: (o) => {
+        if (o.replyTo && o.replyTo === opts.rejectReplyTo) {
+          throw new Error('Invalid argument: replyTo');
+        }
+        mails.push(o);
+      }
     },
     Logger: { log: (...a) => logs.push(a.join(' ')) },
     ScriptApp: {
@@ -403,14 +410,34 @@ check('O an unsent acknowledgement is reported',
   teamMails(w).some((m) => /onIntakeFormSubmit/.test(m.subject) &&
     /was not sent/.test(m.htmlBody)));
 
+// P: a drag-fill over three rows where the middle row's send throws
+w = editRange(makeWorld({
+  rows: 3,
+  volunteers: [['Mai', 'mai@example.com', ''], ['Bao', 'bao@broken', '']],
+  rejectReplyTo: 'bao@broken',
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' },
+  rowPresets: [{}, { [H['Owner']]: 'Bao' }, {}]
+}), 2, H['Decision'], 3, 1);
+show('P. drag-fill, row 3 throws -> rows 2 and 4 still sent, row 3 reported', w);
+check('P the rows either side of the failure are emailed', donorMails(w).length === 2,
+  String(donorMails(w).length));
+check('P the rows either side are stamped',
+  isDate(w.grid[1][H['Reply sent']]) && isDate(w.grid[3][H['Reply sent']]));
+check('P the failed row is not stamped', w.grid[2][H['Reply sent']] === '');
+check('P the failure names its row',
+  teamMails(w).some((m) => m.subject === '[Requests sheet] onIntakeEdit row 3 failed'),
+  teamMails(w).map((m) => m.subject).join(' | '));
+
 /* -------------------------------------------------- the global invariants */
 
-check('the address matcher flags every address-shaped sample',
-  MUST_MATCH.every((t) => ADDRESS.test(t)),
-  MUST_MATCH.filter((t) => !ADDRESS.test(t)).join(' | '));
-check('the address matcher passes the public area and ordinary numbers',
-  MUST_NOT_MATCH.every((t) => !ADDRESS.test(t)),
-  MUST_NOT_MATCH.filter((t) => ADDRESS.test(t)).join(' | '));
+Object.keys(FORBIDDEN.SAMPLES).forEach((name) => {
+  const re = FORBIDDEN[name];
+  const s = FORBIDDEN.SAMPLES[name];
+  check(`the ${name} matcher flags every sample of that shape`,
+    s.match.every((t) => re.test(t)), s.match.filter((t) => !re.test(t)).join(' | '));
+  check(`the ${name} matcher passes the allowed text`,
+    s.pass.every((t) => !re.test(t)), s.pass.filter((t) => re.test(t)).join(' | '));
+});
 
 console.log('\n--- every mail produced above');
 const offenders = allMails.filter((m) => PHONE.test(String(m.htmlBody)) ||
@@ -418,11 +445,15 @@ const offenders = allMails.filter((m) => PHONE.test(String(m.htmlBody)) ||
 check(`no phone number in any of the ${allMails.length} mails`,
   offenders.length === 0,
   offenders.map((m) => m.subject).join(' | '));
-const addressed = allMails.filter((m) => ADDRESS.test(String(m.htmlBody)) ||
-  ADDRESS.test(String(m.subject)));
-check(`no street address in any of the ${allMails.length} mails`,
-  addressed.length === 0,
-  addressed.map((m) => m.subject).join(' | '));
+[['ADDRESS', 'street address'], ['HOURS', 'opening hours'],
+  ['DATE_PROMISE', 'reply-date promise']].forEach(([name, label]) => {
+  const re = FORBIDDEN[name];
+  const hits = allMails.filter((m) => re.test(String(m.htmlBody)) ||
+    re.test(String(m.subject)));
+  check(`no ${label} in any of the ${allMails.length} mails`, hits.length === 0,
+    hits.map((m) => m.subject + ': ' +
+      (String(m.subject + ' ' + m.htmlBody).match(re) || [''])[0]).join(' | '));
+});
 check('every recipient is an address the script was given',
   allMails.every((m) => m.to === DONOR || m.to === TEAM),
   allMails.map((m) => m.to).filter((t) => t !== DONOR && t !== TEAM).join(', '));
