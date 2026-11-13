@@ -28,6 +28,22 @@
  * Apps Script inside the sheet.
  */
 
+/* Every bilingual string in this file and in Code.js reads "English / Tiếng
+   Việt", in that order: question titles, help text, section titles, choice
+   values, the consent line and the confirmation message. Two reasons the order
+   is a contract rather than a preference. The team reads English first, and -
+   less obviously - every HEADER needle in Code.js is an English fragment, so
+   English leading is what keeps col_() resolving a column whose header is the
+   whole bilingual question title. Flip a string and you must re-check the
+   needle that finds it; test/harness.js matches all of them against the real
+   titles for exactly that reason. */
+
+/** The spreadsheet's own time zone. A new spreadsheet comes up on whatever
+ *  zone the owning account has - Etc/GMT on the first live build - and the
+ *  "Next action by" dates would then read a day off to the team in Vietnam.
+ *  `appsscript.json` pins the SCRIPT's zone; this pins the SHEET's. */
+var SHEET_TIME_ZONE = 'Asia/Ho_Chi_Minh';
+
 /** Properties that make a re-run idempotent. */
 var PROP_FORM_ID = 'intakeFormId';
 
@@ -48,6 +64,13 @@ var TEAM_COLUMNS = [
   'Decision note',
   'Reply sent'
 ];
+
+/** Two branch choice values that other code matches on, so they are named
+ *  rather than retyped: the pre-filled link template picks the partnership
+ *  branch by value, and Code.js tests the supplies branch with the English
+ *  fragment "Donate supplies". */
+var SUPPLIES_CHOICE = 'Donate supplies or goods / Tặng đồ dùng, vật phẩm';
+var PARTNERSHIP_CHOICE = 'A long-term partnership / Hợp tác dài hạn';
 
 var STATUS_VALUES = ['TODO', 'IN PROGRESS', 'BLOCKED - WAITING ON ANOTHER PARTY', 'DONE'];
 var PRIORITY_VALUES = ['High', 'Normal', 'Low'];
@@ -70,19 +93,19 @@ var TABS = {
  *  constant the handlers read. Code.js asks "did they tick anything", so the
  *  list can change by editing the form and nothing else. */
 var STANDING_ITEMS = [
-  'Dầu ăn / Cooking oil',
-  'Đường / Sugar',
-  'Sữa hộp nhỏ / Small milk cartons',
-  'Nước mắm / Fish sauce',
-  'Bột nêm, bột ngọt / Seasoning powder, MSG'
+  'Cooking oil / Dầu ăn',
+  'Sugar / Đường',
+  'Small milk cartons / Sữa hộp nhỏ',
+  'Fish sauce / Nước mắm',
+  'Seasoning powder, MSG / Bột nêm, bột ngọt'
 ];
 
 /** Asked at the end of every branch, in exactly these words on purpose.
  *  Google Forms still makes one sheet column per item, so this produces four
  *  identically headed columns, one per branch, and each row fills only one. */
 var CLOSING_QUESTION =
-  'Bạn cần gì từ Vietnam Hearts, hoặc có điều gì khác muốn cho chúng tôi biết? / ' +
-  'What do you need from us, or anything else we should know?';
+  'What do you need from us, or anything else we should know? / ' +
+  'Bạn cần gì từ Vietnam Hearts, hoặc có điều gì khác muốn cho chúng tôi biết?';
 
 /* ------------------------------------------------------------------ build */
 
@@ -90,6 +113,9 @@ function buildIntake() {
   var ss = SpreadsheetApp.getActive();
   var manual = [];
   var notes = [];
+
+  // First, before any date is written anywhere.
+  setSheetTimeZone_(ss, notes, manual);
 
   var form = openOrCreateForm_(notes, manual);
   linkFormToSheet_(form, ss, notes, manual);
@@ -108,6 +134,7 @@ function buildIntake() {
   buildAllWorkTab_(ss, notes);
   buildTiersTab_(ss, notes);
   buildProgressTabs_(ss, notes, manual);
+  removeDefaultTabIfEmpty_(ss, notes, manual);
 
   // The triggers last, so nothing can fire against a half-built sheet.
   //
@@ -131,6 +158,63 @@ function buildIntake() {
   collectManualSteps_(manual);
   reportBuild_(form, ss, notes, manual);
   return { formUrl: form.getPublishedUrl(), sheetUrl: ss.getUrl() };
+}
+
+/** Pin the spreadsheet's time zone. Reported as a note, not asked for as a
+ *  manual step, because Apps Script can simply do it - and a volunteer who
+ *  skips the step gets dates that are quietly a day out rather than visibly
+ *  broken. Only becomes a manual step if the call itself fails. */
+function setSheetTimeZone_(ss, notes, manual) {
+  try {
+    var before = String(ss.getSpreadsheetTimeZone() || '');
+    if (before === SHEET_TIME_ZONE) {
+      notes.push('The spreadsheet time zone is already ' + SHEET_TIME_ZONE + '.');
+      return;
+    }
+    ss.setSpreadsheetTimeZone(SHEET_TIME_ZONE);
+    notes.push('Set the spreadsheet time zone to ' + SHEET_TIME_ZONE +
+      ' (it was ' + (before || 'unset') + '). On any other zone every ' +
+      '"Next action by" date reads a day off to the team in Vietnam.');
+  } catch (err) {
+    manual.push('In the spreadsheet: File -> Settings -> **Time zone: ' +
+      'Asia/Ho Chi Minh**, to match the script. This build could not set it (' +
+      err + '). On any other zone every "Next action by" date reads a day off ' +
+      'to the team in Vietnam.');
+  }
+}
+
+/** Google's own blank first tab. A volunteer starts from a blank spreadsheet,
+ *  so "Sheet1" is always there and is dead weight once the build has made its
+ *  own tabs - the first live build left it sitting in front of them.
+ *
+ *  Deleted only when it is genuinely untouched and only when it is a default
+ *  name, so a tab a volunteer renamed or typed into is never destroyed by a
+ *  re-run; that case becomes a manual step instead. Never the last tab left. */
+function removeDefaultTabIfEmpty_(ss, notes, manual) {
+  var sheets = ss.getSheets();
+  if (sheets.length < 2) return;
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    var name = sh.getName();
+    // "Trang tính1" is the same tab on a Vietnamese-locale account.
+    if (!/^(?:Sheet|Trang tính)\s?\d+$/.test(name)) continue;
+    if (sh.getLastRow() !== 0 || sh.getLastColumn() !== 0 ||
+        sh.getCharts().length !== 0) {
+      notes.push('Left the default "' + name + '" tab alone: it is not empty.');
+      manual.push('In the spreadsheet: the default "' + name + '" tab has ' +
+        'something on it, so this build kept it rather than deleting a ' +
+        'volunteer\'s work. Move anything worth keeping onto one of the named ' +
+        'tabs, then delete it by hand.');
+      continue;
+    }
+    try {
+      ss.deleteSheet(sh);
+      notes.push('Deleted the empty default "' + name + '" tab.');
+    } catch (err) {
+      notes.push('Could not delete the empty default "' + name + '" tab: ' + err);
+    }
+    return;
+  }
 }
 
 /* ------------------------------------------------------------------- form */
@@ -159,7 +243,7 @@ function openOrCreateForm_(notes, manual) {
     }
   }
 
-  var form = FormApp.create('Đề xuất hỗ trợ Vietnam Hearts / Offer support to Vietnam Hearts');
+  var form = FormApp.create('Offer support to Vietnam Hearts / Đề xuất hỗ trợ Vietnam Hearts');
   props.setProperty(PROP_FORM_ID, form.getId());
   applyFormSettings_(form, manual);
   addFormItems_(form, manual);
@@ -170,19 +254,19 @@ function openOrCreateForm_(notes, manual) {
 
 function applyFormSettings_(form, manual) {
   form.setDescription(
+    'Want to donate supplies, partner with us long term, or host an event? Tell us here. ' +
+    'We are a volunteer team; someone will read this and get back to you.\n\n' +
     'Bạn muốn tặng đồ dùng, hợp tác dài hạn, hoặc tổ chức một sự kiện cùng chúng tôi? ' +
     'Hãy cho chúng tôi biết tại đây. Chúng tôi là nhóm tình nguyện, sẽ có người đọc và ' +
-    'liên hệ lại với bạn.\n\n' +
-    'Want to donate supplies, partner with us long term, or host an event? Tell us here. ' +
-    'We are a volunteer team; someone will read this and get back to you.');
+    'liên hệ lại với bạn.');
 
   // No date is promised anywhere a submitter can read. The seven-day target
   // lives in the sheet's "Next action by" column, for the team only.
   form.setConfirmationMessage(
-    'Cảm ơn bạn. Chúng tôi đã nhận được đề xuất của bạn và sẽ liên hệ lại. ' +
-    'Bạn cũng có thể nhắn cho chúng tôi trên Zalo hoặc WhatsApp.\n\n' +
     'Thank you. We have your request and will get back to you. ' +
-    'You can also message us on Zalo or WhatsApp.');
+    'You can also message us on Zalo or WhatsApp.\n\n' +
+    'Cảm ơn bạn. Chúng tôi đã nhận được đề xuất của bạn và sẽ liên hệ lại. ' +
+    'Bạn cũng có thể nhắn cho chúng tôi trên Zalo hoặc WhatsApp.');
 
   form.setProgressBar(true);
   form.setLimitOneResponsePerUser(false);   // limiting forces a Google sign-in
@@ -220,43 +304,45 @@ function addFormItems_(form, manual) {
   // PageBreakItem begins a page; setGoToPage on a page break controls where
   // the form goes after the page BEFORE it, which is why each branch's jump
   // is set on the page break that follows it.
-  var pbSupplies = form.addPageBreakItem().setTitle('Tặng đồ dùng / Donate supplies');
-  var pbPartner = form.addPageBreakItem().setTitle('Hợp tác dài hạn / Long-term partnership');
-  var pbEvent = form.addPageBreakItem().setTitle('Sự kiện / Event');
-  var pbOther = form.addPageBreakItem().setTitle('Điều khác / Something else');
-  var pbFinal = form.addPageBreakItem().setTitle('Đồng ý và gửi / Consent and send');
+  var pbSupplies = form.addPageBreakItem().setTitle('Donate supplies / Tặng đồ dùng');
+  var pbPartner = form.addPageBreakItem().setTitle('Long-term partnership / Hợp tác dài hạn');
+  var pbEvent = form.addPageBreakItem().setTitle('Event / Sự kiện');
+  var pbOther = form.addPageBreakItem().setTitle('Something else / Điều khác');
+  var pbFinal = form.addPageBreakItem().setTitle('Consent and send / Đồng ý và gửi');
 
   // Page 1, everyone. The branch question has to be created before the page
   // breaks exist to point at, so it is added now and moved to the top.
   var branch = form.addMultipleChoiceItem()
-    .setTitle('Bạn muốn đề xuất điều gì? / What would you like to offer?')
+    .setTitle('What would you like to offer? / Bạn muốn đề xuất điều gì?')
     .setRequired(true);
+  // These four values are data, not just copy: PARTNERSHIP_CHOICE below and
+  // Code.js's "Donate supplies" test both compare against them.
   branch.setChoices([
-    branch.createChoice('Tặng đồ dùng, vật phẩm / Donate supplies or goods', pbSupplies),
-    branch.createChoice('Hợp tác dài hạn / A long-term partnership', pbPartner),
-    branch.createChoice('Tổ chức hoặc tài trợ sự kiện / Host or sponsor an event', pbEvent),
-    branch.createChoice('Điều khác / Something else', pbOther)
+    branch.createChoice(SUPPLIES_CHOICE, pbSupplies),
+    branch.createChoice(PARTNERSHIP_CHOICE, pbPartner),
+    branch.createChoice('Host or sponsor an event / Tổ chức hoặc tài trợ sự kiện', pbEvent),
+    branch.createChoice('Something else / Điều khác', pbOther)
   ]);
   form.moveItem(branch.getIndex(), 0);
 
   var name = form.addTextItem()
-    .setTitle('Tên của bạn / Your name')
+    .setTitle('Your name / Tên của bạn')
     .setRequired(true);
   form.moveItem(name.getIndex(), 1);
 
   var phone = form.addTextItem()
-    .setTitle('Số Zalo hoặc WhatsApp / Zalo or WhatsApp number')
-    .setHelpText('Số nào cũng được - chúng tôi dùng cả Zalo và WhatsApp. / ' +
-      'Either is fine - we use both Zalo and WhatsApp.');
+    .setTitle('Zalo or WhatsApp number / Số Zalo hoặc WhatsApp')
+    .setHelpText('Either is fine - we use both Zalo and WhatsApp. / ' +
+      'Số nào cũng được - chúng tôi dùng cả Zalo và WhatsApp.');
   form.moveItem(phone.getIndex(), 2);
 
   var org = form.addTextItem()
-    .setTitle('Tổ chức hoặc công ty (nếu có) / Organization or company (if any)');
+    .setTitle('Organization or company (if any) / Tổ chức hoặc công ty (nếu có)');
   form.moveItem(org.getIndex(), 3);
 
   var lang = form.addMultipleChoiceItem()
-    .setTitle('Bạn muốn chúng tôi trả lời bằng ngôn ngữ nào? / Which language should we reply in?');
-  lang.setChoiceValues(['Tiếng Việt', 'English']);
+    .setTitle('Which language should we reply in? / Bạn muốn chúng tôi trả lời bằng ngôn ngữ nào?');
+  lang.setChoiceValues(['English', 'Tiếng Việt']);
   form.moveItem(lang.getIndex(), 4);
 
   // Branch jumps. Each page break carries the jump for the page before it.
@@ -287,39 +373,39 @@ function addSuppliesQuestions_(form, pb, manual) {
   // would flag the row High priority and tell the donor it is "almost
   // certainly a yes" about something the team never agreed to.
   var standing = form.addCheckboxItem()
-    .setTitle('Chúng tôi luôn cần những món này - bạn có tặng món nào không? / ' +
-      'We always need these - are you giving any of them?');
+    .setTitle('We always need these - are you giving any of them? / ' +
+      'Chúng tôi luôn cần những món này - bạn có tặng món nào không?');
   standing.setChoiceValues(STANDING_ITEMS);
   standing.showOtherOption(false);
   appendTo_(form, pb, standing, n++);
 
   appendTo_(form, pb, form.addParagraphTextItem()
-    .setTitle('Các món khác (không có trong danh sách trên) / Other items not on the list above'),
+    .setTitle('Other items not on the list above / Các món khác (không có trong danh sách trên)'),
     n++);
 
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Số lượng khoảng bao nhiêu? / Roughly how much of each?')
-    .setHelpText('ví dụ: 5 lít dầu ăn, 2 kg đường. Nhiều hơn khoảng 20 kg hoặc 20 lít ' +
-      'thì xin nhắn tin trước. / e.g. 5 L oil, 2 kg sugar. Above roughly 20 kg or 20 L, ' +
-      'please message us first.'),
+    .setTitle('Roughly how much of each? / Số lượng khoảng bao nhiêu?')
+    .setHelpText('e.g. 5 L oil, 2 kg sugar. Above roughly 20 kg or 20 L, please message ' +
+      'us first. / ví dụ: 5 lít dầu ăn, 2 kg đường. Nhiều hơn khoảng 20 kg hoặc 20 lít ' +
+      'thì xin nhắn tin trước.'),
     n++);
 
-  var condition = form.addMultipleChoiceItem().setTitle('Tình trạng / Condition');
+  var condition = form.addMultipleChoiceItem().setTitle('Condition / Tình trạng');
   condition.setChoiceValues([
-    'Mới / New',
-    'Đã dùng, còn tốt / Gently used',
-    'Hỗn hợp / Mixed'
+    'New / Mới',
+    'Gently used / Đã dùng, còn tốt',
+    'Mixed / Hỗn hợp'
   ]);
   appendTo_(form, pb, condition, n++);
 
   appendTo_(form, pb, form.addDateItem()
-    .setTitle('Khi nào bạn có thể giao? / When could you hand them over?')
-    .setHelpText('Chúng tôi sẽ hẹn cụ thể với bạn sau. / ' +
-      'We will agree the exact time with you afterwards.'),
+    .setTitle('When could you hand them over? / Khi nào bạn có thể giao?')
+    .setHelpText('We will agree the exact time with you afterwards. / ' +
+      'Chúng tôi sẽ hẹn cụ thể với bạn sau.'),
     n++);
 
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Đồ hiện đang ở đâu? (quận, thành phố) / Where are the items now? (district, city)'),
+    .setTitle('Where are the items now? (district, city) / Đồ hiện đang ở đâu? (quận, thành phố)'),
     n++);
 
   // The help text here answers "where do I bring it" without giving an
@@ -327,86 +413,80 @@ function addSuppliesQuestions_(form, pb, manual) {
   // a volunteer and joins the Zalo group, so the public geography stops at the
   // district.
   var deliverer = form.addMultipleChoiceItem()
-    .setTitle('Ai sẽ giao? / Who delivers?')
-    .setHelpText('Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên. ' +
-      'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM. / We arrange each handover with ' +
-      'a volunteer. Our area: Thạnh Mỹ Tây, Ho Chi Minh City.');
+    .setTitle('Who delivers? / Ai sẽ giao?')
+    .setHelpText('We arrange each handover with a volunteer. Our area: Thạnh Mỹ Tây, ' +
+      'Ho Chi Minh City. / Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên. ' +
+      'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.');
   deliverer.setChoiceValues([
-    'Tôi giao được / I can deliver',
-    'Cần Vietnam Hearts đến lấy / We need Vietnam Hearts to collect',
-    'Chưa rõ / Not sure yet'
+    'I can deliver / Tôi giao được',
+    'We need Vietnam Hearts to collect / Cần Vietnam Hearts đến lấy',
+    'Not sure yet / Chưa rõ'
   ]);
   appendTo_(form, pb, deliverer, n++);
 
   appendTo_(form, pb, form.addParagraphTextItem().setTitle(CLOSING_QUESTION), n++);
 
-  // File upload is last in the section and optional, so nobody meets Google's
-  // sign-in wall before their answers are saved.
-  try {
-    appendTo_(form, pb, form.addFileUploadItem()
-      .setTitle('Ảnh của đồ (không bắt buộc) / Photo of the items (optional)')
-      .setHelpText('Google sẽ yêu cầu bạn đăng nhập tài khoản Google để tải ảnh. ' +
-        'Nếu không tiện, bạn có thể gửi ảnh qua Zalo hoặc WhatsApp. / Google will ask ' +
-        'you to sign in to attach a photo. If that is inconvenient, send photos on ' +
-        'Zalo or WhatsApp instead.'),
-      n++);
-  } catch (err) {
-    manual.push('In the form, on the supplies section, add a **File upload** question ' +
-      'titled "Ảnh của đồ (không bắt buộc) / Photo of the items (optional)" as the LAST ' +
-      'question of that section. This build could not add it (' + err + '). Keep it ' +
-      'optional and last: attaching a file forces a Google sign-in, and last means the ' +
-      'submitter has already answered everything else before meeting it.');
-  }
+  // The photo question is a manual step, not a failed attempt at one.
+  // FormApp.Form has NO addFileUploadItem - there is no such method on any
+  // account, and the first live build raised a TypeError reaching for it, then
+  // showed a volunteer the TypeError text. Forms can only ask for a file
+  // through the editor. Do not add the call back.
+  manual.push('In the form, on the supplies section, add a **File upload** question ' +
+    'titled "Photo of the items (optional) / Ảnh của đồ (không bắt buộc)" as the LAST ' +
+    'question of that section, and leave it optional. Apps Script has no API for a ' +
+    'file upload question, so this one is yours. Optional and last matters: ' +
+    'attaching a file forces a Google sign-in, and last means the submitter has ' +
+    'already answered everything else before meeting it.');
 }
 
 function addPartnershipQuestions_(form, pb) {
   var n = 0;
   appendTo_(form, pb, form.addParagraphTextItem()
-    .setTitle('Tổ chức của bạn và tổ chức đó làm gì? / Your organization and what it does')
+    .setTitle('Your organization and what it does / Tổ chức của bạn và tổ chức đó làm gì?')
     .setRequired(true), n++);
   appendTo_(form, pb, form.addParagraphTextItem()
-    .setTitle('Bạn đang nghĩ đến điều gì? / What do you have in mind?')
+    .setTitle('What do you have in mind? / Bạn đang nghĩ đến điều gì?')
     .setRequired(true), n++);
   var timeframe = form.addMultipleChoiceItem()
-    .setTitle('Khoảng thời gian / Timeframe');
+    .setTitle('Timeframe / Khoảng thời gian');
   timeframe.setChoiceValues([
-    'Một lần / One-off',
-    '3 tháng / 3 months',
-    '6 tháng / 6 months',
-    'Lâu dài / Ongoing',
-    'Chưa rõ / Not sure'
+    'One-off / Một lần',
+    '3 months / 3 tháng',
+    '6 months / 6 tháng',
+    'Ongoing / Lâu dài',
+    'Not sure / Chưa rõ'
   ]);
   appendTo_(form, pb, timeframe, n++);
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Website hoặc trang mạng xã hội / Website or social link'), n++);
+    .setTitle('Website or social link / Website hoặc trang mạng xã hội'), n++);
   appendTo_(form, pb, form.addParagraphTextItem().setTitle(CLOSING_QUESTION), n++);
 }
 
 function addEventQuestions_(form, pb) {
   var n = 0;
   appendTo_(form, pb, form.addParagraphTextItem()
-    .setTitle('Sự kiện gì? / What kind of event?')
+    .setTitle('What kind of event? / Sự kiện gì?')
     .setRequired(true), n++);
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Ngày hoặc khoảng thời gian dự kiến / Proposed date or window'), n++);
+    .setTitle('Proposed date or window / Ngày hoặc khoảng thời gian dự kiến'), n++);
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Dự kiến bao nhiêu người? / Expected number of people'), n++);
-  var venue = form.addMultipleChoiceItem().setTitle('Địa điểm / Venue');
+    .setTitle('Expected number of people / Dự kiến bao nhiêu người?'), n++);
+  var venue = form.addMultipleChoiceItem().setTitle('Venue / Địa điểm');
   venue.setChoiceValues([
-    'Chúng tôi có địa điểm / You provide one',
-    'Cần Vietnam Hearts tìm / We need one',
-    'Chưa rõ / Not sure'
+    'You provide one / Chúng tôi có địa điểm',
+    'We need one / Cần Vietnam Hearts tìm',
+    'Not sure / Chưa rõ'
   ]);
   appendTo_(form, pb, venue, n++);
   appendTo_(form, pb, form.addParagraphTextItem()
-    .setTitle('Ngân sách hoặc tài trợ (nếu có) / Budget or sponsorship offered (if any)'), n++);
+    .setTitle('Budget or sponsorship offered (if any) / Ngân sách hoặc tài trợ (nếu có)'), n++);
   appendTo_(form, pb, form.addParagraphTextItem().setTitle(CLOSING_QUESTION), n++);
 }
 
 function addOtherQuestions_(form, pb) {
   var n = 0;
   appendTo_(form, pb, form.addParagraphTextItem()
-    .setTitle('Hãy cho chúng tôi biết / Tell us about it')
+    .setTitle('Tell us about it / Hãy cho chúng tôi biết')
     .setRequired(true), n++);
   appendTo_(form, pb, form.addParagraphTextItem().setTitle(CLOSING_QUESTION), n++);
 }
@@ -414,16 +494,16 @@ function addOtherQuestions_(form, pb) {
 function addFinalSection_(form, pb) {
   var n = 0;
   var consent = form.addCheckboxItem()
-    .setTitle('Tôi đồng ý để Vietnam Hearts lưu thông tin này và liên hệ với tôi về ' +
-      'đề xuất này. / I agree that Vietnam Hearts may store this information and ' +
-      'contact me about this request.')
-    .setHelpText('Chính sách quyền riêng tư / Privacy policy: ' + PRIVACY_URL)
+    .setTitle('I agree that Vietnam Hearts may store this information and contact me ' +
+      'about this request. / Tôi đồng ý để Vietnam Hearts lưu thông tin này và liên hệ ' +
+      'với tôi về đề xuất này.')
+    .setHelpText('Privacy policy / Chính sách quyền riêng tư: ' + PRIVACY_URL)
     .setRequired(true);
-  consent.setChoiceValues(['Tôi đồng ý / I agree']);
+  consent.setChoiceValues(['I agree / Tôi đồng ý']);
   appendTo_(form, pb, consent, n++);
 
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Bạn biết đến Vietnam Hearts từ đâu? / How did you hear about us?'), n++);
+    .setTitle('How did you hear about us? / Bạn biết đến Vietnam Hearts từ đâu?'), n++);
 }
 
 /** A link with the request type already chosen, for forwarding to a prospect.
@@ -436,7 +516,7 @@ function prefilledPartnershipUrl_(form) {
       if (items[i].getTitle().indexOf('What would you like to offer') === -1) continue;
       var mc = items[i].asMultipleChoiceItem();
       return form.createResponse()
-        .withItemResponse(mc.createResponse('Hợp tác dài hạn / A long-term partnership'))
+        .withItemResponse(mc.createResponse(PARTNERSHIP_CHOICE))
         .toPrefilledUrl();
     }
   } catch (err) {
@@ -624,15 +704,6 @@ function buildStandingNeedsTab_(ss, notes) {
   sh.getRange('A1').setValue('Wording the acknowledgement email quotes. Edit B2.');
   sh.getRange('A2').setValue('Handover and condition block (B2):');
   sh.getRange(CONFIG.TERMS_CELL).setValue(
-    'Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên.\n' +
-    'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
-    'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm - xin đừng mang đến trước khi hẹn xong.\n' +
-    'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.\n\n' +
-    'Thực phẩm xin: còn nguyên seal, nguyên bao bì gốc, còn hạn ít nhất 3 tháng.\n' +
-    'Sữa hộp: còn hạn ít nhất 2 tuần.\n' +
-    'Chúng tôi không nhận đồ ăn tự làm hoặc chia lại, đồ đã mở, hộp/lon bị móp, rỉ hoặc mất nhãn.\n' +
-    'Nếu nhiều hơn khoảng 20 kg hoặc 20 lít, xin nhắn trước để chúng tôi chuẩn bị chỗ chứa.\n\n' +
-    '---\n' +
     'We arrange each handover with a volunteer.\n' +
     'Our area: Thạnh Mỹ Tây, Ho Chi Minh City.\n' +
     'A volunteer will message you to agree a time and place - please wait for that before bringing anything.\n' +
@@ -640,7 +711,16 @@ function buildStandingNeedsTab_(ss, notes) {
     'Food please: sealed, in its original packaging, at least 3 months before the expiry date.\n' +
     'Milk cartons: at least 2 weeks before expiry.\n' +
     'We cannot take home-made or repackaged food, opened items, or dented, rusty or unlabelled containers.\n' +
-    'If you have more than roughly 20 kg or 20 L, please message first so we can make space.');
+    'If you have more than roughly 20 kg or 20 L, please message first so we can make space.\n\n' +
+    '---\n' +
+    'Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên.\n' +
+    'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
+    'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm - xin đừng mang đến trước khi hẹn xong.\n' +
+    'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.\n\n' +
+    'Thực phẩm xin: còn nguyên seal, nguyên bao bì gốc, còn hạn ít nhất 3 tháng.\n' +
+    'Sữa hộp: còn hạn ít nhất 2 tuần.\n' +
+    'Chúng tôi không nhận đồ ăn tự làm hoặc chia lại, đồ đã mở, hộp/lon bị móp, rỉ hoặc mất nhãn.\n' +
+    'Nếu nhiều hơn khoảng 20 kg hoặc 20 lít, xin nhắn trước để chúng tôi chuẩn bị chỗ chứa.');
   sh.getRange(CONFIG.TERMS_CELL).setWrap(true);
   sh.setColumnWidth(2, 560);
 
@@ -735,28 +815,85 @@ function buildAllWorkTab_(ss, notes) {
   return sh;
 }
 
+/** The published tab.
+ *
+ *  A chart cannot filter its own rows, so this tab is a QUERY over the team's
+ *  Progress tab. Three things fall out of that: "Show on site = NO" hides a
+ *  project without deleting it, a project can be prepared privately, and the
+ *  tab that reaches the public web holds nothing but project names and
+ *  numbers.
+ *
+ *  Every project is charted as PERCENT FUNDED, never as a raw amount. The
+ *  Progress tab deliberately allows one currency per row, so raw totals on one
+ *  axis compare a VND number with a USD one: the first live build stacked
+ *  "Monthly rice fund (USD)" 12382 of 13000 against "Tết gifts 2027 (VND)"
+ *  400000 of 2600000, and the VND bar dwarfed the USD one while neither bar
+ *  meant anything. A fraction is unit-free, so it is right whatever currency a
+ *  row is in and - unlike converting everything to USD - it needs no exchange
+ *  rate that goes stale silently between the two tabs. The amounts are not
+ *  lost: they travel in each bar's label, formatted, beside the project name
+ *  that states the currency.
+ *
+ *  E:G hold the filtered QUERY and are hidden. A:C are what the chart reads. */
+function buildProgressChartTab_(sh) {
+  sh.getRange('A1').setFormula('={"Project","Funded","Remaining"}');
+
+  sh.getRange('E1').setFormula('={"Project","Raised","Goal"}');
+  sh.getRange('E2').setFormula(
+    '=IFERROR(QUERY(' + TABS.progress + '!A2:F30,' +
+    '"select Col1, Col3, Col2 where Col6 = \'YES\' and Col1 is not null",0),"")');
+
+  sh.getRange('A2').setFormula(
+    '=ARRAYFORMULA(IF(E2:E30="","",E2:E30&" - "&TEXT(F2:F30,"#,##0")&' +
+    '" of "&TEXT(G2:G30,"#,##0")))');
+  // IFERROR element by element, so a goal of 0 or a blank row is 0 rather than
+  // a #DIV/0! that would blank the whole chart.
+  sh.getRange('B2').setFormula(
+    '=ARRAYFORMULA(IF(E2:E30="","",' +
+    'IFERROR(IF(F2:F30/G2:G30>1,1,F2:F30/G2:G30),0)))');
+  sh.getRange('C2').setFormula('=ARRAYFORMULA(IF(B2:B30="","",1-B2:B30))');
+  sh.getRange('B2:C30').setNumberFormat('0%');
+
+  sh.hideColumns(5, 3);
+
+  sh.getRange('I1').setValue(
+    'Published to the web. Nothing personal may ever be added to this tab. ' +
+    'A1, A2, B2, C2, E1 and E2 are rewritten by buildIntake() on every run, so ' +
+    'an edit to them does not survive: change buildProgressChartTab_ in ' +
+    'Build.js instead. The two charted series are fractions of each project\'s ' +
+    'own goal, which is what lets one chart hold a VND project and a USD one; ' +
+    'the amounts are in the bar labels. Columns E to G are hidden on purpose.');
+  sh.getRange('I1').setWrap(true);
+  sh.setColumnWidth(9, 420);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
 function buildTiersTab_(ss, notes) {
   var sh = tab_(ss, TABS.tiers, notes);
   if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
 
+  // VND leads the two amount columns because a tier IS a VND amount and the
+  // USD figure is the conversion; the two OUTCOME columns read English before
+  // Vietnamese, like every other bilingual pair in this project.
   sh.getRange('A1:E1').setValues([[
-    'VND', 'USD (approx)', 'Outcome (Tiếng Việt)', 'Outcome (English)', 'As of'
+    'VND', 'USD (approx)', 'Outcome (English)', 'Outcome (Tiếng Việt)', 'As of'
   ]]).setFontWeight('bold');
 
   sh.getRange('A2:E6').setValues([
-    [50000, 2, 'Gạo cho một em trong một tháng, cộng hai hộp sữa',
-      'Rice for one child for a month, plus two cartons of milk', '2026-11-13'],
-    [100000, 4, 'Gạo cho ba em trong một tháng, hoặc dầu ăn và đường cho một lớp',
+    [50000, 2, 'Rice for one child for a month, plus two cartons of milk',
+      'Gạo cho một em trong một tháng, cộng hai hộp sữa', '2026-11-13'],
+    [100000, 4,
       'Rice for three children for a month, or a month of cooking oil and sugar for one class',
-      '2026-11-13'],
+      'Gạo cho ba em trong một tháng, hoặc dầu ăn và đường cho một lớp', '2026-11-13'],
     [250000, 10,
-      'Gạo cho tám em trong một tháng, hoặc một giỏ bếp đầy đủ cho một lớp: dầu ăn, đường, nước mắm, bột nêm',
       'Rice for eight children for a month, or a full kitchen basket for one class: oil, sugar, fish sauce, seasoning',
+      'Gạo cho tám em trong một tháng, hoặc một giỏ bếp đầy đủ cho một lớp: dầu ăn, đường, nước mắm, bột nêm',
       '2026-11-13'],
-    [600000, 23, 'Gạo cho hai mươi em trong một tháng',
-      'Rice for twenty children for a month', '2026-11-13'],
-    [1300000, 50, 'Gạo cho bốn mươi em trong một tháng',
-      'Rice for forty children for a month', '2026-11-13']
+    [600000, 23, 'Rice for twenty children for a month',
+      'Gạo cho hai mươi em trong một tháng', '2026-11-13'],
+    [1300000, 50, 'Rice for forty children for a month',
+      'Gạo cho bốn mươi em trong một tháng', '2026-11-13']
   ]);
   sh.getRange('A2:A6').setNumberFormat('#,##0');
   sh.getRange('G1').setValue(
@@ -802,44 +939,42 @@ function buildProgressTabs_(ss, notes, manual) {
     progress.getRange('J1').setValue(
       'Type in Project, Goal, Raised, Show on site, Updated and Note. Remaining and ' +
       'Percent are formulas - leave them alone. One currency per row, named in the ' +
-      'project; never total the column, because a sum across currencies means nothing.');
+      'project; never total the column, because a sum across currencies means nothing. ' +
+      'For the same reason the published chart shows PERCENT FUNDED rather than ' +
+      'amounts, with the amounts written into each bar\'s label, so a VND project and ' +
+      'a USD project can sit on one axis and still be comparable.');
     progress.getRange('J1').setWrap(true);
     progress.setColumnWidth(10, 420);
     progress.setFrozenRows(1);
   }
 
   var chartTab = tab_(ss, TABS.progressChart, notes);
-  if (!String(chartTab.getRange('A1').getValue() || '').trim()) {
-    // A chart cannot filter its own rows, so the published tab is a QUERY over
-    // the team's tab. Three things fall out of that: "Show on site = NO" hides
-    // a project without deleting it, a project can be prepared privately, and
-    // the tab that gets published to the web holds nothing but names and two
-    // numbers.
-    chartTab.getRange('A1').setFormula('={"Project","Raised","Remaining"}');
-    chartTab.getRange('A2').setFormula(
-      '=IFERROR(QUERY(' + TABS.progress + '!A2:F30,' +
-      '"select Col1, Col3, Col4 where Col6 = \'YES\' and Col1 is not null",0),"")');
-    chartTab.getRange('F1').setValue(
-      'Published to the web. Nothing personal may ever be added to this tab.');
-    chartTab.setFrozenRows(1);
-  }
+  // Build-owned, rewritten every run like the All work formulas: these cells
+  // are the whole contract of a tab that gets published to the public web, so
+  // a hand edit to one of them must not survive unnoticed.
+  buildProgressChartTab_(chartTab);
 
   if (chartTab.getCharts().length === 0) {
     SpreadsheetApp.flush();
     // Whole-column ranges with spare rows, so a project added at row 5 appears
-    // in the chart without anyone editing the chart.
+    // in the chart without anyone editing the chart. A:C only - the helper
+    // columns that hold the raw amounts are never charted.
     chartTab.insertChart(chartTab.newChart()
       .setChartType(Charts.ChartType.BAR)
       .addRange(chartTab.getRange('A1:A30'))
       .addRange(chartTab.getRange('B1:C30'))
       .setOption('isStacked', true)
-      .setOption('title', 'Vietnam Hearts - progress')
+      .setOption('title', 'Vietnam Hearts - percent funded')
       .setOption('legend', { position: 'bottom' })
+      // Both series are fractions that sum to 1, so the value axis is a
+      // percentage from empty to funded and nothing else can land on it.
+      .setOption('hAxis', { format: 'percent', viewWindow: { min: 0, max: 1 } })
       .setOption('width', 560)
       .setOption('height', 300)
-      .setPosition(2, 6, 0, 0)
+      .setPosition(3, 9, 0, 0)
       .build());
-    notes.push('Built the stacked progress chart on "' + TABS.progressChart + '".');
+    notes.push('Built the percent-funded progress chart on "' +
+      TABS.progressChart + '".');
   }
 
   manual.push('In the spreadsheet: File -> Share -> **Publish to web**, and publish ' +
@@ -861,9 +996,6 @@ function collectManualSteps_(manual) {
     'state (TODO, IN PROGRESS, BLOCKED) and one for Priority = High. Apps Script has no ' +
     'filter-view API. Use filter views rather than a plain filter: a filter view is ' +
     'per-viewer, so two volunteers can filter differently at the same time.');
-  manual.push('In the spreadsheet: File -> Settings -> **Time zone: Asia/Ho Chi Minh**, ' +
-    'to match the script. A sheet left on a US time zone makes every "Next action by" ' +
-    'date read a day off to the team in Vietnam.');
   manual.push('On the "' + TABS.volunteers + '" tab: add one row per volunteer who can ' +
     'own a request, Name and Email. Until a volunteer is listed, an approved request ' +
     'replies to the team address and the build emails you about it.');

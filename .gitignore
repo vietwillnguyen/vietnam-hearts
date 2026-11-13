@@ -63,3 +63,7 @@ dist/
 # Copy apps-script/intake/.clasp.json.example instead.
 apps-script/*/.clasp.json
 .clasprc.json
+
+# Node dependencies. apps-script/ installs the pinned clasp locally; the tree
+# itself never belongs in the repository, and CI installs nothing at all.
+node_modules/

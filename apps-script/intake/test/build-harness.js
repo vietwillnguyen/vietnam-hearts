@@ -37,6 +37,7 @@ function makeSpreadsheet(world) {
       formats: [],             // conditional format rules
       protections: [],
       charts: [],
+      hiddenColumns: [],
       frozenRows: 0,
       frozenColumns: 0,
       insertedColumns: 0
@@ -195,6 +196,10 @@ function makeSpreadsheet(world) {
       setConditionalFormatRules: (rules) => { meta.formats = rules.slice(); return sheet; },
       autoResizeColumns: () => sheet,
       setColumnWidth: () => sheet,
+      hideColumns: (col, num) => {
+        meta.hiddenColumns.push([col, num === undefined ? 1 : num]);
+        return sheet;
+      },
       getCharts: () => meta.charts.slice(),
       insertChart: (chart) => { meta.charts.push(chart); return sheet; },
       newChart: () => {
@@ -217,6 +222,18 @@ function makeSpreadsheet(world) {
     getUrl: () => 'https://docs.google.com/spreadsheets/d/FAKE_SPREADSHEET_ID/edit',
     getSheets: () => sheets.slice(),
     getSheetByName: (n) => sheets.filter((sh) => sh.getName() === n)[0] || null,
+    // A new spreadsheet comes up on the owning account's zone, which was
+    // Etc/GMT in the captain's live build, so the fake starts wrong on purpose.
+    getSpreadsheetTimeZone: () => world.timeZone,
+    setSpreadsheetTimeZone: (tz) => { world.timeZone = tz; return ss; },
+    deleteSheet: (sh) => {
+      const i = sheets.indexOf(sh);
+      if (i === -1) throw new Error('fake: deleteSheet on a sheet of another file');
+      if (sheets.length === 1) throw new Error('fake: cannot delete the only sheet');
+      sheets.splice(i, 1);
+      world.deletedSheets.push(sh.getName());
+      return ss;
+    },
     insertSheet: (n) => {
       if (sheets.some((sh) => sh.getName() === n)) {
         throw new Error('fake: a sheet named ' + n + ' already exists');
@@ -244,8 +261,7 @@ function makeSpreadsheet(world) {
 function makeFormApp(world, ss) {
   const ItemType = {
     MULTIPLE_CHOICE: 'MULTIPLE_CHOICE', TEXT: 'TEXT', PARAGRAPH_TEXT: 'PARAGRAPH_TEXT',
-    CHECKBOX: 'CHECKBOX', DATE: 'DATE', PAGE_BREAK: 'PAGE_BREAK',
-    FILE_UPLOAD: 'FILE_UPLOAD'
+    CHECKBOX: 'CHECKBOX', DATE: 'DATE', PAGE_BREAK: 'PAGE_BREAK'
   };
 
   function makeForm(title) {
@@ -337,10 +353,6 @@ function makeFormApp(world, ss) {
     form.addCheckboxItem = () => makeItem(ItemType.CHECKBOX);
     form.addDateItem = () => makeItem(ItemType.DATE);
     form.addPageBreakItem = () => makeItem(ItemType.PAGE_BREAK);
-    form.addFileUploadItem = () => {
-      if (world.fileUploadThrows) throw new Error('fake: file upload unavailable');
-      return makeItem(ItemType.FILE_UPLOAD);
-    };
     return form;
   }
 
@@ -377,7 +389,8 @@ function makeWorld(opts) {
     triggers: [],
     props: opts.staleFormId ? { intakeFormId: opts.staleFormId } : {},
     calledSetCollectEmail: undefined,
-    fileUploadThrows: !!opts.fileUploadThrows,
+    timeZone: opts.timeZone === undefined ? 'Etc/GMT' : opts.timeZone,
+    deletedSheets: [],
     noEmailCollection: !!opts.noEmailCollection
   };
 
@@ -471,6 +484,34 @@ function formText(world) {
     .join('\n');
 }
 
+/* Every human-readable string on the form: titles, help text AND choice
+   values. formText() misses the choices, and a choice value is exactly what
+   the pre-filled link template and Code.js compare against, so a flip that
+   forgot one would not show up without this. */
+function formStrings(world) {
+  const f = world.form;
+  const out = [f.getTitle(), f._settings.description, f._settings.confirmation];
+  f._items.forEach((i) => {
+    out.push(i.getTitle(), i.getHelpText());
+    (i._choices || []).forEach((c) => out.push(c.value));
+  });
+  return out.filter((v) => typeof v === 'string' && v.trim() !== '');
+}
+
+/* Letters Vietnamese uses and English does not. The place name Thạnh Mỹ Tây
+   and the festival Tết are proper nouns that belong in the English half, so
+   they come out before the test; "Tiếng Việt" is the name of the language and
+   is the right answer to pick in an English list. */
+const VI_ONLY = /[ăâđêôơưĂÂĐÊÔƠƯáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/;
+const PROPER_NOUNS = /Thạnh Mỹ Tây|Tết|Tiếng Việt/g;
+
+/* The half before the first " / ", with those proper nouns removed. null for a
+   string that is not of the bilingual "A / B" shape. */
+function englishHalf(s) {
+  const i = s.indexOf(' / ');
+  return i === -1 ? null : s.slice(0, i).replace(PROPER_NOUNS, '');
+}
+
 /* ------------------------------------------------------------------- run it */
 
 console.log('\n=== buildIntake(), first run on a blank spreadsheet');
@@ -490,7 +531,25 @@ console.log(`   triggers: ${w.triggers.join(', ')}`);
 /* --- the form --- */
 console.log('\n--- the form');
 check('one form was created', w.formsCreated === 1, String(w.formsCreated));
-check('its title leads in Vietnamese', /^Đề xuất hỗ trợ Vietnam Hearts/.test(form.getTitle()));
+check('its title leads in English',
+  /^Offer support to Vietnam Hearts \//.test(form.getTitle()), form.getTitle());
+check('the form description leads in English',
+  /^Want to donate supplies/.test(String(form._settings.description)),
+  String(form._settings.description).slice(0, 60));
+check('the confirmation message leads in English',
+  /^Thank you\. We have your request/.test(String(form._settings.confirmation)),
+  String(form._settings.confirmation).slice(0, 60));
+
+/* The property, over titles, help text AND choice values: in every bilingual
+   "A / B" string the English half comes first. Checked as a property rather
+   than string by string because the risk is a forgotten one, and a choice
+   value is both what a submitter clicks and what Code.js compares against. */
+const bilingual = formStrings(w).filter((v) => englishHalf(v) !== null);
+const viFirst = bilingual.filter((v) => VI_ONLY.test(englishHalf(v)));
+check('every bilingual string on the form puts English before Vietnamese',
+  viFirst.length === 0, viFirst.join(' || '));
+check('that property was tested against the whole form, not a handful of strings',
+  bilingual.length >= 30, `${bilingual.length} bilingual strings`);
 check('five page breaks: four branches plus the final section',
   pageBreaks.length === 5, String(pageBreaks.length));
 
@@ -523,6 +582,9 @@ check('it lists exactly five items', standing._choices.length === 5,
   String(standing._choices.length));
 check('its Other option is explicitly OFF', standing._otherOption === false,
   String(standing._otherOption));
+check('each of the five items names the English word first',
+  standing._choices.every((c) => /^[A-Za-z]/.test(c.value)),
+  standing._choices.map((c) => c.value).join(' || '));
 
 const consent = items.filter((i) => /I agree that Vietnam Hearts may store/.test(i.getTitle()))[0];
 check('the consent question exists', !!consent);
@@ -539,12 +601,16 @@ check('setCollectEmail (which means VERIFIED, forcing a sign-in) is never called
   w.calledSetCollectEmail === undefined, String(w.calledSetCollectEmail));
 check('one response per user is not enforced (it would force a sign-in)',
   form._settings.limitOne === false);
-check('the file upload question is last in the supplies section',
-  (function () {
-    const upload = items.filter((i) => /Photo of the items/.test(i.getTitle()))[0];
-    if (!upload) return false;
-    return items[upload.getIndex() + 1] === pageBreaks[1];
-  })());
+/* FormApp.Form has no addFileUploadItem - the live build raised a TypeError
+   trying - so the builder must not reach for it at all, and the question is a
+   manual step like publishing to the web. */
+check('the builder never CALLS addFileUploadItem, which FormApp does not have',
+  !/\.addFileUploadItem\s*\(/.test(fs.readFileSync(BUILD, 'utf8')));
+check('no file upload question was invented on the form',
+  items.filter((i) => /Photo of the items/.test(i.getTitle())).length === 0);
+check('the supplies section now ends with the closing question',
+  /What do you need from us/.test(items[pageBreaks[1].getIndex() - 1].getTitle()),
+  items[pageBreaks[1].getIndex() - 1].getTitle());
 
 /* No automated surface may promise a reply date: the seven-day target is the
    sheet's "Next action by" column and nothing the public reads. */
@@ -602,14 +668,47 @@ check('the submitter columns are protected with a warning, not a lock',
   prot.length === 1 && prot[0].warningOnly === true, JSON.stringify(prot.map((p) => p.a1)));
 
 const chartTab = w.ss.getSheetByName('Progress chart');
+const helperQuery = String(chartTab.getRange('E2').getFormula());
+const labelFormula = String(chartTab.getRange('A2').getFormula());
+const fundedFormula = String(chartTab.getRange('B2').getFormula());
+const remainingFormula = String(chartTab.getRange('C2').getFormula());
 check('the published tab is a QUERY over the team tab, not the team tab itself',
-  /QUERY\(Progress!A2:F30/.test(String(chartTab.getRange('A2').getValue())),
-  String(chartTab.getRange('A2').getValue()));
+  /QUERY\(Progress!A2:F30/.test(helperQuery), helperQuery);
 check('it only ever selects a project name and two numbers',
-  /select Col1, Col3, Col4 where Col6 = 'YES'/.test(String(chartTab.getRange('A2').getValue())));
+  /select Col1, Col3, Col2 where Col6 = 'YES'/.test(helperQuery), helperQuery);
+check('the helper columns the QUERY lands in are hidden',
+  chartTab._meta.hiddenColumns.some((h) => h[0] === 5 && h[1] === 3),
+  JSON.stringify(chartTab._meta.hiddenColumns));
+
+/* The live chart stacked "Monthly rice fund (USD) 12382/618" against "Tết
+   gifts 2027 (VND) 400000/2200000" on one axis, so the VND bar dwarfed the USD
+   one and neither bar meant anything. Every series is now a FRACTION of that
+   row's own goal, which is unit-free and so right whatever currency the row is
+   in, and the raw amounts travel in the label instead of being lost. */
+check('the charted series is each project\'s fraction of its own goal',
+  /F2:F30\/G2:G30/.test(fundedFormula) && /ARRAYFORMULA/.test(fundedFormula),
+  fundedFormula);
+check('the second series is the remainder of that same fraction',
+  /1-B2:B30/.test(remainingFormula), remainingFormula);
+check('the fraction is capped at 1, so an over-funded project cannot overflow',
+  /IFERROR|>1,1,/.test(fundedFormula), fundedFormula);
+check('the raw amounts are kept, in the row label, with the goal beside them',
+  /TEXT\(F2:F30/.test(labelFormula) && /TEXT\(G2:G30/.test(labelFormula),
+  labelFormula);
+check('the label still carries the project name, which names its currency',
+  /E2:E30&/.test(labelFormula), labelFormula);
 check('one stacked bar chart was built on it',
   chartTab.getCharts().length === 1 &&
   chartTab.getCharts()[0].options.isStacked === true);
+check('its value axis is a percent axis pinned to 0..1',
+  (function () {
+    const h = chartTab.getCharts()[0].options.hAxis || {};
+    return h.format === 'percent' && h.viewWindow &&
+      h.viewWindow.min === 0 && h.viewWindow.max === 1;
+  })(), JSON.stringify(chartTab.getCharts()[0].options.hAxis));
+check('neither raw-amount column is charted',
+  chartTab.getCharts()[0].ranges.every((r) => !/^[EFG]/.test(r)),
+  chartTab.getCharts()[0].ranges.join(' '));
 check('the chart reads spare rows, so a new project appears by itself',
   chartTab.getCharts()[0].ranges.join(' ').indexOf('30') !== -1,
   chartTab.getCharts()[0].ranges.join(' '));
@@ -648,6 +747,16 @@ check('Progress chart headers are one row of three columns',
   !!chartHeader && chartHeader.length === 1 && chartHeader[0].length === 3,
   JSON.stringify(chartHeader));
 
+const tiersTab = w.ss.getSheetByName('Donation tiers');
+check('the tiers tab heads the English outcome before the Vietnamese one',
+  tiersTab.getRange('A1:E1').getValues()[0].join('|') ===
+  'VND|USD (approx)|Outcome (English)|Outcome (Tiếng Việt)|As of',
+  tiersTab.getRange('A1:E1').getValues()[0].join('|'));
+check('and its rows follow that order, English in C and Vietnamese in D',
+  /^Rice for one child/.test(String(tiersTab.getRange('C2').getValue())) &&
+  /^Gạo cho một em/.test(String(tiersTab.getRange('D2').getValue())),
+  tiersTab.getRange('C2:D2').getValues()[0].join(' || '));
+
 const volunteersTab = w.ss.getSheetByName('Volunteers');
 const ownerColumn = volunteersTab.getRange(2, 1, 199, 1).getValues()
   .map((r) => String(r[0] || '')).filter((v) => v.trim());
@@ -660,6 +769,20 @@ check('the Volunteers Email column rejects anything without an @',
   emailRule.row === 2, JSON.stringify(emailRule));
 check('the Volunteers instructions sit outside the Name column',
   /One row per volunteer/.test(String(volunteersTab.getRange('E1').getValue())));
+
+/* A new spreadsheet comes up on the owning account's zone. The captain's live
+   build came up Etc/GMT, which reads every "Next action by" date a day off to
+   the team in Vietnam, so the build pins it rather than asking. */
+console.log('\n--- the spreadsheet time zone and the default tab');
+check('the build set the spreadsheet time zone to Asia/Ho_Chi_Minh',
+  w.timeZone === 'Asia/Ho_Chi_Minh', String(w.timeZone));
+check('it says so in the build notes',
+  /Set the spreadsheet time zone to Asia\/Ho_Chi_Minh/.test(w.mails[0].htmlBody));
+check('Google\'s blank default tab was deleted',
+  names.indexOf('Sheet1') === -1 && w.deletedSheets.indexOf('Sheet1') !== -1,
+  names.join(', '));
+check('the deletion is reported in the notes',
+  /Deleted the empty default "Sheet1" tab/.test(w.mails[0].htmlBody));
 
 check('the two triggers were installed',
   w.triggers.length === 2 &&
@@ -679,8 +802,13 @@ check('it lists the manual steps', /Manual steps/.test(mail.htmlBody));
 check('a manual step covers Publish to web', /Publish to web/.test(mail.htmlBody));
 check('a manual step covers filter views', /Filter views/i.test(mail.htmlBody));
 check('a manual step covers response receipts', /Response receipts/i.test(mail.htmlBody));
-check('a manual step covers the spreadsheet time zone',
-  /Asia\/Ho Chi Minh/.test(mail.htmlBody));
+check('NO manual step asks for the spreadsheet time zone any more',
+  !/<li>[^<]*Time zone/.test(mail.htmlBody) && !/File -&gt; Settings/.test(mail.htmlBody),
+  (mail.htmlBody.match(/<li>[^<]*Time zone[^<]*/) || [''])[0]);
+check('a manual step asks for the file upload question by hand',
+  /add a <b>File upload<\/b> question/.test(mail.htmlBody));
+check('that step does not quote a TypeError at a volunteer',
+  !/TypeError/.test(mail.htmlBody));
 check('a manual step covers turning DRY_RUN off', /DRY_RUN/.test(mail.htmlBody));
 check('a manual step keeps the spreadsheet\'s sharing list narrow',
   /Share the spreadsheet only with the named volunteers who handle requests, as editors; never set General access to Anyone with the link/
@@ -736,12 +864,12 @@ check('only one chart still', chartTab.getCharts().length === 1,
 check('the second run reported too', w.mails.length === 2, String(w.mails.length));
 
 /* --- degraded Google APIs --- */
-console.log('\n=== a Google account where file upload and the email-collection API are absent');
-const w2 = makeWorld({ fileUploadThrows: true, noEmailCollection: true });
+console.log('\n=== a Google account where the email-collection API is absent');
+const w2 = makeWorld({ noEmailCollection: true });
 w2.sandbox.buildIntake();
 const mail2 = w2.mails[0];
 check('the build still completes', w2.formsCreated === 1);
-check('the missing file upload becomes a manual step',
+check('the file upload is still a manual step',
   /add a <b>File upload<\/b> question/.test(mail2.htmlBody));
 check('email collection becomes a manual step naming Responder input',
   /Collect email addresses -&gt; <b>Responder input<\/b>/.test(mail2.htmlBody));
@@ -811,6 +939,18 @@ check('the subject counts that extra step',
   Number((mail3.subject.match(/(\d+) manual steps left/) || [])[1]) ===
   Number((mail.subject.match(/(\d+) manual steps left/) || [])[1]) + 1,
   mail3.subject + ' vs ' + mail.subject);
+
+console.log('\n=== a default tab that is NOT empty is kept, never deleted');
+const w6 = makeWorld();
+w6.ss.getSheetByName('Sheet1').getRange('A1').setValue('rice order, do not delete');
+w6.sandbox.buildIntake();
+check('the non-empty default tab survives',
+  w6.ss.getSheets().map((s) => s.getName()).indexOf('Sheet1') !== -1 &&
+  w6.deletedSheets.length === 0, w6.deletedSheets.join(', '));
+check('its one cell is untouched',
+  w6.ss.getSheetByName('Sheet1').getRange('A1').getValue() === 'rice order, do not delete');
+check('a manual step hands that decision to a human',
+  /default "Sheet1" tab has something on it/.test(w6.mails[0].htmlBody));
 
 console.log('\n=== the same, when the All work query was edited by hand');
 const w4 = makeWorld({ staleFormId: 'GONE_FORM_ID' });

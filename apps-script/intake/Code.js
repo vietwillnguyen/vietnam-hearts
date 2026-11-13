@@ -17,6 +17,12 @@
  * that volunteer's address, read from the "Volunteers" tab. Mail is still sent
  * FROM the team Gmail, and no phone or Zalo number is ever put in an email.
  *
+ * Every bilingual string reads "English / Tiếng Việt", in that order, matching
+ * the form Build.js creates. The HEADER needles below are English fragments of
+ * those titles, which is what keeps col_() resolving them; the same goes for
+ * the "Donate supplies" test on the branch answer. test/harness.js matches
+ * every needle against the real bilingual column titles.
+ *
  * Nothing in this file approves anything. Every submission waits for a human,
  * including an offer of the five always-needed items: those are only flagged
  * Priority=High so they are answered first. Drop-offs are arranged one at a
@@ -327,7 +333,7 @@ function onIntakeFormSubmit(e) {
 
     var name = String(row[cName] || '').trim();
     var email = String(row[cEmail] || '').trim();
-    var type = String(row[cType] || '').trim() || 'Khac / Other';
+    var type = String(row[cType] || '').trim() || 'Other / Khac';
 
     // `ticked` is whatever Forms joined together from the checkbox question.
     // Nothing parses it, because every choice on that question is already an
@@ -355,7 +361,7 @@ function onIntakeFormSubmit(e) {
     var terms = ticked ? termsBlockOrEmpty_() : '';
 
     var acked = send_(email,
-      'Vietnam Hearts da nhan de xuat cua ban / We have your offer',
+      'Vietnam Hearts: we have your offer / da nhan de xuat cua ban',
       ackHtml_(name, ticked, terms, fastLane));
     if (email && !acked) {
       reportError_('onIntakeFormSubmit', new Error('Row ' + rowNumber +
@@ -491,8 +497,8 @@ function escape_(s) {
 
 function footerHtml_() {
   return '<p style="color:#6b4f3a">' +
-    'Bạn cũng có thể nhắn cho chúng tôi trên <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.<br>' +
-    'You can also message us on <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.</p>' +
+    'You can also message us on <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.<br>' +
+    'Bạn cũng có thể nhắn cho chúng tôi trên <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.</p>' +
     '<p style="color:#8b7355">' + escape_(CONFIG.ORG_NAME) + '</p>';
 }
 
@@ -501,46 +507,49 @@ function footerHtml_() {
  *  hours, only the public area: a volunteer arranges each handover by hand. */
 function ackHtml_(name, ticked, terms, fastLane) {
   var hi = name ? ' ' + escape_(name) : '';
-  var fastVi = '', fastEn = '';
+  var fastEn = '', fastVi = '';
   if (fastLane && ticked) {
-    fastVi =
-      '<p>Những món bạn chọn (' + escape_(ticked) + ') nằm trong danh sách ' +
-      '<b>chúng tôi luôn cần</b>, nên gần như chắc chắn chúng tôi nhận. ' +
-      'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm nhận đồ - ' +
-      'xin đừng mang đến trước khi hẹn xong.</p>' + terms;
+    // The handover block is itself bilingual and is quoted once, with the
+    // English half of the mail, so the whole message reads English then
+    // Vietnamese top to bottom.
     fastEn =
       '<p>What you picked (' + escape_(ticked) + ') is on our <b>always needed</b> ' +
       'list, so it is almost certainly a yes. A volunteer will message you to ' +
       'agree a time and place for the handover - please wait for that before ' +
-      'bringing anything.</p>';
+      'bringing anything.</p>' + terms;
+    fastVi =
+      '<p>Những món bạn chọn (' + escape_(ticked) + ') nằm trong danh sách ' +
+      '<b>chúng tôi luôn cần</b>, nên gần như chắc chắn chúng tôi nhận. ' +
+      'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm nhận đồ - ' +
+      'xin đừng mang đến trước khi hẹn xong.</p>';
   } else if (ticked) {
+    fastEn =
+      '<p>Part of your offer (' + escape_(ticked) + ') is on our always-needed ' +
+      'list. We will come back to you about that and the rest together.</p>' + terms;
     fastVi =
       '<p>Một phần trong đề xuất của bạn (' + escape_(ticked) + ') nằm trong ' +
       'danh sách chúng tôi luôn cần. Chúng tôi sẽ trả lời cả phần đó và phần ' +
-      'còn lại trong một tin nhắn.</p>' + terms;
-    fastEn =
-      '<p>Part of your offer (' + escape_(ticked) + ') is on our always-needed ' +
-      'list. We will come back to you about that and the rest together.</p>';
+      'còn lại trong một tin nhắn.</p>';
   }
   return '' +
-    '<p>Xin chào' + hi + ',</p>' +
-    '<p>Cảm ơn bạn đã gửi đề xuất cho Vietnam Hearts. Chúng tôi đã nhận được. ' +
-    'Chúng tôi là nhóm tình nguyện, nên xin bạn thông cảm nếu phản hồi mất ít ' +
-    'thời gian - một tình nguyện viên sẽ liên hệ với bạn.</p>' +
-    fastVi +
-    '<hr>' +
     '<p>Hello' + hi + ',</p>' +
     '<p>Thank you for your offer to Vietnam Hearts. We have it. We are a ' +
     'volunteer team, so a reply can take a little while - a volunteer will ' +
     'come back to you.</p>' +
     fastEn +
+    '<hr>' +
+    '<p>Xin chào' + hi + ',</p>' +
+    '<p>Cảm ơn bạn đã gửi đề xuất cho Vietnam Hearts. Chúng tôi đã nhận được. ' +
+    'Chúng tôi là nhóm tình nguyện, nên xin bạn thông cảm nếu phản hồi mất ít ' +
+    'thời gian - một tình nguyện viên sẽ liên hệ với bạn.</p>' +
+    fastVi +
     footerHtml_();
 }
 
 function decisionSubject_(decision) {
   return decision === 'Approved'
-    ? 'Vietnam Hearts: chung toi muon tiep tuc / we would love to go ahead'
-    : 'Vietnam Hearts: phan hoi ve de xuat cua ban / about your request';
+    ? 'Vietnam Hearts: we would love to go ahead / chung toi muon tiep tuc'
+    : 'Vietnam Hearts: about your request / phan hoi ve de xuat cua ban';
 }
 
 function decisionHtml_(decision, name, note, ownerName) {
@@ -551,17 +560,10 @@ function decisionHtml_(decision, name, note, ownerName) {
       escape_(note) + '</p>'
     : '';
 
+  // The volunteer's own note is quoted once, with the English half, for the
+  // same reason the handover block is: one copy, highest up it can sit.
   if (decision === 'Approved') {
     return '' +
-      '<p>Xin chào' + hi + ',</p>' +
-      '<p>Chúng tôi rất vui được tiếp tục với đề xuất của bạn. ' +
-      (who
-        ? who + ' từ Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ và địa điểm cụ thể. '
-        : 'Một tình nguyện viên của Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ ' +
-          'và địa điểm cụ thể. ') +
-      'Bạn cũng có thể trả lời ngay email này.</p>' +
-      noteHtml +
-      '<hr>' +
       '<p>Hello' + hi + ',</p>' +
       '<p>We would love to go ahead. ' +
       (who
@@ -569,19 +571,28 @@ function decisionHtml_(decision, name, note, ownerName) {
         : 'A volunteer from Vietnam Hearts will contact you to agree a time and ' +
           'a place. ') +
       'You can also reply straight to this email.</p>' +
+      noteHtml +
+      '<hr>' +
+      '<p>Xin chào' + hi + ',</p>' +
+      '<p>Chúng tôi rất vui được tiếp tục với đề xuất của bạn. ' +
+      (who
+        ? who + ' từ Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ và địa điểm cụ thể. '
+        : 'Một tình nguyện viên của Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ ' +
+          'và địa điểm cụ thể. ') +
+      'Bạn cũng có thể trả lời ngay email này.</p>' +
       footerHtml_();
   }
 
   return '' +
-    '<p>Xin chào' + hi + ',</p>' +
-    '<p>Cảm ơn bạn đã nghĩ đến Vietnam Hearts. Lần này chúng tôi chưa thể nhận ' +
-    'đề xuất này, thường là vì chỗ chứa, thời gian của tình nguyện viên, hoặc vì ' +
-    'chưa phù hợp với nhu cầu hiện tại của các em. Mong bạn vẫn giữ liên lạc.</p>' +
-    noteHtml +
-    '<hr>' +
     '<p>Hello' + hi + ',</p>' +
     '<p>Thank you for thinking of Vietnam Hearts. We are not able to take this ' +
     'one on, usually because of storage, volunteer time, or how it fits what the ' +
     'children need right now. Please do stay in touch.</p>' +
+    noteHtml +
+    '<hr>' +
+    '<p>Xin chào' + hi + ',</p>' +
+    '<p>Cảm ơn bạn đã nghĩ đến Vietnam Hearts. Lần này chúng tôi chưa thể nhận ' +
+    'đề xuất này, thường là vì chỗ chứa, thời gian của tình nguyện viên, hoặc vì ' +
+    'chưa phù hợp với nhu cầu hiện tại của các em. Mong bạn vẫn giữ liên lạc.</p>' +
     footerHtml_();
 }

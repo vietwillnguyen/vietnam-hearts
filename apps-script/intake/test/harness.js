@@ -25,13 +25,22 @@ const CODE = process.argv[2] || path.join(__dirname, '..', 'Code.js');
 
 /* The form-response grid. Order matters only in that the script must not
    depend on it: every column is found by header text. */
+const Q = {
+  name: 'Your name / Tên của bạn',
+  type: 'What would you like to offer? / Bạn muốn đề xuất điều gì?',
+  standing: 'We always need these - are you giving any of them? / ' +
+    'Chúng tôi luôn cần những món này - bạn có tặng món nào không?',
+  other: 'Other items not on the list above / Các món khác (không có trong danh sách trên)',
+  /* Asked at the end of all four branches, so Forms makes four identically
+     headed columns. No HEADER needle may match them. */
+  closing: 'What do you need from us, or anything else we should know? / ' +
+    'Bạn cần gì từ Vietnam Hearts, hoặc có điều gì khác muốn cho chúng tôi biết?'
+};
 const HEADERS = [
   'Status', 'Decision', 'Priority', 'Next action by', 'Owner',
   'Decision note', 'Reply sent',
-  'Timestamp', 'Email Address', 'Your name',
-  'What would you like to offer?',
-  'We always need these - are you giving any of them?',
-  'Other items not on the list above'
+  'Timestamp', 'Email Address', Q.name, Q.type, Q.standing, Q.other,
+  Q.closing, Q.closing, Q.closing, Q.closing
 ];
 const H = {};
 HEADERS.forEach((h, i) => (H[h] = i));
@@ -58,11 +67,11 @@ function makeWorld(opts) {
   const row = new Array(HEADERS.length).fill('');
   row[H['Timestamp']] = new Date('2026-11-13T09:00:00Z');
   row[H['Email Address']] = DONOR;
-  row[H['Your name']] = 'Linh';
-  row[H['What would you like to offer?']] =
-    opts.type === undefined ? 'Tặng đồ dùng, vật phẩm / Donate supplies or goods' : opts.type;
-  row[H['We always need these - are you giving any of them?']] = opts.ticked || '';
-  row[H['Other items not on the list above']] = opts.other || '';
+  row[H[Q.name]] = 'Linh';
+  row[H[Q.type]] =
+    opts.type === undefined ? 'Donate supplies or goods / Tặng đồ dùng, vật phẩm' : opts.type;
+  row[H[Q.standing]] = opts.ticked || '';
+  row[H[Q.other]] = opts.other || '';
   Object.assign(row, opts.preset || {});
 
   const grid = [HEADERS.slice()];
@@ -270,7 +279,7 @@ w = submit(makeWorld());
 show('C2. supplies, nothing listed -> team is told to ask what they have', w);
 check('C2 the team mail asks what they have',
   teamMails(w).some((m) => /Supplies request with nothing listed/.test(m.htmlBody)));
-w = submit(makeWorld({ type: 'Đề xuất sự kiện / Propose an event' }));
+w = submit(makeWorld({ type: 'Propose an event / Đề xuất sự kiện' }));
 check('C2 another branch with nothing listed gets no supplies hint',
   teamMails(w).every((m) => !/Supplies request with nothing listed/.test(m.htmlBody)));
 
@@ -482,6 +491,65 @@ check('R the skipped row is reported by number',
 w = editCell(makeWorld({ lockHeld: true }), H['Decision']);
 check('S a blank Decision neither waits on the lock nor reports',
   w.lock.waits.length === 0 && w.mails.length === 0);
+
+/* ------------------------- the needles against the real column titles ---- */
+
+/* The form's questions now lead in English, so every HEADER needle is matched
+   here against the exact bilingual titles the builder writes. A flip that
+   renamed a question out from under a needle resolves to no column, or to
+   several, and `col_` throws - which is this block. */
+console.log('\n--- every HEADER needle against the real bilingual column titles');
+w = makeWorld();
+const HEADER = w.sandbox.HEADER;
+Object.keys(HEADER).forEach((k) => {
+  let idx = -1;
+  let why = '';
+  try {
+    idx = w.sandbox.col_(HEADERS, HEADER[k]);
+  } catch (err) {
+    why = err.message;
+  }
+  check(`HEADER.${k} ("${HEADER[k]}") resolves to exactly one column`,
+    idx !== -1, why);
+});
+check('no needle matches the four identically headed closing columns',
+  Object.keys(HEADER).every((k) =>
+    Q.closing.toLowerCase().indexOf(String(HEADER[k]).toLowerCase()) === -1),
+  Object.keys(HEADER).filter((k) =>
+    Q.closing.toLowerCase().indexOf(String(HEADER[k]).toLowerCase()) !== -1).join(', '));
+check('setUp() resolves the whole header row without throwing', (function () {
+  try {
+    w.sandbox.setUp();
+    return true;
+  } catch (err) {
+    return 'threw: ' + err.message;
+  }
+})() === true);
+
+/* ------------------------------------------ English first in outbound mail */
+
+console.log('\n--- English first in every automated mail');
+const donorAll = allMails.filter((m) => m.to === DONOR);
+const greetingOrder = donorAll.filter((m) => {
+  const b = String(m.htmlBody);
+  return b.indexOf('Hello') === -1 || b.indexOf('Xin chào') === -1 ||
+    b.indexOf('Hello') > b.indexOf('Xin chào');
+});
+check(`all ${donorAll.length} submitter mails greet in English first`,
+  greetingOrder.length === 0, greetingOrder.map((m) => m.subject).join(' | '));
+const subjectOrder = donorAll.filter((m) =>
+  !/^Vietnam Hearts(?::| da)? (?:we have your offer|we would love|about your request)/
+    .test(m.subject));
+check('every submitter subject leads in English', subjectOrder.length === 0,
+  subjectOrder.map((m) => m.subject).join(' | '));
+/* The footer is checked on its own: the handover block sits above it in the
+   acknowledgement and is bilingual too, so a search over the whole body would
+   find the block's Vietnamese line and prove nothing about the footer. */
+const footer = makeWorld().sandbox.footerHtml_();
+check('the footer leads in English',
+  footer.indexOf('You can also message us on') !== -1 &&
+  footer.indexOf('You can also message us on') < footer.indexOf('Bạn cũng có thể'),
+  footer);
 
 /* -------------------------------------------------- the global invariants */
 

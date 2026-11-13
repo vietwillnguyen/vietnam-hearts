@@ -72,9 +72,9 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 |---|---|
 | `intake/Code.js` | The two trigger handlers, run on every submission and every edit |
 | `intake/Build.js` | `buildIntake()`, the one-shot builder that creates the form, the sheet tabs and the triggers |
-| `intake/test/harness.js` | Stub harness for the handlers, cases A to P against a fake `SpreadsheetApp` / `MailApp` |
+| `intake/test/harness.js` | Stub harness for the handlers: cases A to S against a fake `SpreadsheetApp` / `MailApp`, plus every `HEADER` needle against the real bilingual column titles |
 | `intake/test/forbidden-shapes.js` | The address, opening-hours and reply-date shapes both harnesses assert never appear |
-| `intake/test/build-harness.js` | Stub harness for the builder, including a second run and a degraded Google account |
+| `intake/test/build-harness.js` | Stub harness for the builder, including a second run, a degraded Google account, a lost form and a default tab that is not empty |
 | `intake/appsscript.json` | Runtime, exception logging, and the time zone |
 | `intake/.clasp.json.example` | Copy to `.clasp.json` and fill in the script id. The real file is gitignored because `clasp clone-script` writes it and the id differs per deployment |
 
@@ -104,14 +104,24 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 3. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
 4. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
 5. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual and carries the Zalo link; two confirmation emails for one submission looks broken.
-6. **File upload questions**, on accounts where `addFileUploadItem` is unavailable. Keep it optional and last in the supplies section so nobody meets the sign-in wall before their answers are saved.
-7. **The spreadsheet's own time zone**: File -> Settings -> `Asia/Ho Chi Minh`, to match `appsscript.json`.
-8. **The `Volunteers` tab rows**, and the team Zalo or WhatsApp number in `Standing needs!B2`.
-9. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
+6. **The file upload question.** `FormApp.Form` has no `addFileUploadItem` on any account - the first live build raised a `TypeError` reaching for it and then showed a volunteer the `TypeError` text - so Forms can only be asked for a file through the editor.
+   Add it by hand, optional and last in the supplies section, so nobody meets the sign-in wall before their answers are saved.
+7. **The `Volunteers` tab rows**, and the team Zalo or WhatsApp number in `Standing needs!B2`.
+8. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
    The build renames that tab to `Form Responses 1 (old form)` with every row kept, links the form to a fresh tab, and asks someone to decide what to do with the old rows.
+9. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
+
+Two things used to be on this list and are not any more, because the build now does them: the spreadsheet's own **time zone** (pinned to `Asia/Ho_Chi_Minh`, since a new spreadsheet comes up on the owning account's zone - `Etc/GMT` on the first live build - and every `Next action by` date then reads a day off in Vietnam), and deleting the empty default tab.
 
 ### Things to know before changing the script
 
+- **Every bilingual string reads `English / Tiếng Việt`, in that order.** Question titles, help text, section titles, choice values, the consent line, the confirmation message, the two `Donation tiers` outcome columns and the bodies and subjects of every automated email.
+  The order is a contract, not a preference: each `HEADER` needle in `Code.js` is an *English fragment* of a whole bilingual question title, so English leading is what keeps `col_()` resolving a column at all.
+  Flip a string and you must re-check the needle that finds it. `test/harness.js` matches every needle against the real bilingual titles, and `test/build-harness.js` asserts the order as a property over every title, help text and choice value on the form, so a half-done flip fails rather than quietly unhooking a column.
+- **The published chart shows percent funded, never amounts.** The `Progress` tab deliberately allows one currency per row, so raw totals on one axis compare a VND number with a USD one: the first live build stacked `Monthly rice fund (USD)` 12382 of 13000 against `Tết gifts 2027 (VND)` 400000 of 2600000, and the VND bar dwarfed the USD one while neither bar meant anything.
+  A fraction is unit-free, so it is right whatever currency a row is in and needs no exchange rate that goes stale between the two tabs. The amounts travel in each bar's label instead.
+  `Progress chart` columns `E:G` hold the filtered `QUERY` and are hidden; `A:C` are the label and the two fractions, and they are the only columns the chart reads.
+  `buildIntake()` owns all six formulas and rewrites them every run, like `All work`.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
 - **`onIntakeEdit` must not be renamed to `onEdit`.** A function called `onEdit` is installed as a *simple* trigger, and simple triggers cannot send email. It would fail silently, with nothing in any log a volunteer would read. The name is the guard.
 - **Only the `Decision` column can email a member of the public.** `Status` is the team's own task tracking and emails nobody, which is what lets one spreadsheet hold both intake rows and ordinary team tasks. Case E in `test/harness.js` is that property.
