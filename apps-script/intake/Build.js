@@ -834,8 +834,16 @@ function buildAllWorkTab_(ss, notes) {
  *  lost: they travel in each bar's label, formatted, beside the project name
  *  that states the currency.
  *
- *  E:G hold the filtered QUERY and are hidden. A:C are what the chart reads. */
+ *  E:G hold the filtered QUERY and are hidden. A:C are what the chart reads,
+ *  and A2 is ONE FILTER that spills exactly as many rows as the QUERY
+ *  returned: a formula padded to row 30 with "" would hand the chart a value
+ *  in every spare row, and a bar chart draws each one as an empty category.
+ *
+ *  A1:G30 is cleared first because the whole block is build-owned: a sheet
+ *  built by an earlier version holds a note in F1 and formulas in B2 and C2,
+ *  and either would block a spill and leave #REF! where the chart reads. */
 function buildProgressChartTab_(sh) {
+  sh.getRange('A1:G30').clearContent();
   sh.getRange('A1').setFormula('={"Project","Funded","Remaining"}');
 
   sh.getRange('E1').setFormula('={"Project","Raised","Goal"}');
@@ -843,22 +851,21 @@ function buildProgressChartTab_(sh) {
     '=IFERROR(QUERY(' + TABS.progress + '!A2:F30,' +
     '"select Col1, Col3, Col2 where Col6 = \'YES\' and Col1 is not null",0),"")');
 
+  // IFERROR element by element, so a goal of 0 is 0 rather than a #DIV/0!
+  // that would blank the whole chart; capped at 1 so over-funding cannot
+  // overflow the axis.
   sh.getRange('A2').setFormula(
-    '=ARRAYFORMULA(IF(E2:E30="","",E2:E30&" - "&TEXT(F2:F30,"#,##0")&' +
-    '" of "&TEXT(G2:G30,"#,##0")))');
-  // IFERROR element by element, so a goal of 0 or a blank row is 0 rather than
-  // a #DIV/0! that would blank the whole chart.
-  sh.getRange('B2').setFormula(
-    '=ARRAYFORMULA(IF(E2:E30="","",' +
-    'IFERROR(IF(F2:F30/G2:G30>1,1,F2:F30/G2:G30),0)))');
-  sh.getRange('C2').setFormula('=ARRAYFORMULA(IF(B2:B30="","",1-B2:B30))');
+    '=ARRAYFORMULA(IFERROR(LET(' +
+    'f,IFERROR(IF(F2:F30/G2:G30>1,1,F2:F30/G2:G30),0),' +
+    'FILTER({E2:E30&" - "&TEXT(F2:F30,"#,##0")&" of "&TEXT(G2:G30,"#,##0"),f,1-f},' +
+    'E2:E30<>"")),""))');
   sh.getRange('B2:C30').setNumberFormat('0%');
 
   sh.hideColumns(5, 3);
 
   sh.getRange('I1').setValue(
     'Published to the web. Nothing personal may ever be added to this tab. ' +
-    'A1, A2, B2, C2, E1 and E2 are rewritten by buildIntake() on every run, so ' +
+    'A1:G30 and the chart are rewritten by buildIntake() on every run, so ' +
     'an edit to them does not survive: change buildProgressChartTab_ in ' +
     'Build.js instead. The two charted series are fractions of each project\'s ' +
     'own goal, which is what lets one chart hold a VND project and a USD one; ' +
@@ -954,28 +961,30 @@ function buildProgressTabs_(ss, notes, manual) {
   // a hand edit to one of them must not survive unnoticed.
   buildProgressChartTab_(chartTab);
 
-  if (chartTab.getCharts().length === 0) {
-    SpreadsheetApp.flush();
-    // Whole-column ranges with spare rows, so a project added at row 5 appears
-    // in the chart without anyone editing the chart. A:C only - the helper
-    // columns that hold the raw amounts are never charted.
-    chartTab.insertChart(chartTab.newChart()
-      .setChartType(Charts.ChartType.BAR)
-      .addRange(chartTab.getRange('A1:A30'))
-      .addRange(chartTab.getRange('B1:C30'))
-      .setOption('isStacked', true)
-      .setOption('title', 'Vietnam Hearts - percent funded')
-      .setOption('legend', { position: 'bottom' })
-      // Both series are fractions that sum to 1, so the value axis is a
-      // percentage from empty to funded and nothing else can land on it.
-      .setOption('hAxis', { format: 'percent', viewWindow: { min: 0, max: 1 } })
-      .setOption('width', 560)
-      .setOption('height', 300)
-      .setPosition(3, 9, 0, 0)
-      .build());
-    notes.push('Built the percent-funded progress chart on "' +
-      TABS.progressChart + '".');
-  }
+  // Re-inserted every run rather than only when absent, so a chart left by an
+  // earlier version (other title, other axis, anchored in a now-hidden column)
+  // is replaced rather than kept.
+  chartTab.getCharts().forEach(function (c) { chartTab.removeChart(c); });
+  SpreadsheetApp.flush();
+  // Whole-column ranges with spare rows, so a project added at row 5 appears
+  // in the chart without anyone editing the chart. A:C only - the helper
+  // columns that hold the raw amounts are never charted.
+  chartTab.insertChart(chartTab.newChart()
+    .setChartType(Charts.ChartType.BAR)
+    .addRange(chartTab.getRange('A1:A30'))
+    .addRange(chartTab.getRange('B1:C30'))
+    .setOption('isStacked', true)
+    .setOption('title', 'Vietnam Hearts - percent funded')
+    .setOption('legend', { position: 'bottom' })
+    // Both series are fractions that sum to 1, so the value axis is a
+    // percentage from empty to funded and nothing else can land on it.
+    .setOption('hAxis', { format: 'percent', viewWindow: { min: 0, max: 1 } })
+    .setOption('width', 560)
+    .setOption('height', 300)
+    .setPosition(3, 9, 0, 0)
+    .build());
+  notes.push('Built the percent-funded progress chart on "' +
+    TABS.progressChart + '".');
 
   manual.push('In the spreadsheet: File -> Share -> **Publish to web**, and publish ' +
     '**only** the "' + TABS.progressChart + '" tab or its chart, then copy the ' +

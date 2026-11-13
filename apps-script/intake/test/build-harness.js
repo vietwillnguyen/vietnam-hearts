@@ -106,6 +106,12 @@ function makeSpreadsheet(world) {
           return typeof v === 'string' && v.charAt(0) === '=' ? v : '';
         },
         setFormula: (f) => { cells[key(row, col)] = f; return self; },
+        clearContent: () => {
+          for (let r = row; r < row + numRows; r++) {
+            for (let c = col; c < col + numCols; c++) delete cells[key(r, c)];
+          }
+          return self;
+        },
         setFormulaR1C1: (f) => {
           for (let r = row; r < row + numRows; r++) {
             for (let c = col; c < col + numCols; c++) cells[key(r, c)] = f;
@@ -202,6 +208,10 @@ function makeSpreadsheet(world) {
       },
       getCharts: () => meta.charts.slice(),
       insertChart: (chart) => { meta.charts.push(chart); return sheet; },
+      removeChart: (chart) => {
+        meta.charts = meta.charts.filter((c) => c !== chart);
+        return sheet;
+      },
       newChart: () => {
         const spec = { type: null, ranges: [], options: {} };
         const b = {
@@ -602,10 +612,8 @@ check('setCollectEmail (which means VERIFIED, forcing a sign-in) is never called
 check('one response per user is not enforced (it would force a sign-in)',
   form._settings.limitOne === false);
 /* FormApp.Form has no addFileUploadItem - the live build raised a TypeError
-   trying - so the builder must not reach for it at all, and the question is a
-   manual step like publishing to the web. */
-check('the builder never CALLS addFileUploadItem, which FormApp does not have',
-  !/\.addFileUploadItem\s*\(/.test(fs.readFileSync(BUILD, 'utf8')));
+   trying - and neither does the fake form, so a call would throw above. The
+   question is a manual step like publishing to the web. */
 check('no file upload question was invented on the form',
   items.filter((i) => /Photo of the items/.test(i.getTitle())).length === 0);
 check('the supplies section now ends with the closing question',
@@ -669,9 +677,7 @@ check('the submitter columns are protected with a warning, not a lock',
 
 const chartTab = w.ss.getSheetByName('Progress chart');
 const helperQuery = String(chartTab.getRange('E2').getFormula());
-const labelFormula = String(chartTab.getRange('A2').getFormula());
-const fundedFormula = String(chartTab.getRange('B2').getFormula());
-const remainingFormula = String(chartTab.getRange('C2').getFormula());
+const seriesFormula = String(chartTab.getRange('A2').getFormula());
 check('the published tab is a QUERY over the team tab, not the team tab itself',
   /QUERY\(Progress!A2:F30/.test(helperQuery), helperQuery);
 check('it only ever selects a project name and two numbers',
@@ -686,17 +692,23 @@ check('the helper columns the QUERY lands in are hidden',
    row's own goal, which is unit-free and so right whatever currency the row is
    in, and the raw amounts travel in the label instead of being lost. */
 check('the charted series is each project\'s fraction of its own goal',
-  /F2:F30\/G2:G30/.test(fundedFormula) && /ARRAYFORMULA/.test(fundedFormula),
-  fundedFormula);
+  /f,IFERROR\(IF\(F2:F30\/G2:G30>1,1,F2:F30\/G2:G30\),0\)/.test(seriesFormula),
+  seriesFormula);
 check('the second series is the remainder of that same fraction',
-  /1-B2:B30/.test(remainingFormula), remainingFormula);
-check('the fraction is capped at 1, so an over-funded project cannot overflow',
-  /IFERROR|>1,1,/.test(fundedFormula), fundedFormula);
+  /,f,1-f\}/.test(seriesFormula), seriesFormula);
 check('the raw amounts are kept, in the row label, with the goal beside them',
-  /TEXT\(F2:F30/.test(labelFormula) && /TEXT\(G2:G30/.test(labelFormula),
-  labelFormula);
+  /TEXT\(F2:F30/.test(seriesFormula) && /TEXT\(G2:G30/.test(seriesFormula),
+  seriesFormula);
 check('the label still carries the project name, which names its currency',
-  /E2:E30&/.test(labelFormula), labelFormula);
+  /\{E2:E30&/.test(seriesFormula), seriesFormula);
+/* A formula padded to row 30 with "" hands the chart a value in every spare
+   row, which a bar chart draws as an empty category. One FILTER on the QUERY's
+   own rows spills only the projects, and B2:C30 must stay empty for it. */
+check('the series spill only the rows the QUERY returned',
+  /FILTER\(\{.*\},E2:E30<>""\)/.test(seriesFormula), seriesFormula);
+check('nothing in B2:C30 can block that spill',
+  chartTab.getRange('B2:C30').getValues().every((r) => r.every((v) => v === '')),
+  JSON.stringify(chartTab.getRange('B2:C3').getValues()));
 check('one stacked bar chart was built on it',
   chartTab.getCharts().length === 1 &&
   chartTab.getCharts()[0].options.isStacked === true);
@@ -861,7 +873,29 @@ check('the team columns were not inserted a second time',
   headerBefore.join('|'));
 check('only one chart still', chartTab.getCharts().length === 1,
   String(chartTab.getCharts().length));
-check('the second run reported too', w.mails.length === 2, String(w.mails.length));
+
+/* The throwaway sheet from the first live run was built by the previous
+   version: a raw-amount chart titled "Vietnam Hearts - progress", a note in
+   F1 where E1's header now spills, and per-column formulas in B2 and C2. A
+   re-run must converge on the current shape rather than keep any of it. */
+console.log('\n=== buildIntake() over a Progress chart tab left by the previous version');
+chartTab._meta.charts = [{ type: 'BAR', ranges: ['A1:A30', 'B1:C30'],
+  options: { title: 'Vietnam Hearts - progress', isStacked: true } }];
+chartTab.getRange('F1').setValue('Helper columns - leave alone.');
+chartTab.getRange('B2').setFormula('=ARRAYFORMULA(F2:F30)');
+chartTab.getRange('C2').setFormula('=ARRAYFORMULA(G2:G30)');
+w.sandbox.buildIntake();
+const upgraded = chartTab.getCharts();
+check('the old chart was replaced, not kept beside or instead of the new one',
+  upgraded.length === 1 && upgraded[0].options.title === 'Vietnam Hearts - percent funded' &&
+  (upgraded[0].options.hAxis || {}).format === 'percent',
+  JSON.stringify(upgraded.map((c) => c.options.title)));
+check('the old F1 note no longer sits where the E1 header spills',
+  chartTab.getRange('F1').getValue() === '', String(chartTab.getRange('F1').getValue()));
+check('the old B2 and C2 formulas no longer block the A2 spill',
+  chartTab.getRange('B2').getValue() === '' && chartTab.getRange('C2').getValue() === '',
+  chartTab.getRange('B2:C2').getValues()[0].join(' | '));
+check('both re-runs reported too', w.mails.length === 3, String(w.mails.length));
 
 /* --- degraded Google APIs --- */
 console.log('\n=== a Google account where the email-collection API is absent');
