@@ -72,7 +72,8 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 |---|---|
 | `intake/Code.js` | The two trigger handlers, run on every submission and every edit |
 | `intake/Build.js` | `buildIntake()`, the one-shot builder that creates the form, the sheet tabs and the triggers |
-| `intake/test/harness.js` | Stub harness for the handlers: twelve cases against a fake `SpreadsheetApp` / `MailApp` |
+| `intake/test/harness.js` | Stub harness for the handlers, cases A to P against a fake `SpreadsheetApp` / `MailApp` |
+| `intake/test/forbidden-shapes.js` | The address, opening-hours and reply-date shapes both harnesses assert never appear |
 | `intake/test/build-harness.js` | Stub harness for the builder, including a second run and a degraded Google account |
 | `intake/appsscript.json` | Runtime, exception logging, and the time zone |
 | `intake/.clasp.json.example` | Copy to `.clasp.json` and fill in the script id. The real file is gitignored because `clasp clone-script` writes it and the id differs per deployment |
@@ -97,7 +98,7 @@ It will not re-add the form's questions once the form has any, because a volunte
 `buildIntake()` collects these into the email it sends and counts them in the subject line.
 They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls), which is the source of truth; this is a summary.
 
-1. **Publish to web.** There is no Apps Script API for it. Publish **only** the `Progress chart` tab or its chart, never "Entire document" and never the response tab, which holds submitters' names, emails and phone numbers.
+1. **Publish to web.** There is no Apps Script API for it. Publish **only** the `Progress chart` tab or its chart, and later the `Donation tiers` tab the same way, never "Entire document" and never the response tab, which holds submitters' names, emails and phone numbers.
 2. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
 3. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
 4. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual and carries the Zalo link; two confirmation emails for one submission looks broken.
