@@ -92,7 +92,7 @@ function buildIntake() {
   var notes = [];
 
   var form = openOrCreateForm_(notes, manual);
-  linkFormToSheet_(form, ss, notes);
+  linkFormToSheet_(form, ss, notes, manual);
 
   var responses = ss.getSheetByName(CONFIG.SHEET_NAME);
   if (!responses) {
@@ -447,15 +447,40 @@ function prefilledPartnershipUrl_(form) {
 
 /* ------------------------------------------------------------------ sheet */
 
-function linkFormToSheet_(form, ss, notes) {
-  var before = ss.getSheets().map(function (sh) { return sh.getName(); });
-
-  if (ss.getSheetByName(CONFIG.SHEET_NAME)) {
-    notes.push('The "' + CONFIG.SHEET_NAME + '" tab already exists, so the form ' +
-      'destination was left alone.');
+function linkFormToSheet_(form, ss, notes, manual) {
+  var destination = '';
+  try {
+    destination = form.getDestinationId();
+  } catch (err) {
+    destination = '';         // Forms throws when a form has no destination
+  }
+  if (destination === ss.getId() && ss.getSheetByName(CONFIG.SHEET_NAME)) {
+    notes.push('The form is already linked to this spreadsheet, so its destination ' +
+      'was left alone.');
     return;
   }
 
+  // A response tab that this form does not write to belongs to an earlier
+  // form, and its rows cannot be recreated. Move it aside, never over it.
+  var orphan = ss.getSheetByName(CONFIG.SHEET_NAME);
+  if (orphan) {
+    var aside = CONFIG.SHEET_NAME + ' (old form)';
+    for (var n = 2; ss.getSheetByName(aside); n++) {
+      aside = CONFIG.SHEET_NAME + ' (old form ' + n + ')';
+    }
+    orphan.setName(aside);
+    notes.push('<b>The "' + CONFIG.SHEET_NAME + '" tab was not written by this form</b>, ' +
+      'so it was renamed to "' + aside + '" with every row kept, and the form was ' +
+      'linked to a new tab.');
+    manual.push('<b>Decide what to do with the "' + aside + '" tab.</b> It holds the ' +
+      'submissions of a form this build could no longer open; nothing reads that tab ' +
+      'now, so no reply or reminder will go out for its rows. Copy any row still in ' +
+      'progress into "' + CONFIG.SHEET_NAME + '" or "' + TABS.teamTasks + '". Sheets ' +
+      'makes formulas follow a renamed tab, so also check that the formula in "' +
+      TABS.allWork + '"!A2 reads \'' + CONFIG.SHEET_NAME + '\' and not the old tab.');
+  }
+
+  var before = ss.getSheets().map(function (sh) { return sh.getName(); });
   form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
   SpreadsheetApp.flush();
 
@@ -827,6 +852,9 @@ function buildProgressTabs_(ss, notes, manual) {
 /* --------------------------------------------------------------- reporting */
 
 function collectManualSteps_(manual) {
+  manual.push('Share the spreadsheet only with the named volunteers who handle ' +
+    'requests, as editors; never set General access to Anyone with the link; the ' +
+    'response tab holds submitters\' names, emails and Zalo/WhatsApp numbers.');
   manual.push('In the spreadsheet: Data -> **Filter views** -> create one per working ' +
     'state (TODO, IN PROGRESS, BLOCKED) and one for Priority = High. Apps Script has no ' +
     'filter-view API. Use filter views rather than a plain filter: a filter view is ' +

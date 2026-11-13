@@ -223,6 +223,11 @@ function makeFormApp(world, ss) {
       _destination: null,
       title,
       getId: () => 'FAKE_FORM_ID',
+      // Like Forms, throws when the form has no response destination.
+      getDestinationId: () => {
+        if (!form._destination) throw new Error('fake: no response destination');
+        return form._destination.id;
+      },
       getTitle: () => form.title,
       setTitle: (t) => { form.title = t; return form; },
       getPublishedUrl: () => 'https://docs.google.com/forms/d/e/FAKE/viewform',
@@ -337,7 +342,7 @@ function makeWorld(opts) {
     mails: [],
     logs: [],
     triggers: [],
-    props: {},
+    props: opts.staleFormId ? { intakeFormId: opts.staleFormId } : {},
     calledSetCollectEmail: undefined,
     fileUploadThrows: !!opts.fileUploadThrows,
     noEmailCollection: !!opts.noEmailCollection
@@ -644,6 +649,11 @@ check('a manual step covers response receipts', /Response receipts/i.test(mail.h
 check('a manual step covers the spreadsheet time zone',
   /Asia\/Ho Chi Minh/.test(mail.htmlBody));
 check('a manual step covers turning DRY_RUN off', /DRY_RUN/.test(mail.htmlBody));
+check('a manual step keeps the spreadsheet\'s sharing list narrow',
+  /Share the spreadsheet only with the named volunteers who handle requests, as editors; never set General access to Anyone with the link/
+    .test(mail.htmlBody));
+check('the build reports no orphaned response tab on a clean build',
+  !/old form/.test(mail.htmlBody));
 check('it warns against publishing the response tab',
   /Never publish "Entire document" or the response tab/.test(mail.htmlBody));
 check('it states the intake adds nothing to Cloud Run',
@@ -693,6 +703,44 @@ check('it says plainly that the triggers are not installed',
 check('it tells them to run setUp again afterwards',
   /run <b>setUp\(\)<\/b> from/.test(mail2.htmlBody));
 check('it names the consequence of leaving it', /nobody is emailed/.test(mail2.htmlBody));
+
+/* --- the remembered form is gone, its response tab is not --- */
+console.log('\n=== buildIntake() when the remembered form cannot be opened but its tab remains');
+const w3 = makeWorld({ staleFormId: 'GONE_FORM_ID' });
+const oldTab = w3.ss._addResponseSheet('Form Responses 1',
+  ['Status', 'Priority', 'Next action by', 'Owner', 'Decision', 'Decision note',
+    'Reply sent', 'Timestamp', 'Email Address', 'Your name']);
+oldTab.getRange(2, 1, 1, 10).setValues([['IN PROGRESS', 'High', '', 'Mai', 'Approved',
+  '', 'stamped', 'yesterday', 'old.donor@example.com', 'Old donor']]);
+w3.sandbox.buildIntake();
+const mail3 = w3.mails[0];
+const names3 = w3.ss.getSheets().map((s) => s.getName());
+console.log(`   tabs now: ${names3.join(', ')}`);
+check('a new form was created', w3.formsCreated === 1, String(w3.formsCreated));
+check('the new form is linked to this spreadsheet',
+  !!w3.form._destination && w3.form._destination.id === w3.ss.getId(),
+  JSON.stringify(w3.form._destination));
+const kept = w3.ss.getSheets().filter((s) => s !== w3.ss.getSheetByName('Form Responses 1') &&
+  s.getRange(2, 9).getValue() === 'old.donor@example.com');
+check('the old submissions survive under another name', kept.length === 1 &&
+  kept[0] === oldTab, names3.join(', '));
+check('the old tab was not overwritten',
+  oldTab.getRange(1, 1, 1, 10).getValues()[0].join('|') ===
+  'Status|Priority|Next action by|Owner|Decision|Decision note|Reply sent|Timestamp|Email Address|Your name');
+const fresh = w3.ss.getSheetByName('Form Responses 1');
+check('"Form Responses 1" is now the new form\'s tab', fresh && fresh !== oldTab &&
+  fresh.getRange(2, 9).getValue() === '');
+check('the triggers were installed against the new tab',
+  w3.triggers.length === 2, w3.triggers.join(', '));
+check('the build email names the renamed tab in its notes',
+  /was not written by this form/.test(mail3.htmlBody) &&
+  mail3.htmlBody.indexOf(oldTab.getName()) !== -1);
+check('a manual step asks someone to decide about the old submissions',
+  /Decide what to do with the "Form Responses 1 \(old form\)" tab/.test(mail3.htmlBody));
+check('the subject counts that extra step',
+  Number((mail3.subject.match(/(\d+) manual steps left/) || [])[1]) ===
+  Number((mail.subject.match(/(\d+) manual steps left/) || [])[1]) + 1,
+  mail3.subject + ' vs ' + mail.subject);
 
 /* ------------------------------------------------------------------ result */
 

@@ -111,8 +111,26 @@ function makeWorld(opts) {
     })
   };
 
+  /* One document lock, as LockService hands every run of a bound script.
+     `opts.lockHeld` makes it busy for the whole edit; `opts.onTryLock` runs
+     once, just before the first tryLock, to interleave another edit there. */
+  const lock = { held: false, waits: [] };
+  let interleave = opts.onTryLock;
+  const documentLock = {
+    tryLock: (ms) => {
+      lock.waits.push(ms);
+      if (interleave) { const run = interleave; interleave = null; run(); }
+      if (lock.held || opts.lockHeld) return false;
+      lock.held = true;
+      return true;
+    },
+    releaseLock: () => { lock.held = false; }
+  };
+
   const sandbox = {
+    LockService: { getDocumentLock: () => documentLock },
     SpreadsheetApp: {
+      flush: () => {},
       getActive: () => ({
         getUrl: () => 'https://docs.google.com/spreadsheets/d/FAKE/edit',
         getSheetByName: (n) => {
@@ -149,7 +167,7 @@ function makeWorld(opts) {
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(CODE, 'utf8'), sandbox);
   sandbox.CONFIG.DRY_RUN = false;   // show real recipients in the transcript
-  return { sandbox, grid, mails, logs, responses };
+  return { sandbox, grid, mails, logs, responses, lock };
 }
 
 /* ------------------------------------------------------------------ checks */
@@ -427,6 +445,43 @@ check('P the failed row is not stamped', w.grid[2][H['Reply sent']] === '');
 check('P the failure names its row',
   teamMails(w).some((m) => m.subject === '[Requests sheet] onIntakeEdit row 3 failed'),
   teamMails(w).map((m) => m.subject).join(' | '));
+
+// Q: two overlapping edits of one row. The second has read an empty Reply
+// sent and is about to take the lock when the first runs to completion.
+w = makeWorld({
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' },
+  onTryLock: () => w.sandbox.onIntakeEdit({
+    range: w.responses.getRange(2, H['Decision'] + 1, 1, 1)
+  })
+});
+editCell(w, H['Decision']);
+show('Q. two interleaved edits of one row -> exactly one donor mail', w);
+check('Q exactly one donor mail', donorMails(w).length === 1, String(donorMails(w).length));
+check('Q the row is stamped', isDate(w.grid[1][H['Reply sent']]));
+check('Q both edits asked for the lock with a bounded wait',
+  w.lock.waits.length === 2 && w.lock.waits.every((ms) => ms > 0 && ms <= 30000),
+  JSON.stringify(w.lock.waits));
+check('Q the lock is released afterwards', w.lock.held === false);
+check('Q nothing is reported', teamMails(w).length === 0,
+  teamMails(w).map((m) => m.subject).join(' | '));
+
+// R: the lock cannot be had within the wait
+w = editCell(makeWorld({
+  lockHeld: true,
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' }
+}), H['Decision']);
+show('R. lock busy for the whole wait -> nothing sent, nothing stamped, team told', w);
+check('R no donor mail', donorMails(w).length === 0);
+check('R Reply sent stays empty', w.grid[1][H['Reply sent']] === '');
+check('R Status is not moved', w.grid[1][H['Status']] === '');
+check('R the skipped row is reported by number',
+  teamMails(w).some((m) => /onIntakeEdit/.test(m.subject) && /Row 2/.test(m.htmlBody)),
+  teamMails(w).map((m) => m.subject).join(' | '));
+
+// S: a Status-only edit, or a row with no decision, never takes the lock
+w = editCell(makeWorld({ lockHeld: true }), H['Decision']);
+check('S a blank Decision neither waits on the lock nor reports',
+  w.lock.waits.length === 0 && w.mails.length === 0);
 
 /* -------------------------------------------------- the global invariants */
 

@@ -68,7 +68,12 @@ var CONFIG = {
   // Status the script moves a row to once its decision mail has gone out.
   STATUS_ON_APPROVED: 'IN PROGRESS',
   STATUS_ON_DECLINED: 'DONE',
-  STATUS_ON_SUBMIT: 'TODO'
+  STATUS_ON_SUBMIT: 'TODO',
+
+  // How long a decision edit waits for another edit's reply to finish before
+  // giving up, in milliseconds. Two overlapping edits of one row must never
+  // both read an empty Reply sent and both email the submitter.
+  DECISION_LOCK_WAIT_MS: 20000
 };
 
 /** Header text fragments used to locate columns. Case-insensitive substring
@@ -413,7 +418,37 @@ function onIntakeEdit(e) {
   }
 }
 
+/** True when the row holds a decision that has not been emailed yet. */
+function awaitingReply_(row, headers) {
+  var decision = String(row[col_(headers, HEADER.decision)] || '').trim();
+  if (CONFIG.DECISION_VALUES.indexOf(decision) === -1) return false;
+  // Already decided and emailed. Flipping the dropdown must not re-email.
+  if (String(row[col_(headers, HEADER.sent)] || '').trim()) return false;
+  return !!String(row[col_(headers, HEADER.email)] || '').trim();
+}
+
 function decideRow_(sh, headers, rowNumber) {
+  if (!awaitingReply_(rowValues_(sh, rowNumber), headers)) return;
+
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(CONFIG.DECISION_LOCK_WAIT_MS)) {
+    reportError_('onIntakeEdit', new Error('Row ' + rowNumber + ': another edit was ' +
+      'still sending a reply, so this one sent nothing. If Reply sent is still empty, ' +
+      'set Decision again to send it.'));
+    return;
+  }
+  try {
+    // Read again under the lock: an overlapping edit may have stamped it.
+    var row = rowValues_(sh, rowNumber);
+    if (!awaitingReply_(row, headers)) return;
+    replyToDecision_(sh, headers, rowNumber, row);
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function replyToDecision_(sh, headers, rowNumber, row) {
   var cDecision = col_(headers, HEADER.decision);
   var cStatus = col_(headers, HEADER.status);
   var cEmail = col_(headers, HEADER.email);
@@ -422,17 +457,8 @@ function decideRow_(sh, headers, rowNumber) {
   var cSent = col_(headers, HEADER.sent);
   var cOwner = col_(headers, HEADER.owner);
 
-  var row = rowValues_(sh, rowNumber);
   var decision = String(row[cDecision] || '').trim();
-
-  if (CONFIG.DECISION_VALUES.indexOf(decision) === -1) return;
-
-  // Already decided and emailed. Flipping the dropdown must not re-email.
-  if (String(row[cSent] || '').trim()) return;
-
   var email = String(row[cEmail] || '').trim();
-  if (!email) return;
-
   var name = String(row[cName] || '').trim();
   var note = String(row[cNote] || '').trim();
 

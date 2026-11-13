@@ -92,6 +92,7 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 
 `buildIntake()` is idempotent and safe to re-run: it remembers the form it created in script properties, creates each tab only when absent, and rewrites the dropdowns, formats and protection every time, so a second run repairs a hand-edited sheet rather than duplicating it.
 It will not re-add the form's questions once the form has any, because a volunteer may have reworded one.
+It decides whether the form is linked by asking the form for its destination, never by whether a response tab exists, so a re-run after the form was lost cannot hand out a public URL whose submissions reach no sheet.
 
 ### What Apps Script cannot do, so a human must
 
@@ -99,12 +100,15 @@ It will not re-add the form's questions once the form has any, because a volunte
 They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls), which is the source of truth; this is a summary.
 
 1. **Publish to web.** There is no Apps Script API for it. Publish **only** the `Progress chart` tab or its chart, and later the `Donation tiers` tab the same way, never "Entire document" and never the response tab, which holds submitters' names, emails and phone numbers.
-2. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
-3. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
-4. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual and carries the Zalo link; two confirmation emails for one submission looks broken.
-5. **File upload questions**, on accounts where `addFileUploadItem` is unavailable. Keep it optional and last in the supplies section so nobody meets the sign-in wall before their answers are saved.
-6. **The spreadsheet's own time zone**: File -> Settings -> `Asia/Ho Chi Minh`, to match `appsscript.json`.
-7. **The `Volunteers` tab rows**, and the team Zalo or WhatsApp number in `Standing needs!B2`.
+2. **The sharing list.** Share the spreadsheet only with the named volunteers who handle requests, as editors; never set General access to Anyone with the link; the response tab holds submitters' names, emails and Zalo/WhatsApp numbers.
+3. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
+4. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
+5. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual and carries the Zalo link; two confirmation emails for one submission looks broken.
+6. **File upload questions**, on accounts where `addFileUploadItem` is unavailable. Keep it optional and last in the supplies section so nobody meets the sign-in wall before their answers are saved.
+7. **The spreadsheet's own time zone**: File -> Settings -> `Asia/Ho Chi Minh`, to match `appsscript.json`.
+8. **The `Volunteers` tab rows**, and the team Zalo or WhatsApp number in `Standing needs!B2`.
+9. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
+   The build renames that tab to `Form Responses 1 (old form)` with every row kept, links the form to a fresh tab, and asks someone to decide what to do with the old rows.
 
 ### Things to know before changing the script
 
@@ -114,6 +118,8 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 - **Nothing in the script approves anything.** The submit handler writes `Status`, `Priority` and `Next action by`; only a human sets `Decision`.
 - **The always-needed list lives in the form's checkbox choices and nowhere else.** The script asks "did they tick anything" and "did they write anything else", both emptiness checks, so changing what the team always accepts is an edit to the form and nothing more.
 - **`Reply sent` is an idempotency stamp.** While it is non-empty the script will not email that row again. Clearing it by hand is the one way to make it re-email somebody.
+  Each row's read, send and stamp run under the document lock, and the row is read again once the lock is held, so two overlapping edits of one row send one reply.
+  An edit that cannot get the lock within `CONFIG.DECISION_LOCK_WAIT_MS` sends nothing and reports the row.
 - **The four branches end with the same question in the same words.** Google Forms creates one response column per *item*, so this really does produce four identically-headed columns, one per branch, each empty for the rows that took another branch. That is the cost of asking it everywhere, and it is worth paying: it is the only question that lets a submitter say the thing the form did not think to ask. The `All work` tab reads `Decision note` rather than one of those four, and no `HEADER` needle matches their wording, so `col_()` never sees the ambiguity.
 - **No automated email states the school's address or hours, or promises a date.**
   The only place named is the public area, Thạnh Mỹ Tây, TP.HCM.
