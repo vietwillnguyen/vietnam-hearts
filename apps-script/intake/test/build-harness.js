@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { ADDRESS } = require('./address-shape');
 
 const CODE = process.argv[2] || path.join(__dirname, '..', 'Code.js');
 const BUILD = process.argv[3] || path.join(__dirname, '..', 'Build.js');
@@ -576,14 +577,40 @@ check('the chart reads spare rows, so a new project appears by itself',
 const standingTab = w.ss.getSheetByName('Standing needs');
 const termsText = String(standingTab.getRange('B2').getValue());
 check('the handover block was written into Standing needs!B2', termsText.length > 100);
-check('it names the district and no street address',
-  /Thạnh Mỹ Tây/.test(termsText) && !/\d+\s+(đường|street|st\.|road)/i.test(termsText));
+check('it names the public area', /Thạnh Mỹ Tây/.test(termsText));
+check('it holds nothing shaped like a street address, in either language',
+  !ADDRESS.test(termsText), (termsText.match(ADDRESS) || [''])[0]);
 check('the tab warns against putting the address in that cell',
   /DO NOT put the school address/.test(String(standingTab.getRange('A4').getValue())));
 check('the tab says the item list lives in the form, not here',
   /lives in the form/.test(String(standingTab.getRange('A5').getValue())));
 check('Standing needs does not restate the five items',
   !/Cooking oil/.test(String(standingTab.getRange('A5').getValue())));
+
+/* An inline array literal, ={"a","b";"c","d"}: "," separates columns and ";"
+   separates rows. Parsed into rows so the check is about the grid it makes. */
+function arrayLiteralRows(formula) {
+  const m = /^=\{(.*)\}$/.exec(String(formula));
+  if (!m) return null;
+  return m[1].split(';').map((r) => r.split(',').map((c) => c.replace(/^"|"$/g, '')));
+}
+const allWork = w.ss.getSheetByName('All work');
+const allWorkHeader = arrayLiteralRows(allWork.getRange('A1').getValue());
+check('All work headers are one row of six columns, clear of the QUERY in A2',
+  !!allWorkHeader && allWorkHeader.length === 1 && allWorkHeader[0].length === 6,
+  JSON.stringify(allWorkHeader));
+const chartHeader = arrayLiteralRows(chartTab.getRange('A1').getValue());
+check('Progress chart headers are one row of three columns',
+  !!chartHeader && chartHeader.length === 1 && chartHeader[0].length === 3,
+  JSON.stringify(chartHeader));
+
+const volunteersTab = w.ss.getSheetByName('Volunteers');
+const ownerColumn = volunteersTab.getRange(2, 1, 199, 1).getValues()
+  .map((r) => String(r[0] || '')).filter((v) => v.trim());
+check('the Owner dropdown range Volunteers!A2:A200 starts empty',
+  ownerColumn.length === 0, ownerColumn.join(' | '));
+check('the Volunteers instructions sit outside the Name column',
+  /One row per volunteer/.test(String(volunteersTab.getRange('E1').getValue())));
 
 check('the two triggers were installed',
   w.triggers.length === 2 &&

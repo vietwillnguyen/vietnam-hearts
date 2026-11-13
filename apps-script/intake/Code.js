@@ -20,7 +20,9 @@
  * Nothing in this file approves anything. Every submission waits for a human,
  * including an offer of the five always-needed items: those are only flagged
  * Priority=High so they are answered first. Drop-offs are arranged one at a
- * time with a volunteer, so no automated mail ever hands out a location.
+ * time with a volunteer, so no automated mail ever states the school's street
+ * address or hours. The only place any of them names is the public area,
+ * Thạnh Mỹ Tây, TP.HCM.
  */
 
 var CONFIG = {
@@ -125,7 +127,7 @@ function setUp() {
 function volunteerRowCount_() {
   try {
     var sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.VOLUNTEERS_TAB);
-    if (!sh || sh.getLastRow() < 2) return -1;
+    if (!sh) return -1;
     var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     col_(headers, 'Name');
     col_(headers, 'Email');
@@ -185,13 +187,13 @@ function rowValues_(sh, rowNumber) {
  *  else. DRY_RUN redirects the recipient but keeps Reply-To, because getting
  *  that header wrong is one of the things a dry run is for. */
 function send_(to, subject, htmlBody, replyTo) {
-  if (!to) return;
+  if (!to) return false;
   var remaining = MailApp.getRemainingDailyQuota();
   if (remaining < 3) {
     // Consumer Gmail allows 100 recipients/day. Hitting this means something
     // is looping, because real intake volume is a handful a week.
     Logger.log('Email quota nearly exhausted (%s left); not sending.', remaining);
-    return;
+    return false;
   }
   var options = { to: to, subject: subject, htmlBody: htmlBody };
   if (replyTo) options.replyTo = replyTo;
@@ -200,6 +202,7 @@ function send_(to, subject, htmlBody, replyTo) {
     options.subject = '[DRY RUN -> ' + to + '] ' + subject;
   }
   MailApp.sendEmail(options);
+  return true;
 }
 
 /** Team-facing mail. Goes to the team whatever DRY_RUN says, because it is
@@ -346,9 +349,13 @@ function onIntakeFormSubmit(e) {
 
     var terms = ticked ? termsBlockOrEmpty_() : '';
 
-    send_(email,
+    var acked = send_(email,
       'Vietnam Hearts da nhan de xuat cua ban / We have your offer',
       ackHtml_(name, ticked, terms, fastLane));
+    if (email && !acked) {
+      reportError_('onIntakeFormSubmit', new Error('Row ' + rowNumber +
+        ': the acknowledgement was not sent (email quota nearly exhausted).'));
+    }
 
     notifyTeam_(
       (fastLane ? 'FAST LANE: ' : '') +
@@ -363,7 +370,7 @@ function onIntakeFormSubmit(e) {
         ? '<p><b>Mixed.</b> Always-needed items (' + escape_(ticked) + ') plus ' +
           'something else they typed in. Deal with both in one reply.</p>'
         : '') +
-      (ticked === '' && other === '' && type.indexOf('ung') !== -1
+      (ticked === '' && other === '' && type.indexOf('Donate supplies') !== -1
         ? '<p>Supplies request with nothing listed. Ask them what they have.</p>'
         : '') +
       '<p>Row ' + rowNumber + ': <a href="' + rowLink_(rowNumber) +
@@ -384,53 +391,65 @@ function onIntakeEdit(e) {
     var sh = e.range.getSheet();
     if (sh.getName() !== CONFIG.SHEET_NAME) return;
 
-    var rowNumber = e.range.getRow();
-    if (rowNumber < 2) return;
-
     var headers = headerRow_();
     var cDecision = col_(headers, HEADER.decision);
 
-    // Only a change in the Decision column can send anything. Status changes
-    // (TODO -> IN PROGRESS -> DONE) are the team's own task tracking and must
-    // never reach a submitter.
-    if (e.range.getColumn() !== cDecision + 1) return;
+    // Only a change that covers the Decision column can send anything. Status
+    // changes (TODO -> IN PROGRESS -> DONE) are the team's own task tracking
+    // and must never reach a submitter. A drag-fill or paste can cover many
+    // rows and start left of Decision, so every row of the range is checked.
+    if (e.range.getColumn() > cDecision + 1 ||
+        e.range.getLastColumn() < cDecision + 1) return;
 
-    var cStatus = col_(headers, HEADER.status);
-    var cEmail = col_(headers, HEADER.email);
-    var cName = col_(headers, HEADER.name);
-    var cNote = col_(headers, HEADER.note);
-    var cSent = col_(headers, HEADER.sent);
-    var cOwner = col_(headers, HEADER.owner);
-
-    var row = rowValues_(sh, rowNumber);
-    var decision = String(row[cDecision] || '').trim();
-
-    if (CONFIG.DECISION_VALUES.indexOf(decision) === -1) return;
-
-    // Already decided and emailed. Flipping the dropdown must not re-email.
-    if (String(row[cSent] || '').trim()) return;
-
-    var email = String(row[cEmail] || '').trim();
-    if (!email) return;
-
-    var name = String(row[cName] || '').trim();
-    var note = String(row[cNote] || '').trim();
-
-    // Reply-To on both outcomes, so an answer reaches the volunteer who made
-    // the call. Only Approved names them, because only Approved promises
-    // contact.
-    var owner = ownerContact_(row[cOwner], decision === 'Approved');
-    send_(email,
-      decisionSubject_(decision),
-      decisionHtml_(decision, name, note, owner.name),
-      owner.email);
-    sh.getRange(rowNumber, cSent + 1).setValue(new Date());
-    sh.getRange(rowNumber, cStatus + 1).setValue(decision === 'Approved'
-      ? CONFIG.STATUS_ON_APPROVED
-      : CONFIG.STATUS_ON_DECLINED);
+    for (var r = Math.max(e.range.getRow(), 2); r <= e.range.getLastRow(); r++) {
+      decideRow_(sh, headers, r);
+    }
   } catch (err) {
     reportError_('onIntakeEdit', err);
   }
+}
+
+function decideRow_(sh, headers, rowNumber) {
+  var cDecision = col_(headers, HEADER.decision);
+  var cStatus = col_(headers, HEADER.status);
+  var cEmail = col_(headers, HEADER.email);
+  var cName = col_(headers, HEADER.name);
+  var cNote = col_(headers, HEADER.note);
+  var cSent = col_(headers, HEADER.sent);
+  var cOwner = col_(headers, HEADER.owner);
+
+  var row = rowValues_(sh, rowNumber);
+  var decision = String(row[cDecision] || '').trim();
+
+  if (CONFIG.DECISION_VALUES.indexOf(decision) === -1) return;
+
+  // Already decided and emailed. Flipping the dropdown must not re-email.
+  if (String(row[cSent] || '').trim()) return;
+
+  var email = String(row[cEmail] || '').trim();
+  if (!email) return;
+
+  var name = String(row[cName] || '').trim();
+  var note = String(row[cNote] || '').trim();
+
+  // Reply-To on both outcomes, so an answer reaches the volunteer who made
+  // the call. Only Approved names them, because only Approved promises
+  // contact.
+  var owner = ownerContact_(row[cOwner], decision === 'Approved');
+  var sent = send_(email,
+    decisionSubject_(decision),
+    decisionHtml_(decision, name, note, owner.name),
+    owner.email);
+  if (!sent) {
+    reportError_('onIntakeEdit', new Error('Row ' + rowNumber + ': the ' +
+      decision + ' email was not sent (email quota nearly exhausted). Reply sent ' +
+      'is still empty; set Decision again tomorrow to send it.'));
+    return;
+  }
+  sh.getRange(rowNumber, cSent + 1).setValue(new Date());
+  sh.getRange(rowNumber, cStatus + 1).setValue(decision === 'Approved'
+    ? CONFIG.STATUS_ON_APPROVED
+    : CONFIG.STATUS_ON_DECLINED);
 }
 
 /* -------------------------------------------------------------- email bodies */
@@ -448,8 +467,8 @@ function footerHtml_() {
 }
 
 /** The one automated mail a submitter receives. It promises no date, because
- *  the form does not either, and it never states a drop-off location: a
- *  volunteer arranges each handover by hand. */
+ *  the form does not either, and it never states the school's address or
+ *  hours, only the public area: a volunteer arranges each handover by hand. */
 function ackHtml_(name, ticked, terms, fastLane) {
   var hi = name ? ' ' + escape_(name) : '';
   var fastVi = '', fastEn = '';

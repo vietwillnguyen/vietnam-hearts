@@ -77,9 +77,9 @@ var STANDING_ITEMS = [
   'Bột nêm, bột ngọt / Seasoning powder, MSG'
 ];
 
-/** Asked at the end of every branch, in exactly these words on purpose: one
- *  wording means one sheet column that every row fills, instead of three
- *  sparse ones. */
+/** Asked at the end of every branch, in exactly these words on purpose.
+ *  Google Forms still makes one sheet column per item, so this produces four
+ *  identically headed columns, one per branch, and each row fills only one. */
 var CLOSING_QUESTION =
   'Bạn cần gì từ Vietnam Hearts, hoặc có điều gì khác muốn cho chúng tôi biết? / ' +
   'What do you need from us, or anything else we should know?';
@@ -625,7 +625,7 @@ function buildStandingNeedsTab_(ss, notes) {
     'DO NOT put the school address in B2. This cell is quoted into an email that ' +
     'goes to anyone who fills in the public form, and the address is only given out ' +
     'after someone signs up as a volunteer and joins the Zalo group. The public ' +
-    'geography is the district and nothing finer.');
+    'area is Thạnh Mỹ Tây, TP.HCM, and nothing finer: no street address and no hours.');
   sh.getRange('A5').setValue(
     'The always-needed item list is NOT here. It lives in the form\'s checkbox ' +
     'question, which is the only copy. To change what the team always accepts, edit ' +
@@ -641,15 +641,16 @@ function buildVolunteersTab_(ss, notes) {
   if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
 
   sh.getRange('A1:C1').setValues([['Name', 'Email', 'Notes']]).setFontWeight('bold');
-  sh.getRange('A3').setValue(
+  sh.getRange('E1').setValue(
     'One row per volunteer who can own a request. "Name" must match the Owner ' +
     'dropdown exactly. The Approved email names this person and sets Reply-To to ' +
     'their address, so a submitter answers a human. Nothing else on this tab is read ' +
     'by the script: do not expect a phone number here to reach anybody, and never ' +
     'put one in an email.');
-  sh.getRange('A3').setWrap(true);
+  sh.getRange('E1').setWrap(true);
   sh.setColumnWidth(1, 180);
   sh.setColumnWidth(2, 260);
+  sh.setColumnWidth(5, 420);
   sh.setFrozenRows(1);
   return sh;
 }
@@ -685,7 +686,7 @@ function buildAllWorkTab_(ss, notes) {
   // Read-only union of the two task sources, newest deadline first, finished
   // work left out but never deleted.
   sh.getRange('A1').setFormula(
-    '={"Where";"Status";"Priority";"Next action by";"Owner";"What"}');
+    '={"Where","Status","Priority","Next action by","Owner","What"}');
   sh.getRange('A2').setFormula(
     '=IFERROR(QUERY({' +
     'ARRAYFORMULA(IF(\'' + CONFIG.SHEET_NAME + '\'!A2:A<>"","Request","")),' +

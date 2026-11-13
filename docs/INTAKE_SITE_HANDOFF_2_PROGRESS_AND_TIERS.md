@@ -23,7 +23,7 @@ After that, the numbers and even whole new projects change in the team's spreads
    The published chart reads only the rows marked `YES`.
 
 Apps Script has no API for publishing to the web, so neither of those can be automated.
-They are steps 1 and 2 in the email `buildIntake()` sends.
+They appear as the two **Publish to web** steps in the manual steps list of the email `buildIntake()` sends.
 
 ---
 

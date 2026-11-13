@@ -10,14 +10,16 @@
  * least one check failed; the failures are also listed at the end.
  *
  * The properties under test are mostly negative - "editing Status emails
- * nobody", "a decision mail carries no location", "no email contains a phone
- * number" - and negative properties are exactly what a silent refactor breaks.
+ * nobody", "a decision mail carries no handover block", "no email contains a
+ * street address or a phone number" - and negative properties are exactly what
+ * a silent refactor breaks. Naming the public area, Thạnh Mỹ Tây, is allowed.
  */
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { ADDRESS, MUST_MATCH, MUST_NOT_MATCH } = require('./address-shape');
 
 const CODE = process.argv[2] || path.join(__dirname, '..', 'Code.js');
 
@@ -38,12 +40,12 @@ const DONOR = 'donor@example.com';
 const TEAM = 'vietnam.hearts.volunteering@gmail.com';
 
 /* The handover wording a volunteer would type into 'Standing needs'!B2. It
-   deliberately names an area, and that string does double duty: it proves the
-   acknowledgement DID include the block, and it proves the decision mail did
-   NOT, because the decision path never reads that cell. */
-const TERMS = 'Chung toi hen tung lan nhan do, khu vuc Thanh My Tay, TP.HCM.\n' +
+   names the public area, which is allowed, and that string does double duty:
+   it proves the acknowledgement DID include the block, and it proves the
+   decision mail did NOT, because the decision path never reads that cell. */
+const TERMS = 'Chúng tôi hẹn từng lần nhận đồ. Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
   'Xin con nguyen seal, con han 3 thang.';
-const TERMS_MARK = /Thanh My Tay/;
+const TERMS_MARK = /Thạnh Mỹ Tây/;
 
 /* Anything shaped like a Vietnamese phone number. No automated mail may carry
    one: the Volunteers tab maps a name to an email and nothing else. */
@@ -57,25 +59,29 @@ function makeWorld(opts) {
   row[H['Timestamp']] = new Date('2026-11-13T09:00:00Z');
   row[H['Email Address']] = DONOR;
   row[H['Your name']] = 'Linh';
-  row[H['What would you like to offer?']] = 'Tang do dung / Donate supplies';
+  row[H['What would you like to offer?']] =
+    opts.type === undefined ? 'Tặng đồ dùng, vật phẩm / Donate supplies or goods' : opts.type;
   row[H['We always need these - are you giving any of them?']] = opts.ticked || '';
   row[H['Other items not on the list above']] = opts.other || '';
   Object.assign(row, opts.preset || {});
 
-  const grid = [HEADERS.slice(), row];
+  const grid = [HEADERS.slice()];
+  for (let i = 0; i < (opts.rows || 1); i++) grid.push(row.slice());
   const mails = [];
   const logs = [];
 
   const responses = {
     getName: () => 'Form Responses 1',
     getLastColumn: () => HEADERS.length,
-    getLastRow: () => 2,
+    getLastRow: () => grid.length,
     getSheetId: () => 1234,
     getRange: (r, c, nr, nc) => ({
       getValues: () => [grid[r - 1].slice(c - 1, c - 1 + (nc || 1))],
       setValue: (v) => { grid[r - 1][c - 1] = v; },
       getRow: () => r,
       getColumn: () => c,
+      getLastRow: () => r + (nr || 1) - 1,
+      getLastColumn: () => c + (nc || 1) - 1,
       getSheet: () => responses
     })
   };
@@ -116,7 +122,7 @@ function makeWorld(opts) {
       })
     },
     MailApp: {
-      getRemainingDailyQuota: () => 90,
+      getRemainingDailyQuota: () => (opts.quota === undefined ? 90 : opts.quota),
       sendEmail: (o) => mails.push(o)
     },
     Logger: { log: (...a) => logs.push(a.join(' ')) },
@@ -191,7 +197,12 @@ function submit(w) {
   return record(w);
 }
 function editCell(w, column) {
-  w.sandbox.onIntakeEdit({ range: w.responses.getRange(2, column + 1, 1, 1) });
+  return editRange(w, 2, column, 1, 1);
+}
+function editRange(w, row, column, numRows, numColumns) {
+  w.sandbox.onIntakeEdit({
+    range: w.responses.getRange(row, column + 1, numRows, numColumns)
+  });
   return record(w);
 }
 
@@ -228,6 +239,16 @@ check('C status is TODO', w.grid[1][H['Status']] === 'TODO');
 check('C priority is Normal', w.grid[1][H['Priority']] === 'Normal');
 check('C no handover block', !TERMS_MARK.test(donorMails(w)[0].htmlBody));
 
+// C2: the supplies branch with nothing ticked and nothing typed, using the
+//     branch's real choice text
+w = submit(makeWorld());
+show('C2. supplies, nothing listed -> team is told to ask what they have', w);
+check('C2 the team mail asks what they have',
+  teamMails(w).some((m) => /Supplies request with nothing listed/.test(m.htmlBody)));
+w = submit(makeWorld({ type: 'Đề xuất sự kiện / Propose an event' }));
+check('C2 another branch with nothing listed gets no supplies hint',
+  teamMails(w).every((m) => !/Supplies request with nothing listed/.test(m.htmlBody)));
+
 // D: the handover wording is missing from the sheet - fail soft
 w = submit(makeWorld({ ticked: 'Dau an', terms: '' }));
 show('D. handover cell empty -> TODO anyway, error mail, nothing approved', w);
@@ -261,7 +282,7 @@ check('F Reply sent stamped', isDate(w.grid[1][H['Reply sent']]));
 check('F status moved to IN PROGRESS', w.grid[1][H['Status']] === 'IN PROGRESS');
 check('F the note reached the donor verbatim',
   /Tue or Thu works\./.test(donorMails(w)[0].htmlBody));
-check('F no location leaks into the decision mail',
+check('F the decision mail carries no handover block',
   !TERMS_MARK.test(donorMails(w)[0].htmlBody));
 check('F the owner is named', /Mai from Vietnam Hearts will contact you/
   .test(donorMails(w)[0].htmlBody));
@@ -343,7 +364,53 @@ check('L replyTo falls back to the team', donorMails(w)[0].replyTo === TEAM);
 check('L the empty address is reported',
   teamMails(w).some((m) => /ownerContact_/.test(m.subject)));
 
-/* --------------------------------------------------- one global invariant */
+// M: Approved drag-filled down Decision for three rows
+w = editRange(makeWorld({
+  rows: 3,
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' }
+}), 2, H['Decision'], 3, 1);
+show('M. Decision drag-filled over 3 rows -> 3 donor mails, all stamped', w);
+check('M every row is emailed', donorMails(w).length === 3, String(donorMails(w).length));
+check('M every row is stamped',
+  [1, 2, 3].every((i) => isDate(w.grid[i][H['Reply sent']])));
+
+// N: a paste that starts left of Decision and covers it
+w = editRange(makeWorld({
+  rows: 2,
+  preset: { [H['Decision']]: 'Declined', [H['Owner']]: 'Mai' }
+}), 2, H['Status'], 2, H['Owner'] + 1);
+show('N. paste covering Status:Owner -> both rows emailed', w);
+check('N every row is emailed', donorMails(w).length === 2, String(donorMails(w).length));
+check('N every row moved to DONE',
+  [1, 2].every((i) => w.grid[i][H['Status']] === 'DONE'));
+
+// O: the quota guard trips on a decision
+w = editCell(makeWorld({
+  quota: 2,
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' }
+}), H['Decision']);
+show('O. quota nearly exhausted -> no mail, nothing stamped, team told', w);
+check('O no donor mail', donorMails(w).length === 0);
+check('O Reply sent stays empty', w.grid[1][H['Reply sent']] === '');
+check('O Status is not moved', w.grid[1][H['Status']] === '');
+check('O the unsent reply is reported',
+  teamMails(w).some((m) => /onIntakeEdit/.test(m.subject) &&
+    /was not sent/.test(m.htmlBody)));
+
+w = submit(makeWorld({ quota: 2, ticked: 'Dau an' }));
+check('O an unsent acknowledgement is reported',
+  donorMails(w).length === 0 &&
+  teamMails(w).some((m) => /onIntakeFormSubmit/.test(m.subject) &&
+    /was not sent/.test(m.htmlBody)));
+
+/* -------------------------------------------------- the global invariants */
+
+check('the address matcher flags every address-shaped sample',
+  MUST_MATCH.every((t) => ADDRESS.test(t)),
+  MUST_MATCH.filter((t) => !ADDRESS.test(t)).join(' | '));
+check('the address matcher passes the public area and ordinary numbers',
+  MUST_NOT_MATCH.every((t) => !ADDRESS.test(t)),
+  MUST_NOT_MATCH.filter((t) => ADDRESS.test(t)).join(' | '));
 
 console.log('\n--- every mail produced above');
 const offenders = allMails.filter((m) => PHONE.test(String(m.htmlBody)) ||
@@ -351,6 +418,11 @@ const offenders = allMails.filter((m) => PHONE.test(String(m.htmlBody)) ||
 check(`no phone number in any of the ${allMails.length} mails`,
   offenders.length === 0,
   offenders.map((m) => m.subject).join(' | '));
+const addressed = allMails.filter((m) => ADDRESS.test(String(m.htmlBody)) ||
+  ADDRESS.test(String(m.subject)));
+check(`no street address in any of the ${allMails.length} mails`,
+  addressed.length === 0,
+  addressed.map((m) => m.subject).join(' | '));
 check('every recipient is an address the script was given',
   allMails.every((m) => m.to === DONOR || m.to === TEAM),
   allMails.map((m) => m.to).filter((t) => t !== DONOR && t !== TEAM).join(', '));
