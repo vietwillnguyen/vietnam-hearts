@@ -1,0 +1,16 @@
+{
+  "name": "vietnam-hearts-apps-script",
+  "private": true,
+  "description": "Apps Script projects that live in the Vietnam Hearts Google Sheets, managed with clasp.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node --check intake/Code.js && node --check intake/Build.js",
+    "test": "node intake/test/harness.js intake/Code.js && node intake/test/build-harness.js intake/Code.js intake/Build.js",
+    "verify": "npm run check && npm run test"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.4.1"
+  }
+}

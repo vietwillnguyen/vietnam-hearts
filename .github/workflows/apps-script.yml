@@ -1,0 +1,41 @@
+name: Apps Script
+
+# Path-gated so the Python matrix in test.yml is untouched by a change here,
+# and so a Python-only change does not spin up Node for nothing.
+on:
+  pull_request:
+    paths: [ 'apps-script/**', '.github/workflows/apps-script.yml' ]
+  push:
+    branches: [ main ]
+    paths: [ 'apps-script/**', '.github/workflows/apps-script.yml' ]
+
+# Jobs run on the runner the CI_RUNS_ON repository variable names (e.g.
+# `self-hosted`), and on ubuntu-latest when it is unset. Same convention as
+# test.yml and deploy.yml.
+
+jobs:
+  check:
+    runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-latest' }}
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '20'
+
+    # No clasp, no login, no credential, no push. ~/.clasprc.json is a refresh
+    # token for the account that owns the team's Gmail, the forms and the
+    # sheets, so it must never reach CI. Nothing below needs a secret.
+    - name: Syntax check
+      run: |
+        node --check apps-script/intake/Code.js
+        node --check apps-script/intake/Build.js
+
+    - name: Trigger handler harness
+      run: node apps-script/intake/test/harness.js apps-script/intake/Code.js
+
+    - name: Builder harness
+      run: |
+        node apps-script/intake/test/build-harness.js \
+          apps-script/intake/Code.js apps-script/intake/Build.js

@@ -1,0 +1,7 @@
+# clasp patterns go through multimatch, not gitignore semantics, so a
+# directory needs the **/dir/** form rather than a bare name.
+**/node_modules/**
+**/test/**
+**/README.md
+**/package.json
+**/.clasp.json.example

@@ -58,3 +58,8 @@ coverage.xml
 build/
 dist/
 *.egg-info/
+
+# clasp writes this per deployment and the script id differs per environment.
+# Copy apps-script/intake/.clasp.json.example instead.
+apps-script/*/.clasp.json
+.clasprc.json

@@ -1,0 +1,538 @@
+/**
+ * Vietnam Hearts - public request intake
+ *
+ * Bound to the "Vietnam Hearts - Requests" spreadsheet.
+ * Two installable triggers, created once by setUp():
+ *   onIntakeFormSubmit - stamps Status=TODO, sets Priority and Next action by,
+ *                        acknowledges the submitter, notifies the team
+ *   onIntakeEdit       - emails the submitter when DECISION becomes
+ *                        Approved or Declined
+ *
+ * Do NOT rename onIntakeEdit to onEdit. A function named onEdit runs as a
+ * SIMPLE trigger, and simple triggers cannot send email - it would fail
+ * silently with nothing in any log a volunteer would read.
+ * https://developers.google.com/apps-script/guides/triggers
+ *
+ * The Approved mail names the volunteer who owns the row and sets Reply-To to
+ * that volunteer's address, read from the "Volunteers" tab. Mail is still sent
+ * FROM the team Gmail, and no phone or Zalo number is ever put in an email.
+ *
+ * Nothing in this file approves anything. Every submission waits for a human,
+ * including an offer of the five always-needed items: those are only flagged
+ * Priority=High so they are answered first. Drop-offs are arranged one at a
+ * time with a volunteer, so no automated mail ever hands out a location.
+ */
+
+var CONFIG = {
+  // Tab the form writes into. Google names it "Form Responses 1" by default.
+  SHEET_NAME: 'Form Responses 1',
+
+  // Where team notifications and error reports go.
+  TEAM_EMAIL: 'vietnam.hearts.volunteering@gmail.com',
+
+  // Shown to submitters as the alternative channel.
+  ZALO_GROUP_URL: 'https://zalo.me/g/gcmgkowx6gvotsghvsji',
+
+  // Tab and cell holding the bilingual handover + food-condition block quoted
+  // in the acknowledgement. It lives in the sheet, not here, so a volunteer can
+  // reword it without opening Apps Script. It must NOT contain the school
+  // address: see section 7.5.3.
+  TERMS_TAB: 'Standing needs',
+  TERMS_CELL: 'B2',
+
+  // Tab mapping a volunteer's Owner name to their email address, headed
+  // "Name" and "Email" in row 1. The decision mail sets Reply-To to that
+  // address and the Approved mail names the person, so a submitter answers a
+  // human rather than a shared inbox. Nothing else is read from this tab: no
+  // phone number and no Zalo handle reaches an email, by construction.
+  VOLUNTEERS_TAB: 'Volunteers',
+
+  // Internal target, in days, written into "Next action by" on submit. This is
+  // a sort key for the team, not a promise: the form makes none.
+  TARGET_DAYS: 7,
+
+  // Signature line in outbound email.
+  ORG_NAME: 'Vietnam Hearts',
+
+  // true = send everything to TEAM_EMAIL with a [DRY RUN] subject prefix
+  // instead of to the submitter. Leave true until you have tested the flow.
+  DRY_RUN: true,
+
+  // Values of the DECISION column that email the submitter. The Status column
+  // is deliberately not in this list: Status is how the team tracks work, and
+  // moving a row to IN PROGRESS must never email anyone.
+  DECISION_VALUES: ['Approved', 'Declined'],
+
+  // Status the script moves a row to once its decision mail has gone out.
+  STATUS_ON_APPROVED: 'IN PROGRESS',
+  STATUS_ON_DECLINED: 'DONE',
+  STATUS_ON_SUBMIT: 'TODO'
+};
+
+/** Header text fragments used to locate columns. Case-insensitive substring
+ *  match; each must match exactly one column or the script throws. */
+var HEADER = {
+  status: 'Status',
+  decision: 'Decision',       // must not also match "Decision note"
+  priority: 'Priority',
+  due: 'Next action by',
+  owner: 'Owner',
+  note: 'Decision note',
+  sent: 'Reply sent',
+  email: 'email',
+  name: 'Your name',
+  type: 'What would you like to offer',
+  // The always-needed checkbox question. Its CHOICES are the list; this is
+  // only how we find the column. Keep "Other" switched off on this question.
+  standing: 'always need',
+  // The free-text escape hatch. Anything here means more than the five items.
+  other: 'Other items'
+};
+
+/** Run once, by hand, from the Apps Script editor. Safe to re-run. */
+function setUp() {
+  var ss = SpreadsheetApp.getActive();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('onIntakeFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
+  ScriptApp.newTrigger('onIntakeEdit').forSpreadsheet(ss).onEdit().create();
+
+  // Fail now, loudly, if a header is missing or ambiguous, rather than on the
+  // first real submission at 11pm.
+  var headers = headerRow_();
+  Object.keys(HEADER).forEach(function (key) {
+    col_(headers, HEADER[key]);
+  });
+
+  var terms = termsBlockOrEmpty_();
+  var volunteers = volunteerRowCount_();
+
+  Logger.log('Installed %s triggers. All %s headers resolved. ' +
+    'Handover block is %s characters. Volunteers tab has %s usable rows ' +
+    '(-1 means missing or malformed, which only costs you the named ' +
+    'volunteer, not the reply). DRY_RUN=%s',
+    ScriptApp.getProjectTriggers().length,
+    Object.keys(HEADER).length,
+    terms.length,
+    volunteers,
+    CONFIG.DRY_RUN);
+}
+
+/** Usable rows on the Volunteers tab, or -1 when the tab is missing or its
+ *  Name/Email headers do not resolve. For setUp() only, so a missing tab shows
+ *  up at setup time rather than as an error mail during a real decision. */
+function volunteerRowCount_() {
+  try {
+    var sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.VOLUNTEERS_TAB);
+    if (!sh || sh.getLastRow() < 2) return -1;
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    col_(headers, 'Name');
+    col_(headers, 'Email');
+    return sh.getLastRow() - 1;
+  } catch (err) {
+    Logger.log('Volunteers tab unusable: %s', err);
+    return -1;
+  }
+}
+
+/* ---------------------------------------------------------------- helpers */
+
+function sheet_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
+  if (!sh) throw new Error('No sheet named "' + CONFIG.SHEET_NAME + '"');
+  return sh;
+}
+
+function headerRow_() {
+  var sh = sheet_();
+  return sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+}
+
+/** 0-based index of the one column whose header contains `needle`.
+ *  An exact header match wins outright, so "Decision" resolves even though
+ *  "Decision note" also contains it. */
+function col_(headers, needle) {
+  var want = String(needle).toLowerCase();
+  var exact = [];
+  var partial = [];
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i]).trim().toLowerCase();
+    if (h === want) exact.push(i);
+    else if (h.indexOf(want) !== -1) partial.push(i);
+  }
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) {
+    throw new Error('Two columns are both headed exactly "' + needle + '"');
+  }
+  if (partial.length === 0) {
+    throw new Error('No column header contains "' + needle + '"');
+  }
+  if (partial.length > 1) {
+    throw new Error('"' + needle + '" matches ' + partial.length +
+      ' columns; make HEADER entry more specific or rename a column');
+  }
+  return partial[0];
+}
+
+function rowValues_(sh, rowNumber) {
+  return sh.getRange(rowNumber, 1, 1, sh.getLastColumn()).getValues()[0];
+}
+
+/** One place that decides who actually receives mail.
+ *  `replyTo` is optional and only ever an email address: the sender stays the
+ *  team Gmail, so a volunteer's address is exposed for a reply and nothing
+ *  else. DRY_RUN redirects the recipient but keeps Reply-To, because getting
+ *  that header wrong is one of the things a dry run is for. */
+function send_(to, subject, htmlBody, replyTo) {
+  if (!to) return;
+  var remaining = MailApp.getRemainingDailyQuota();
+  if (remaining < 3) {
+    // Consumer Gmail allows 100 recipients/day. Hitting this means something
+    // is looping, because real intake volume is a handful a week.
+    Logger.log('Email quota nearly exhausted (%s left); not sending.', remaining);
+    return;
+  }
+  var options = { to: to, subject: subject, htmlBody: htmlBody };
+  if (replyTo) options.replyTo = replyTo;
+  if (CONFIG.DRY_RUN) {
+    options.to = CONFIG.TEAM_EMAIL;
+    options.subject = '[DRY RUN -> ' + to + '] ' + subject;
+  }
+  MailApp.sendEmail(options);
+}
+
+/** Team-facing mail. Goes to the team whatever DRY_RUN says, because it is
+ *  already addressed to the team, but still respects the quota guard. */
+function notifyTeam_(subject, htmlBody) {
+  if (MailApp.getRemainingDailyQuota() < 3) {
+    Logger.log('Quota nearly exhausted; team notification not sent: %s', subject);
+    return;
+  }
+  MailApp.sendEmail({ to: CONFIG.TEAM_EMAIL, subject: subject, htmlBody: htmlBody });
+}
+
+/** The handover and food-condition block, read from the sheet so a volunteer
+ *  owns the wording. Returns '' and reports if the tab or cell is missing:
+ *  nothing is gated on it, because nothing is auto-approved.
+ *  white-space:pre-line keeps the volunteer's line breaks from the cell. */
+function termsBlockOrEmpty_() {
+  try {
+    var sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.TERMS_TAB);
+    if (!sh) throw new Error('No tab named "' + CONFIG.TERMS_TAB + '"');
+    var text = String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim();
+    if (!text) {
+      throw new Error('Cell ' + CONFIG.TERMS_CELL + ' of "' + CONFIG.TERMS_TAB +
+        '" is empty. It must hold the handover and food-condition wording.');
+    }
+    return '<p style="padding:12px;background:#f5f1e8;border-left:4px solid #7a8c6b;' +
+      'white-space:pre-line">' + escape_(text) + '</p>';
+  } catch (err) {
+    reportError_('termsBlockOrEmpty_', err);
+    return '';
+  }
+}
+
+/** Resolve the row's Owner name to a volunteer's email address.
+ *  Returns { name: '', email: CONFIG.TEAM_EMAIL } whenever it cannot, so a
+ *  gap in the Volunteers tab sends the reply to the team instead of dropping
+ *  it, and reports the gap by email so somebody fixes the tab.
+ *
+ *  `reportWhenUnassigned` is true only for Approved: that mail promises a
+ *  person will make contact, so a blank Owner is a real gap there. A Declined
+ *  mail promises nothing, and reporting every unassigned decline would spend
+ *  the 100-a-day email quota on noise.
+ *
+ *  Only Name and Email are read. The tab may hold other columns; nothing here
+ *  can put a phone number or a Zalo handle into an email. */
+function ownerContact_(ownerName, reportWhenUnassigned) {
+  var fallback = { name: '', email: CONFIG.TEAM_EMAIL };
+  var name = String(ownerName || '').trim();
+  if (!name) {
+    if (reportWhenUnassigned) {
+      reportError_('ownerContact_', new Error(
+        'Row approved with no Owner. The submitter was told a volunteer will ' +
+        'be in touch, but nobody is named and the reply goes to the team.'));
+    }
+    return fallback;
+  }
+  try {
+    var sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.VOLUNTEERS_TAB);
+    if (!sh) throw new Error('No tab named "' + CONFIG.VOLUNTEERS_TAB + '"');
+    if (sh.getLastRow() < 2) {
+      throw new Error('"' + CONFIG.VOLUNTEERS_TAB + '" has a header row and nothing else');
+    }
+    var values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+    var cName = col_(values[0], 'Name');
+    var cEmail = col_(values[0], 'Email');
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][cName]).trim().toLowerCase() !== name.toLowerCase()) continue;
+      var email = String(values[i][cEmail] || '').trim();
+      if (!email) {
+        throw new Error('"' + name + '" is on the ' + CONFIG.VOLUNTEERS_TAB +
+          ' tab with no email address');
+      }
+      return { name: name, email: email };
+    }
+    throw new Error('No row for Owner "' + name + '" on the ' +
+      CONFIG.VOLUNTEERS_TAB + ' tab');
+  } catch (err) {
+    reportError_('ownerContact_', err);
+    return fallback;
+  }
+}
+
+function reportError_(where, err) {
+  Logger.log('%s failed: %s', where, err && err.stack ? err.stack : err);
+  try {
+    MailApp.sendEmail({
+      to: CONFIG.TEAM_EMAIL,
+      subject: '[Requests sheet] ' + where + ' failed',
+      htmlBody: '<p>The request intake script hit an error.</p><pre>' +
+        String(err && err.stack ? err.stack : err) + '</pre>'
+    });
+  } catch (ignored) {}
+}
+
+function rowLink_(rowNumber) {
+  var ss = SpreadsheetApp.getActive();
+  return ss.getUrl() + '#gid=' + sheet_().getSheetId() + '&range=A' + rowNumber;
+}
+
+/* ------------------------------------------------------------- on a submit */
+
+function onIntakeFormSubmit(e) {
+  try {
+    var sh = sheet_();
+    var rowNumber = e && e.range ? e.range.getRow() : sh.getLastRow();
+    var headers = headerRow_();
+    var row = rowValues_(sh, rowNumber);
+
+    var cStatus = col_(headers, HEADER.status);
+    var cPriority = col_(headers, HEADER.priority);
+    var cDue = col_(headers, HEADER.due);
+    var cEmail = col_(headers, HEADER.email);
+    var cName = col_(headers, HEADER.name);
+    var cType = col_(headers, HEADER.type);
+    var cStand = col_(headers, HEADER.standing);
+    var cOther = col_(headers, HEADER.other);
+
+    var name = String(row[cName] || '').trim();
+    var email = String(row[cEmail] || '').trim();
+    var type = String(row[cType] || '').trim() || 'Khac / Other';
+
+    // `ticked` is whatever Forms joined together from the checkbox question.
+    // Nothing parses it, because every choice on that question is already an
+    // always-needed item (section 7.5.2).
+    var ticked = String(row[cStand] || '').trim();
+    var other = String(row[cOther] || '').trim();
+
+    // The fast lane. Only the five items and nothing written in the free-text
+    // box means the answer is a yes in principle, so it jumps the queue - but a
+    // volunteer still confirms it and arranges the handover.
+    var fastLane = ticked !== '' && other === '';
+
+    if (!String(row[cStatus]).trim()) {
+      sh.getRange(rowNumber, cStatus + 1).setValue(CONFIG.STATUS_ON_SUBMIT);
+    }
+    if (!String(row[cPriority]).trim()) {
+      sh.getRange(rowNumber, cPriority + 1).setValue(fastLane ? 'High' : 'Normal');
+    }
+    if (!String(row[cDue]).trim()) {
+      var due = new Date();
+      due.setDate(due.getDate() + CONFIG.TARGET_DAYS);
+      sh.getRange(rowNumber, cDue + 1).setValue(due);
+    }
+
+    var terms = ticked ? termsBlockOrEmpty_() : '';
+
+    send_(email,
+      'Vietnam Hearts da nhan de xuat cua ban / We have your offer',
+      ackHtml_(name, ticked, terms, fastLane));
+
+    notifyTeam_(
+      (fastLane ? 'FAST LANE: ' : '') +
+      'New request (' + type + ') from ' + (name || 'someone'),
+      (fastLane
+        ? '<p><b>Always-needed items only (' + escape_(ticked) + ').</b> ' +
+          'Flagged Priority=High. The answer is a yes in principle, but it still ' +
+          'needs a volunteer to confirm it and agree a handover - nobody has been ' +
+          'given a time or a place.</p>'
+        : '<p><b>' + escape_(type) + '</b> from ' + escape_(name || 'unknown') + '</p>') +
+      (ticked && other
+        ? '<p><b>Mixed.</b> Always-needed items (' + escape_(ticked) + ') plus ' +
+          'something else they typed in. Deal with both in one reply.</p>'
+        : '') +
+      (ticked === '' && other === '' && type.indexOf('ung') !== -1
+        ? '<p>Supplies request with nothing listed. Ask them what they have.</p>'
+        : '') +
+      '<p>Row ' + rowNumber + ': <a href="' + rowLink_(rowNumber) +
+      '">open it in the sheet</a></p>' +
+      '<p>Put one line in <b>Decision note</b> first - that line is what the ' +
+      'person receives - then set <b>Decision</b> to Approved or Declined. ' +
+      'Changing <b>Status</b> emails nobody.</p>');
+  } catch (err) {
+    reportError_('onIntakeFormSubmit', err);
+  }
+}
+
+/* ------------------------------------------ on a change in the DECISION cell */
+
+function onIntakeEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    if (sh.getName() !== CONFIG.SHEET_NAME) return;
+
+    var rowNumber = e.range.getRow();
+    if (rowNumber < 2) return;
+
+    var headers = headerRow_();
+    var cDecision = col_(headers, HEADER.decision);
+
+    // Only a change in the Decision column can send anything. Status changes
+    // (TODO -> IN PROGRESS -> DONE) are the team's own task tracking and must
+    // never reach a submitter.
+    if (e.range.getColumn() !== cDecision + 1) return;
+
+    var cStatus = col_(headers, HEADER.status);
+    var cEmail = col_(headers, HEADER.email);
+    var cName = col_(headers, HEADER.name);
+    var cNote = col_(headers, HEADER.note);
+    var cSent = col_(headers, HEADER.sent);
+    var cOwner = col_(headers, HEADER.owner);
+
+    var row = rowValues_(sh, rowNumber);
+    var decision = String(row[cDecision] || '').trim();
+
+    if (CONFIG.DECISION_VALUES.indexOf(decision) === -1) return;
+
+    // Already decided and emailed. Flipping the dropdown must not re-email.
+    if (String(row[cSent] || '').trim()) return;
+
+    var email = String(row[cEmail] || '').trim();
+    if (!email) return;
+
+    var name = String(row[cName] || '').trim();
+    var note = String(row[cNote] || '').trim();
+
+    // Reply-To on both outcomes, so an answer reaches the volunteer who made
+    // the call. Only Approved names them, because only Approved promises
+    // contact.
+    var owner = ownerContact_(row[cOwner], decision === 'Approved');
+    send_(email,
+      decisionSubject_(decision),
+      decisionHtml_(decision, name, note, owner.name),
+      owner.email);
+    sh.getRange(rowNumber, cSent + 1).setValue(new Date());
+    sh.getRange(rowNumber, cStatus + 1).setValue(decision === 'Approved'
+      ? CONFIG.STATUS_ON_APPROVED
+      : CONFIG.STATUS_ON_DECLINED);
+  } catch (err) {
+    reportError_('onIntakeEdit', err);
+  }
+}
+
+/* -------------------------------------------------------------- email bodies */
+
+function escape_(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function footerHtml_() {
+  return '<p style="color:#6b4f3a">' +
+    'Bạn cũng có thể nhắn cho chúng tôi trên <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.<br>' +
+    'You can also message us on <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.</p>' +
+    '<p style="color:#8b7355">' + escape_(CONFIG.ORG_NAME) + '</p>';
+}
+
+/** The one automated mail a submitter receives. It promises no date, because
+ *  the form does not either, and it never states a drop-off location: a
+ *  volunteer arranges each handover by hand. */
+function ackHtml_(name, ticked, terms, fastLane) {
+  var hi = name ? ' ' + escape_(name) : '';
+  var fastVi = '', fastEn = '';
+  if (fastLane && ticked) {
+    fastVi =
+      '<p>Những món bạn chọn (' + escape_(ticked) + ') nằm trong danh sách ' +
+      '<b>chúng tôi luôn cần</b>, nên gần như chắc chắn chúng tôi nhận. ' +
+      'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm nhận đồ - ' +
+      'xin đừng mang đến trước khi hẹn xong.</p>' + terms;
+    fastEn =
+      '<p>What you picked (' + escape_(ticked) + ') is on our <b>always needed</b> ' +
+      'list, so it is almost certainly a yes. A volunteer will message you to ' +
+      'agree a time and place for the handover - please wait for that before ' +
+      'bringing anything.</p>';
+  } else if (ticked) {
+    fastVi =
+      '<p>Một phần trong đề xuất của bạn (' + escape_(ticked) + ') nằm trong ' +
+      'danh sách chúng tôi luôn cần. Chúng tôi sẽ trả lời cả phần đó và phần ' +
+      'còn lại trong một tin nhắn.</p>' + terms;
+    fastEn =
+      '<p>Part of your offer (' + escape_(ticked) + ') is on our always-needed ' +
+      'list. We will come back to you about that and the rest together.</p>';
+  }
+  return '' +
+    '<p>Xin chào' + hi + ',</p>' +
+    '<p>Cảm ơn bạn đã gửi đề xuất cho Vietnam Hearts. Chúng tôi đã nhận được. ' +
+    'Chúng tôi là nhóm tình nguyện, nên xin bạn thông cảm nếu phản hồi mất ít ' +
+    'thời gian - một tình nguyện viên sẽ liên hệ với bạn.</p>' +
+    fastVi +
+    '<hr>' +
+    '<p>Hello' + hi + ',</p>' +
+    '<p>Thank you for your offer to Vietnam Hearts. We have it. We are a ' +
+    'volunteer team, so a reply can take a little while - a volunteer will ' +
+    'come back to you.</p>' +
+    fastEn +
+    footerHtml_();
+}
+
+function decisionSubject_(decision) {
+  return decision === 'Approved'
+    ? 'Vietnam Hearts: chung toi muon tiep tuc / we would love to go ahead'
+    : 'Vietnam Hearts: phan hoi ve de xuat cua ban / about your request';
+}
+
+function decisionHtml_(decision, name, note, ownerName) {
+  var hi = name ? ' ' + escape_(name) : '';
+  var who = ownerName ? escape_(ownerName) : '';
+  var noteHtml = note
+    ? '<p style="padding:12px;background:#f5f1e8;border-left:4px solid #7a8c6b">' +
+      escape_(note) + '</p>'
+    : '';
+
+  if (decision === 'Approved') {
+    return '' +
+      '<p>Xin chào' + hi + ',</p>' +
+      '<p>Chúng tôi rất vui được tiếp tục với đề xuất của bạn. ' +
+      (who
+        ? who + ' từ Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ và địa điểm cụ thể. '
+        : 'Một tình nguyện viên của Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ ' +
+          'và địa điểm cụ thể. ') +
+      'Bạn cũng có thể trả lời ngay email này.</p>' +
+      noteHtml +
+      '<hr>' +
+      '<p>Hello' + hi + ',</p>' +
+      '<p>We would love to go ahead. ' +
+      (who
+        ? who + ' from Vietnam Hearts will contact you to agree a time and a place. '
+        : 'A volunteer from Vietnam Hearts will contact you to agree a time and ' +
+          'a place. ') +
+      'You can also reply straight to this email.</p>' +
+      footerHtml_();
+  }
+
+  return '' +
+    '<p>Xin chào' + hi + ',</p>' +
+    '<p>Cảm ơn bạn đã nghĩ đến Vietnam Hearts. Lần này chúng tôi chưa thể nhận ' +
+    'đề xuất này, thường là vì chỗ chứa, thời gian của tình nguyện viên, hoặc vì ' +
+    'chưa phù hợp với nhu cầu hiện tại của các em. Mong bạn vẫn giữ liên lạc.</p>' +
+    noteHtml +
+    '<hr>' +
+    '<p>Hello' + hi + ',</p>' +
+    '<p>Thank you for thinking of Vietnam Hearts. We are not able to take this ' +
+    'one on, usually because of storage, volunteer time, or how it fits what the ' +
+    'children need right now. Please do stay in touch.</p>' +
+    footerHtml_();
+}
