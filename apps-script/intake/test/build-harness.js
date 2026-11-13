@@ -169,6 +169,24 @@ function makeSpreadsheet(world) {
           delete cells[k];
         });
         Object.assign(cells, moved);
+        // Like Sheets, every formula's reference to this tab shifts with it.
+        const quoted = "'" + meta.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "'!";
+        const ref = new RegExp(quoted + '([A-Z]+)(\\d*)(?::([A-Z]+)(\\d*))?', 'g');
+        const toNum = (l) => l.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+        const toLetters = (n) => {
+          let out = '';
+          for (; n > 0; n = Math.floor((n - 1) / 26)) {
+            out = String.fromCharCode(65 + ((n - 1) % 26)) + out;
+          }
+          return out;
+        };
+        const shift = (l) => (toNum(l) >= before ? toLetters(toNum(l) + howMany) : l);
+        sheets.forEach((other) => Object.keys(other._cells).forEach((k) => {
+          const v = other._cells[k];
+          if (typeof v !== 'string' || v.charAt(0) !== '=') return;
+          other._cells[k] = v.replace(ref, (m, c1, r1, c2, r2) =>
+            "'" + meta.name + "'!" + shift(c1) + r1 + (c2 ? ':' + shift(c2) + r2 : ''));
+        }));
         return sheet;
       },
       setFrozenRows: (n) => { meta.frozenRows = n; return sheet; },
@@ -729,9 +747,7 @@ oldTab.getRange(2, 1, 1, 10).setValues([['IN PROGRESS', 'High', '', 'Mai', 'Appr
   '', 'stamped', 'yesterday', 'old.donor@example.com', 'Old donor']]);
 const allWork3 = w3.ss.insertSheet('All work');
 allWork3.getRange('A1').setFormula('={"Where"}');
-const repointed = w3.sandbox.allWorkQuery_().replace("'Form Responses 1'!F2:F",
-  "'Form Responses 1'!J2:J");
-allWork3.getRange('A2').setFormula(repointed);
+allWork3.getRange('A2').setFormula(w3.sandbox.allWorkQuery_());
 w3.sandbox.buildIntake();
 const mail3 = w3.mails[0];
 const names3 = w3.ss.getSheets().map((s) => s.getName());
@@ -753,10 +769,11 @@ check('"Form Responses 1" is now the new form\'s tab', fresh && fresh !== oldTab
 const a2 = allWork3.getRange('A2').getFormula();
 check('the All work query reads the new response tab after the rename',
   a2.indexOf("'Form Responses 1'!A2:D") !== -1 && a2.indexOf('old form') === -1, a2);
-check('the volunteer\'s repointed column in that query survives',
-  a2 === repointed, a2);
-check('the build says it repointed the All work query',
-  /Pointed the "All work" query back/.test(mail3.htmlBody));
+check('the All work query is exactly the one the build generates',
+  a2 === w3.sandbox.allWorkQuery_(), a2);
+check('the All work header row is rewritten too',
+  /"Where","Status","Priority"/.test(allWork3.getRange('A1').getFormula()),
+  allWork3.getRange('A1').getFormula());
 check('no manual step asks a volunteer to fix that formula',
   !/check that the formula/.test(mail3.htmlBody));
 check('the triggers were installed against the new tab',
@@ -771,18 +788,32 @@ check('the subject counts that extra step',
   Number((mail.subject.match(/(\d+) manual steps left/) || [])[1]) + 1,
   mail3.subject + ' vs ' + mail.subject);
 
-console.log('\n=== the same, when the All work query no longer reads the response tab');
+console.log('\n=== the same, when the All work query was edited by hand');
 const w4 = makeWorld({ staleFormId: 'GONE_FORM_ID' });
 w4.ss._addResponseSheet('Form Responses 1', ['Status', 'Timestamp']);
 const allWork4 = w4.ss.insertSheet('All work');
 allWork4.getRange('A1').setFormula('={"Where"}');
 allWork4.getRange('A2').setFormula("='Team tasks'!A2:E");
 w4.sandbox.buildIntake();
-check('a query that cannot be matched is rebuilt to read the response tab',
+check('a hand-edited query is rebuilt to read the response tab',
   allWork4.getRange('A2').getFormula() === w4.sandbox.allWorkQuery_(),
   allWork4.getRange('A2').getFormula());
-check('the build says it rebuilt the query from scratch',
-  /rewritten from scratch/.test(w4.mails[0].htmlBody));
+
+/* The fake must rewrite formulas the way Sheets does, or the checks above
+   pass on text that real Sheets would have changed under them. */
+console.log('\n=== the fake spreadsheet follows renames and column inserts');
+const w5 = makeWorld();
+const target = w5.ss.insertSheet('Form Responses 1');
+const reader = w5.ss.insertSheet('Reader');
+reader.getRange('A1').setFormula("={'Form Responses 1'!A2:D;'Form Responses 1'!F2:F}");
+target.insertColumnsBefore(1, 7);
+check('inserting columns shifts every reference to that tab',
+  reader.getRange('A1').getFormula() === "={'Form Responses 1'!H2:K;'Form Responses 1'!M2:M}",
+  reader.getRange('A1').getFormula());
+target.setName('Moved');
+check('renaming a tab makes every reference follow it',
+  reader.getRange('A1').getFormula() === "={'Moved'!H2:K;'Moved'!M2:M}",
+  reader.getRange('A1').getFormula());
 
 /* ------------------------------------------------------------------ result */
 

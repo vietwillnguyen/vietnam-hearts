@@ -496,7 +496,6 @@ function linkFormToSheet_(form, ss, notes, manual) {
       CONFIG.SHEET_NAME + '", which is the name CONFIG uses.');
     added[0].setName(CONFIG.SHEET_NAME);
   }
-  if (orphan) repointAllWork_(ss, aside, notes);
   notes.push('Linked the form to this spreadsheet.');
 }
 
@@ -716,41 +715,20 @@ function allWorkQuery_() {
     '},"select * where Col1 is not null and Col2 <> \'DONE\' order by Col4",0),"")';
 }
 
-/** Sheets makes a formula follow a renamed tab, so moving the old response tab
- *  aside drags the All work query with it. Point it back at CONFIG.SHEET_NAME,
- *  keeping any column a volunteer repointed when the old reference is found. */
-function repointAllWork_(ss, from, notes) {
-  var sh = ss.getSheetByName(TABS.allWork);
-  if (!sh) return;
-  var cell = sh.getRange('A2');
-  var formula = String(cell.getFormula() || '');
-  if (!formula) return;
-  var oldRef = "'" + from + "'!";
-  if (formula.indexOf(oldRef) !== -1) {
-    cell.setFormula(formula.split(oldRef).join("'" + CONFIG.SHEET_NAME + "'!"));
-    notes.push('Pointed the "' + TABS.allWork + '" query back at "' + CONFIG.SHEET_NAME +
-      '" after the rename, keeping the rest of its formula as it was.');
-  } else {
-    cell.setFormula(allWorkQuery_());
-    notes.push('The "' + TABS.allWork + '" query did not read "' + from + '", so it was ' +
-      'rewritten from scratch to read "' + CONFIG.SHEET_NAME + '"; any column a ' +
-      'volunteer had repointed in it is back to the default.');
-  }
-}
-
 function buildAllWorkTab_(ss, notes) {
   var sh = tab_(ss, TABS.allWork, notes);
-  if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
 
   // Read-only union of the two task sources, newest deadline first, finished
-  // work left out but never deleted.
+  // work left out but never deleted. Written on every run, after every
+  // structural change, because Sheets rewrites references into a tab when it
+  // is renamed or gains columns, so a formula written earlier can be stale.
   sh.getRange('A1').setFormula(
     '={"Where","Status","Priority","Next action by","Owner","What"}');
   sh.getRange('A2').setFormula(allWorkQuery_());
   sh.getRange('H1').setValue(
     'Read-only. Both task sources in one list, overdue first, DONE rows left out. ' +
-    'The last column reads Decision note for requests; point it at whichever column ' +
-    'you would rather read.');
+    'buildIntake() rewrites A1 and A2 on every run, so an edit to those cells does ' +
+    'not survive: to read a different column, change allWorkQuery_ in Build.js.');
   sh.getRange('H1').setWrap(true);
   sh.setColumnWidth(8, 420);
   sh.setFrozenRows(1);

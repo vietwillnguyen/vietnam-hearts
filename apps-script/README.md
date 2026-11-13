@@ -117,6 +117,8 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 - **Only the `Decision` column can email a member of the public.** `Status` is the team's own task tracking and emails nobody, which is what lets one spreadsheet hold both intake rows and ordinary team tasks. Case E in `test/harness.js` is that property.
 - **Nothing in the script approves anything.** The submit handler writes `Status`, `Priority` and `Next action by`; only a human sets `Decision`.
 - **The always-needed list lives in the form's checkbox choices and nowhere else.** The script asks "did they tick anything" and "did they write anything else", both emptiness checks, so changing what the team always accepts is an edit to the form and nothing more.
+- **The build owns `All work`!A1 and A2.** `buildIntake()` rewrites both formulas on every run, after the response tab has been renamed or gained columns, because Sheets rewrites references into a tab on both and a formula written earlier would read the wrong columns.
+  To make the last column read a different question, change `allWorkQuery_` in `Build.js` rather than the cell, which the next run would overwrite.
 - **`Reply sent` is an idempotency stamp.** While it is non-empty the script will not email that row again. Clearing it by hand is the one way to make it re-email somebody.
   Each row's read, send and stamp run under the document lock, and the row is read again once the lock is held, so two overlapping edits of one row send one reply.
   An edit that cannot get the lock within `CONFIG.DECISION_LOCK_WAIT_MS` sends nothing and reports the row.
