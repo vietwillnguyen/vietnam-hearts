@@ -692,6 +692,28 @@ check('it warns against publishing the response tab',
 check('it states the intake adds nothing to Cloud Run',
   /adds nothing to the Cloud Run service or its container image/.test(mail.htmlBody));
 check('the subject counts the manual steps', /\d+ manual steps left/.test(mail.subject));
+/* The email is HTML, and the steps are written with **bold** and `code` the
+   way the README is. Pasted in raw, a literal `<iframe>` became a real iframe in
+   the team's inbox and swallowed every step after it. */
+function renderedSteps(m) {
+  const ol = /<ol>([\s\S]*?)<\/ol>/.exec(m.htmlBody);
+  return ol ? (ol[1].match(/<li>/g) || []).length : -1;
+}
+function checkRendersAsHtml(label, m) {
+  const want = Number((/(\d+) manual steps left/.exec(m.subject) || [])[1]);
+  check(`${label}: every manual step renders as its own list item`,
+    renderedSteps(m) === want, `${renderedSteps(m)} of ${want}`);
+  check(`${label}: no raw markdown asterisks or backticks reach the email`,
+    !/\*\*|`/.test(m.htmlBody));
+  check(`${label}: no tag other than the email's own markup reaches the email`,
+    (m.htmlBody.match(/<\/?([a-z0-9]+)/gi) || [])
+      .map((t) => t.replace(/[</]/g, '').toLowerCase())
+      .every((t) => ['p', 'ul', 'ol', 'li', 'b', 'a', 'h3', 'code'].indexOf(t) !== -1),
+    (m.htmlBody.match(/<\/?([a-z0-9]+)/gi) || []).join(' '));
+}
+checkRendersAsHtml('clean build', mail);
+check('the iframe and the number placeholder show as text',
+  /&lt;iframe&gt;/.test(mail.htmlBody) && /&lt;số&gt; \/ &lt;number&gt;/.test(mail.htmlBody));
 check('buildIntake returns both URLs',
   !!result.formUrl && !!result.sheetUrl, JSON.stringify(result));
 
@@ -720,9 +742,9 @@ w2.sandbox.buildIntake();
 const mail2 = w2.mails[0];
 check('the build still completes', w2.formsCreated === 1);
 check('the missing file upload becomes a manual step',
-  /add a \*\*File upload\*\* question/.test(mail2.htmlBody));
+  /add a <b>File upload<\/b> question/.test(mail2.htmlBody));
 check('email collection becomes a manual step naming Responder input',
-  /Collect email addresses -> \*\*Responder input\*\*/.test(mail2.htmlBody));
+  /Collect email addresses -&gt; <b>Responder input<\/b>/.test(mail2.htmlBody));
 check('that step warns that Verified forces a sign-in',
   /forces submitters to sign in/.test(mail2.htmlBody));
 check('no question was silently dropped from the other branches',
@@ -736,6 +758,7 @@ check('it says plainly that the triggers are not installed',
 check('it tells them to run setUp again afterwards',
   /run <b>setUp\(\)<\/b> from/.test(mail2.htmlBody));
 check('it names the consequence of leaving it', /nobody is emailed/.test(mail2.htmlBody));
+checkRendersAsHtml('degraded build', mail2);
 
 /* --- the remembered form is gone, its response tab is not --- */
 console.log('\n=== buildIntake() when the remembered form cannot be opened but its tab remains');
@@ -750,6 +773,7 @@ allWork3.getRange('A1').setFormula('={"Where"}');
 allWork3.getRange('A2').setFormula(w3.sandbox.allWorkQuery_());
 w3.sandbox.buildIntake();
 const mail3 = w3.mails[0];
+checkRendersAsHtml('orphan build', mail3);
 const names3 = w3.ss.getSheets().map((s) => s.getName());
 console.log(`   tabs now: ${names3.join(', ')}`);
 check('a new form was created', w3.formsCreated === 1, String(w3.formsCreated));

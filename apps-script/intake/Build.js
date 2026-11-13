@@ -121,10 +121,10 @@ function buildIntake() {
     notes.push('Installed the onIntakeFormSubmit and onIntakeEdit triggers.');
   } catch (err) {
     notes.push('Triggers NOT installed: ' + err.message);
-    manual.push('Do the form settings steps above first, then run <b>setUp()</b> from ' +
+    manual.push('Do the form settings steps above first, then run **setUp()** from ' +
       'the Apps Script editor, or simply run buildIntake() again. It would not install ' +
-      'the triggers yet because a column it needs is missing: <i>' + err.message +
-      '</i>. Until that succeeds a submission is still recorded in the sheet, but ' +
+      'the triggers yet because a column it needs is missing: "' + err.message +
+      '". Until that succeeds a submission is still recorded in the sheet, but ' +
       'nobody is emailed - not the submitter and not the team.');
   }
 
@@ -469,10 +469,10 @@ function linkFormToSheet_(form, ss, notes, manual) {
       aside = CONFIG.SHEET_NAME + ' (old form ' + n + ')';
     }
     orphan.setName(aside);
-    notes.push('<b>The "' + CONFIG.SHEET_NAME + '" tab was not written by this form</b>, ' +
+    notes.push('**The "' + CONFIG.SHEET_NAME + '" tab was not written by this form**, ' +
       'so it was renamed to "' + aside + '" with every row kept, and the form was ' +
       'linked to a new tab.');
-    manual.push('<b>Decide what to do with the "' + aside + '" tab.</b> It holds the ' +
+    manual.push('**Decide what to do with the "' + aside + '" tab.** It holds the ' +
       'submissions of a form this build could no longer open; nothing reads that tab ' +
       'now, so no reply or reminder will go out for its rows. Copy any row still in ' +
       'progress into "' + CONFIG.SHEET_NAME + '" or "' + TABS.teamTasks + '".');
@@ -875,6 +875,17 @@ function collectManualSteps_(manual) {
     'every message goes to the team address instead of to the submitter.');
 }
 
+/** Notes and manual steps are plain text with the README's **bold** and
+ * `code`, so the same wording reads right in both. Escape first: a step quotes
+ * `<iframe>` and the <số> placeholder, which pasted in raw became real tags and
+ * hid every step after them in the team's inbox. */
+function stepHtml_(text) {
+  return String(text)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
 function reportBuild_(form, ss, notes, manual) {
   var prefilled = prefilledPartnershipUrl_(form);
   var lines = [
@@ -896,11 +907,11 @@ function reportBuild_(form, ss, notes, manual) {
       'clasp push. It adds nothing to the Cloud Run service or its container image.</p>',
     '<h3>What this build did</h3><ul>'
   ];
-  notes.forEach(function (n) { lines.push('<li>' + n + '</li>'); });
+  notes.forEach(function (n) { lines.push('<li>' + stepHtml_(n) + '</li>'); });
   lines.push('</ul>');
 
   lines.push('<h3>Manual steps, because Apps Script cannot do these</h3><ol>');
-  manual.forEach(function (m) { lines.push('<li>' + m + '</li>'); });
+  manual.forEach(function (m) { lines.push('<li>' + stepHtml_(m) + '</li>'); });
   lines.push('</ol>');
   lines.push('<p>Re-running buildIntake() is safe: it repairs this sheet rather than ' +
     'building a second one.</p>');
