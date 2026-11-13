@@ -475,9 +475,7 @@ function linkFormToSheet_(form, ss, notes, manual) {
     manual.push('<b>Decide what to do with the "' + aside + '" tab.</b> It holds the ' +
       'submissions of a form this build could no longer open; nothing reads that tab ' +
       'now, so no reply or reminder will go out for its rows. Copy any row still in ' +
-      'progress into "' + CONFIG.SHEET_NAME + '" or "' + TABS.teamTasks + '". Sheets ' +
-      'makes formulas follow a renamed tab, so also check that the formula in "' +
-      TABS.allWork + '"!A2 reads \'' + CONFIG.SHEET_NAME + '\' and not the old tab.');
+      'progress into "' + CONFIG.SHEET_NAME + '" or "' + TABS.teamTasks + '".');
   }
 
   var before = ss.getSheets().map(function (sh) { return sh.getName(); });
@@ -498,6 +496,7 @@ function linkFormToSheet_(form, ss, notes, manual) {
       CONFIG.SHEET_NAME + '", which is the name CONFIG uses.');
     added[0].setName(CONFIG.SHEET_NAME);
   }
+  if (orphan) repointAllWork_(ss, aside, notes);
   notes.push('Linked the form to this spreadsheet.');
 }
 
@@ -708,6 +707,37 @@ function buildTeamTasksTab_(ss, notes) {
   return sh;
 }
 
+function allWorkQuery_() {
+  return '=IFERROR(QUERY({' +
+    'ARRAYFORMULA(IF(\'' + CONFIG.SHEET_NAME + '\'!A2:A<>"","Request","")),' +
+    '\'' + CONFIG.SHEET_NAME + '\'!A2:D,\'' + CONFIG.SHEET_NAME + '\'!F2:F;' +
+    'ARRAYFORMULA(IF(\'' + TABS.teamTasks + '\'!A2:A<>"","Task","")),' +
+    '\'' + TABS.teamTasks + '\'!A2:D,\'' + TABS.teamTasks + '\'!E2:E' +
+    '},"select * where Col1 is not null and Col2 <> \'DONE\' order by Col4",0),"")';
+}
+
+/** Sheets makes a formula follow a renamed tab, so moving the old response tab
+ *  aside drags the All work query with it. Point it back at CONFIG.SHEET_NAME,
+ *  keeping any column a volunteer repointed when the old reference is found. */
+function repointAllWork_(ss, from, notes) {
+  var sh = ss.getSheetByName(TABS.allWork);
+  if (!sh) return;
+  var cell = sh.getRange('A2');
+  var formula = String(cell.getFormula() || '');
+  if (!formula) return;
+  var oldRef = "'" + from + "'!";
+  if (formula.indexOf(oldRef) !== -1) {
+    cell.setFormula(formula.split(oldRef).join("'" + CONFIG.SHEET_NAME + "'!"));
+    notes.push('Pointed the "' + TABS.allWork + '" query back at "' + CONFIG.SHEET_NAME +
+      '" after the rename, keeping the rest of its formula as it was.');
+  } else {
+    cell.setFormula(allWorkQuery_());
+    notes.push('The "' + TABS.allWork + '" query did not read "' + from + '", so it was ' +
+      'rewritten from scratch to read "' + CONFIG.SHEET_NAME + '"; any column a ' +
+      'volunteer had repointed in it is back to the default.');
+  }
+}
+
 function buildAllWorkTab_(ss, notes) {
   var sh = tab_(ss, TABS.allWork, notes);
   if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
@@ -716,13 +746,7 @@ function buildAllWorkTab_(ss, notes) {
   // work left out but never deleted.
   sh.getRange('A1').setFormula(
     '={"Where","Status","Priority","Next action by","Owner","What"}');
-  sh.getRange('A2').setFormula(
-    '=IFERROR(QUERY({' +
-    'ARRAYFORMULA(IF(\'' + CONFIG.SHEET_NAME + '\'!A2:A<>"","Request","")),' +
-    '\'' + CONFIG.SHEET_NAME + '\'!A2:D,\'' + CONFIG.SHEET_NAME + '\'!F2:F;' +
-    'ARRAYFORMULA(IF(\'' + TABS.teamTasks + '\'!A2:A<>"","Task","")),' +
-    '\'' + TABS.teamTasks + '\'!A2:D,\'' + TABS.teamTasks + '\'!E2:E' +
-    '},"select * where Col1 is not null and Col2 <> \'DONE\' order by Col4",0),"")');
+  sh.getRange('A2').setFormula(allWorkQuery_());
   sh.getRange('H1').setValue(
     'Read-only. Both task sources in one list, overdue first, DONE rows left out. ' +
     'The last column reads Decision note for requests; point it at whichever column ' +

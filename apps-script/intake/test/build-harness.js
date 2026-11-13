@@ -100,6 +100,10 @@ function makeSpreadsheet(world) {
           }));
           return self;
         },
+        getFormula: () => {
+          const v = cells[key(row, col)];
+          return typeof v === 'string' && v.charAt(0) === '=' ? v : '';
+        },
         setFormula: (f) => { cells[key(row, col)] = f; return self; },
         setFormulaR1C1: (f) => {
           for (let r = row; r < row + numRows; r++) {
@@ -136,7 +140,18 @@ function makeSpreadsheet(world) {
       _meta: meta,
       _cells: cells,
       getName: () => meta.name,
-      setName: (n) => { meta.name = n; return sheet; },
+      // Like Sheets, a rename drags every formula that referenced the tab.
+      setName: (n) => {
+        const from = "'" + meta.name + "'!";
+        sheets.forEach((other) => Object.keys(other._cells).forEach((k) => {
+          const v = other._cells[k];
+          if (typeof v === 'string' && v.charAt(0) === '=' && v.indexOf(from) !== -1) {
+            other._cells[k] = v.split(from).join("'" + n + "'!");
+          }
+        }));
+        meta.name = n;
+        return sheet;
+      },
       getSheetId: () => sheets.indexOf(sheet) + 1000,
       getLastRow: () => bounds().lastRow,
       getLastColumn: () => bounds().lastCol,
@@ -712,6 +727,11 @@ const oldTab = w3.ss._addResponseSheet('Form Responses 1',
     'Reply sent', 'Timestamp', 'Email Address', 'Your name']);
 oldTab.getRange(2, 1, 1, 10).setValues([['IN PROGRESS', 'High', '', 'Mai', 'Approved',
   '', 'stamped', 'yesterday', 'old.donor@example.com', 'Old donor']]);
+const allWork3 = w3.ss.insertSheet('All work');
+allWork3.getRange('A1').setFormula('={"Where"}');
+const repointed = w3.sandbox.allWorkQuery_().replace("'Form Responses 1'!F2:F",
+  "'Form Responses 1'!J2:J");
+allWork3.getRange('A2').setFormula(repointed);
 w3.sandbox.buildIntake();
 const mail3 = w3.mails[0];
 const names3 = w3.ss.getSheets().map((s) => s.getName());
@@ -730,6 +750,15 @@ check('the old tab was not overwritten',
 const fresh = w3.ss.getSheetByName('Form Responses 1');
 check('"Form Responses 1" is now the new form\'s tab', fresh && fresh !== oldTab &&
   fresh.getRange(2, 9).getValue() === '');
+const a2 = allWork3.getRange('A2').getFormula();
+check('the All work query reads the new response tab after the rename',
+  a2.indexOf("'Form Responses 1'!A2:D") !== -1 && a2.indexOf('old form') === -1, a2);
+check('the volunteer\'s repointed column in that query survives',
+  a2 === repointed, a2);
+check('the build says it repointed the All work query',
+  /Pointed the "All work" query back/.test(mail3.htmlBody));
+check('no manual step asks a volunteer to fix that formula',
+  !/check that the formula/.test(mail3.htmlBody));
 check('the triggers were installed against the new tab',
   w3.triggers.length === 2, w3.triggers.join(', '));
 check('the build email names the renamed tab in its notes',
@@ -741,6 +770,19 @@ check('the subject counts that extra step',
   Number((mail3.subject.match(/(\d+) manual steps left/) || [])[1]) ===
   Number((mail.subject.match(/(\d+) manual steps left/) || [])[1]) + 1,
   mail3.subject + ' vs ' + mail.subject);
+
+console.log('\n=== the same, when the All work query no longer reads the response tab');
+const w4 = makeWorld({ staleFormId: 'GONE_FORM_ID' });
+w4.ss._addResponseSheet('Form Responses 1', ['Status', 'Timestamp']);
+const allWork4 = w4.ss.insertSheet('All work');
+allWork4.getRange('A1').setFormula('={"Where"}');
+allWork4.getRange('A2').setFormula("='Team tasks'!A2:E");
+w4.sandbox.buildIntake();
+check('a query that cannot be matched is rebuilt to read the response tab',
+  allWork4.getRange('A2').getFormula() === w4.sandbox.allWorkQuery_(),
+  allWork4.getRange('A2').getFormula());
+check('the build says it rebuilt the query from scratch',
+  /rewritten from scratch/.test(w4.mails[0].htmlBody));
 
 /* ------------------------------------------------------------------ result */
 
