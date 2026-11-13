@@ -295,6 +295,12 @@ check('C3 the supplies acknowledgement asks for photos',
 check('C3 it names Zalo or WhatsApp as where to send them',
   /(Zalo|WhatsApp)/.test((ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]),
   (ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]);
+/* The handover block that carries the number is often absent, so the ask
+   points at a reply or the footer's Zalo link and never at a number. */
+check('C3 the ask promises no number anywhere in the mail',
+  !/number|số điện thoại|số nằm/i.test(
+    (ackC3.match(/<p>[^<]*(photo|ảnh)[^<]*<\/p>/gi) || []).join(' ')),
+  (ackC3.match(/<p>[^<]*(photo|ảnh)[^<]*<\/p>/gi) || []).join(' '));
 check('C3 the English ask comes before the Vietnamese one',
   ackC3.search(/[Pp]hoto/) < ackC3.search(/ảnh/i) &&
   ackC3.search(/ảnh/i) !== -1,
@@ -606,6 +612,29 @@ check(`no phone number in any of the ${allMails.length} mails`,
     hits.map((m) => m.subject + ': ' +
       (String(m.subject + ' ' + m.htmlBody).match(re) || [''])[0]).join(' | '));
 });
+/* The decision mails go to a member of the public and offer no group chat;
+   the acknowledgement keeps its Zalo group link. Both directions are pinned so
+   a later footer edit can neither leak the link nor strip it. */
+const approvedSubject = w.sandbox.decisionSubject_('Approved');
+const declinedSubject = w.sandbox.decisionSubject_('Declined');
+const zaloUrl = w.sandbox.CONFIG.ZALO_GROUP_URL;
+const decisions = donorAll.filter((m) =>
+  m.subject === approvedSubject || m.subject === declinedSubject);
+const acks = donorAll.filter((m) =>
+  m.subject !== approvedSubject && m.subject !== declinedSubject);
+check('the cases produced both Approved and Declined mails',
+  decisions.some((m) => m.subject === approvedSubject) &&
+  decisions.some((m) => m.subject === declinedSubject));
+const chatLeaks = decisions.filter((m) =>
+  /zalo\.me|Zalo|WhatsApp/i.test(String(m.htmlBody)) ||
+  String(m.htmlBody).indexOf(zaloUrl) !== -1);
+check(`no Zalo, WhatsApp or group link in any of the ${decisions.length} decision mails`,
+  chatLeaks.length === 0, chatLeaks.map((m) => m.subject).join(' | '));
+check(`every decision mail asks for a reply for next steps`,
+  decisions.every((m) => /reply to this email for next steps/i.test(String(m.htmlBody))));
+check(`every one of the ${acks.length} acknowledgements keeps the Zalo group link`,
+  acks.length > 0 &&
+  acks.every((m) => String(m.htmlBody).indexOf('href="' + zaloUrl + '"') !== -1));
 check('every recipient is an address the script was given',
   allMails.every((m) => m.to === DONOR || m.to === TEAM),
   allMails.map((m) => m.to).filter((t) => t !== DONOR && t !== TEAM).join(', '));

@@ -955,9 +955,9 @@ check('NO manual step asks for a file upload question any more',
   (mail.htmlBody.match(/<li>[^<]*[Ff]ile upload[^<]*/) || [''])[0]);
 check('no manual step quotes a TypeError at a volunteer',
   !/TypeError/.test(mail.htmlBody));
-check('the supplies section asks for photos over Zalo or WhatsApp instead',
+check('the supplies section asks for photos by reply or Zalo instead',
   w.form._items.some((i) => /photo/i.test(i.getHelpText()) &&
-    /Zalo/.test(i.getHelpText())),
+    /reply/.test(i.getHelpText()) && /Zalo/.test(i.getHelpText())),
   w.form._items.map((i) => i.getHelpText()).filter(Boolean).join(' || '));
 check('nothing on the form asks for a file or an attachment',
   !/file upload|attach a|upload a/i.test(formText(w)),
@@ -1224,8 +1224,29 @@ check('it is the FIRST manual step',
   (/<ol>\s*<li>[^<]{0,100}/.exec(mail12.htmlBody) || [''])[0]);
 check('it says why: every submitter is forced to sign in',
   /forces every submitter to sign in/.test(mail12.htmlBody));
-check('it points at the photo route that does not need a sign-in',
-  /Zalo/.test(mail12.htmlBody));
+const step12 = ((/<ol>([\s\S]*?)<\/ol>/.exec(mail12.htmlBody) || ['', ''])[1]
+  .split('<li>')[1] || '');
+const conditionHelp = w12.form._items
+  .filter((i) => /^Condition/.test(i.getTitle())).map((i) => i.getHelpText())[0];
+/* A form an earlier version built has no photo ask on Condition and the
+   builder never rewrites a question, so the step has to hand the team the
+   exact text the builder writes on a new form - the same string, not a copy. */
+check('the Condition help text the build writes is the shared constant',
+  conditionHelp === w12.sandbox.CONDITION_PHOTO_HELP, conditionHelp);
+check('the step quotes that same help text in full, for the team to paste',
+  step12.indexOf(w12.sandbox.CONDITION_PHOTO_HELP) !== -1, step12.slice(0, 300));
+check('the quoted help text reads English first',
+  /^Photos/.test(w12.sandbox.CONDITION_PHOTO_HELP) &&
+  w12.sandbox.CONDITION_PHOTO_HELP.indexOf(' / Ảnh') > 0);
+check('the step does not claim the supplies section already asks for photos',
+  !/in the supplies section/i.test(step12), step12.slice(0, 300));
+check('the step says the acknowledgement asks for photos on any form',
+  /acknowledgement email already asks every supplies submitter for photos/
+    .test(step12), step12.slice(0, 300));
+check('the step asks for the B2 photo line when the cell predates it',
+  /Standing needs'!B2/.test(step12) && /photo/i.test(step12), step12.slice(0, 400));
+check('the step promises no number in the email',
+  !/number is in|số điện thoại nằm/i.test(step12), step12.slice(0, 300));
 checkRendersAsHtml('file upload present', mail12);
 
 console.log('\n=== both a file upload question and no way to publish');

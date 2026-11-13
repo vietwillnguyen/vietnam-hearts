@@ -502,6 +502,16 @@ function footerHtml_() {
     '<p style="color:#8b7355">' + escape_(CONFIG.ORG_NAME) + '</p>';
 }
 
+/** The decision mails go to a member of the public, so they offer no group
+ *  chat at all: next steps go through a reply, which reaches the owner via
+ *  the Reply-To. */
+function decisionFooterHtml_() {
+  return '<p style="color:#6b4f3a">' +
+    'Please reply to this email for next steps.<br>' +
+    'Xin bạn trả lời email này để trao đổi các bước tiếp theo.</p>' +
+    '<p style="color:#8b7355">' + escape_(CONFIG.ORG_NAME) + '</p>';
+}
+
 /** The one automated mail a submitter receives. It promises no date, because
  *  the form does not either, and it never states the school's address or
  *  hours, only the public area: a volunteer arranges each handover by hand. */
@@ -512,18 +522,17 @@ function ackHtml_(name, ticked, terms, fastLane, type) {
   // form: Google requires a Google sign-in for any form that has one, for the
   // whole form from page one, which is the login wall the second live build
   // hit. Supplies only - a partnership or an event has nothing to photograph.
-  // No number is written here; the one in the handover block is the only copy,
-  // which is what keeps every phone number out of this file.
+  // It points at a reply or the footer's Zalo link, never at a number: the
+  // handover block that carries one is often absent from this mail.
   var supplies = String(type || '').indexOf('Donate supplies') !== -1;
   var photoEn = supplies
-    ? '<p>Photos of what you are giving help us plan. Please send them to us on ' +
-      'Zalo or WhatsApp rather than attaching them - the number is in the block ' +
-      'below, or just reply to this email.</p>'
+    ? '<p>Photos of what you are giving help us plan. Please reply to this email ' +
+      'with them, or send them to us on Zalo using the link at the end of this ' +
+      'email.</p>'
     : '';
   var photoVi = supplies
-    ? '<p>Ảnh của đồ bạn tặng giúp chúng tôi chuẩn bị. Xin gửi ảnh qua Zalo hoặc ' +
-      'WhatsApp thay vì đính kèm - số nằm trong phần dưới đây, hoặc bạn có thể ' +
-      'trả lời email này.</p>'
+    ? '<p>Ảnh của đồ bạn tặng giúp chúng tôi chuẩn bị. Xin bạn trả lời email này ' +
+      'kèm theo ảnh, hoặc gửi ảnh qua Zalo bằng đường dẫn ở cuối email này.</p>'
     : '';
   var fastEn = '', fastVi = '';
   if (fastLane && ticked) {
@@ -600,7 +609,7 @@ function decisionHtml_(decision, name, note, ownerName) {
         : 'Một tình nguyện viên của Vietnam Hearts sẽ liên hệ với bạn để hẹn giờ ' +
           'và địa điểm cụ thể. ') +
       'Bạn cũng có thể trả lời ngay email này.</p>' +
-      footerHtml_();
+      decisionFooterHtml_();
   }
 
   return '' +
@@ -614,5 +623,5 @@ function decisionHtml_(decision, name, note, ownerName) {
     '<p>Cảm ơn bạn đã nghĩ đến Vietnam Hearts. Lần này chúng tôi chưa thể nhận ' +
     'đề xuất này, thường là vì chỗ chứa, thời gian của tình nguyện viên, hoặc vì ' +
     'chưa phù hợp với nhu cầu hiện tại của các em. Mong bạn vẫn giữ liên lạc.</p>' +
-    footerHtml_();
+    decisionFooterHtml_();
 }

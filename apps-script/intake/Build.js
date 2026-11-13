@@ -107,6 +107,16 @@ var CLOSING_QUESTION =
   'What do you need from us, or anything else we should know? / ' +
   'Bạn cần gì từ Vietnam Hearts, hoặc có điều gì khác muốn cho chúng tôi biết?';
 
+/** The photo ask on the supplies section's Condition question. The build sets
+ *  it on a new form, and the delete-file-upload manual step quotes it for a
+ *  form an earlier version built, so both read this one string. */
+var CONDITION_PHOTO_HELP =
+  'Photos help a lot - please do not attach them here. After you submit, reply ' +
+  'to our acknowledgement email with them, or send them to us on Zalo using the ' +
+  'link at the end of that email. / Ảnh giúp chúng tôi rất nhiều - xin đừng đính ' +
+  'kèm ảnh ở đây. Sau khi gửi biểu mẫu, bạn hãy trả lời email xác nhận của chúng ' +
+  'tôi kèm theo ảnh, hoặc gửi ảnh qua Zalo bằng đường dẫn ở cuối email đó.';
+
 /* ------------------------------------------------------------------ build */
 
 function buildIntake() {
@@ -438,8 +448,14 @@ function warnOnFileUploadItems_(form, manual) {
     titles.join(', ') + '. Google requires a sign-in for a form that has one, ' +
     'and it forces every submitter to sign in from the first page, so the ' +
     'public form is unusable while it is there and nothing else on this list ' +
-    'matters. Photos are asked for over Zalo or WhatsApp instead, in the ' +
-    'acknowledgement email and in the supplies section.');
+    'matters. The acknowledgement email already asks every supplies submitter ' +
+    'for photos, from the script, whatever the form says. A form built by an ' +
+    'earlier version of this builder asks for them nowhere else, so also paste ' +
+    'this into the help text of the supplies section\'s **Condition** question: "' +
+    CONDITION_PHOTO_HELP + '" And if \'Standing needs\'!B2 has no line about ' +
+    'photos, add one under the Zalo or WhatsApp number there, for example: "' +
+    'Photos of what you are giving are welcome on that number - please do not ' +
+    'attach them to the form."');
 }
 
 function addFormItems_(form, manual) {
@@ -539,11 +555,7 @@ function addSuppliesQuestions_(form, pb, manual) {
   // to be a manual step was the login wall the second live build hit. See
   // warnOnFileUploadItems_.
   var condition = form.addMultipleChoiceItem().setTitle('Condition / Tình trạng')
-    .setHelpText('Photos help a lot - please send them to us on Zalo or WhatsApp ' +
-      'after you submit; the number is in the email we send you. Do not attach ' +
-      'them here. / Ảnh giúp chúng tôi rất nhiều - xin gửi ảnh qua Zalo hoặc ' +
-      'WhatsApp sau khi bạn gửi biểu mẫu; số điện thoại nằm trong email chúng ' +
-      'tôi gửi bạn.');
+    .setHelpText(CONDITION_PHOTO_HELP);
   condition.setChoiceValues([
     'New / Mới',
     'Gently used / Đã dùng, còn tốt',

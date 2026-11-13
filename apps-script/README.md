@@ -119,7 +119,7 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
    The build renames that tab to `Form Responses 1 (old form)` with every row kept, links the form to a fresh tab, and asks someone to decide what to do with the old rows.
 8. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
 9. **Deleting a file upload question somebody added**, which the build cannot do because Forms exposes no API for that item at all. This step is put **first**, above every other, for the reason in the next section.
-10. **Publishing the form**, but only when the build could not do it from script. Also first, and above the step above it when both fire.
+10. **Publishing the form**, but only when the build could not do it from script. Also at the front of the list: first when it fires alone, and directly below the file upload step when both fire.
 
 Three things used to be on this list and are not any more. The build now pins the spreadsheet's own **time zone** (`Asia/Ho_Chi_Minh`, since a new spreadsheet comes up on the owning account's zone - `Etc/GMT` on the first live build - and every `Next action by` date then reads a day off in Vietnam) and deletes the empty default tab.
 The third, **adding a file upload question for photos**, was removed rather than automated: see below.
@@ -148,6 +148,8 @@ The third, **adding a file upload question for photos**, was removed rather than
   That question, which an earlier version of this README asked the team to add by hand, is what the second live build's login wall actually was.
   `FormApp.Form` has no `addFileUploadItem` either, so the builder cannot create one; what it does instead is detect one (`warnOnFileUploadItems_` over `form.getItems(FormApp.ItemType.FILE_UPLOAD)`) and put "delete it" first in the manual list, above even the publish step, because a published form carrying one is still unusable.
   Photos are asked for in words: the `Condition` question's help text, the acknowledgement email's supplies paragraph, and the `Standing needs!B2` handover block next to the team's Zalo or WhatsApp number.
+  The acknowledgement's ask is in code, so it reaches every supplies submitter on any form; the other two are written only into a form and a `B2` the build creates, so on a form an earlier version built the delete step quotes the `Condition` help text (`CONDITION_PHOTO_HELP`) for the team to paste in, and asks for the `B2` photo line if that cell has none.
+  The decision mails offer no Zalo or group link at all: they go to a member of the public and ask for a reply instead.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
 - **`onIntakeEdit` must not be renamed to `onEdit`.** A function called `onEdit` is installed as a *simple* trigger, and simple triggers cannot send email. It would fail silently, with nothing in any log a volunteer would read. The name is the guard.
 - **Only the `Decision` column can email a member of the public.** `Status` is the team's own task tracking and emails nobody, which is what lets one spreadsheet hold both intake rows and ordinary team tasks. Case E in `test/harness.js` is that property.
