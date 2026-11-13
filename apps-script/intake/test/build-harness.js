@@ -286,7 +286,12 @@ function makeSpreadsheet(world) {
 function makeFormApp(world, ss) {
   const ItemType = {
     MULTIPLE_CHOICE: 'MULTIPLE_CHOICE', TEXT: 'TEXT', PARAGRAPH_TEXT: 'PARAGRAPH_TEXT',
-    CHECKBOX: 'CHECKBOX', DATE: 'DATE', PAGE_BREAK: 'PAGE_BREAK'
+    CHECKBOX: 'CHECKBOX', DATE: 'DATE', PAGE_BREAK: 'PAGE_BREAK',
+    // FormApp.ItemType has FILE_UPLOAD even though Form has no method to add
+    // one: a human can add it in the editor, and that is exactly what has to
+    // be detected, because one such item forces a Google sign-in on the whole
+    // form from page one.
+    FILE_UPLOAD: 'FILE_UPLOAD'
   };
 
   function makeForm(title) {
@@ -306,6 +311,22 @@ function makeFormApp(world, ss) {
       setTitle: (t) => { form.title = t; return form; },
       getPublishedUrl: () => 'https://docs.google.com/forms/d/e/FAKE/viewform',
       getEditUrl: () => 'https://docs.google.com/forms/d/FAKE_FORM_ID/edit',
+      // Publishing, as Forms has behaved since Google's 2025 change: a form
+      // created from a script comes up UNPUBLISHED, so a signed-out visitor
+      // gets HTTP 401 and a Google login wall instead of the questions. The
+      // first live build handed the team exactly that URL.
+      _published: false,
+      supportsAdvancedResponderPermissions: () => !world.legacyForm,
+      isPublished: () => {
+        if (world.legacyForm) throw new Error('fake: legacy form has no publishSettings');
+        return form._published;
+      },
+      setPublished: (v) => {
+        if (world.legacyForm) throw new Error('fake: legacy form has no publishSettings');
+        world.setPublishedCalls.push(v);
+        form._published = !!v;
+        return form;
+      },
       setDescription: (d) => { form._settings.description = d; return form; },
       setConfirmationMessage: (m) => { form._settings.confirmation = m; return form; },
       setProgressBar: (v) => { form._settings.progressBar = v; return form; },
@@ -378,6 +399,17 @@ function makeFormApp(world, ss) {
     form.addCheckboxItem = () => makeItem(ItemType.CHECKBOX);
     form.addDateItem = () => makeItem(ItemType.DATE);
     form.addPageBreakItem = () => makeItem(ItemType.PAGE_BREAK);
+    /* Test-only, and deliberately not called addFileUploadItem: FormApp has
+       no such method, and the point of this hook is a question a human added
+       in the editor rather than one the builder could have created. */
+    form._injectItem = (type, title) => makeItem(type).setTitle(title);
+    // An account whose Forms API predates publishing: the methods are simply
+    // absent, so the builder must feel for them rather than call them.
+    if (world.noFormPublishApi) {
+      delete form.supportsAdvancedResponderPermissions;
+      delete form.isPublished;
+      delete form.setPublished;
+    }
     return form;
   }
 
@@ -401,6 +433,37 @@ function makeFormApp(world, ss) {
   };
 }
 
+/* --------------------------------------------------- fake advanced Drive v3 */
+
+/* Only Permissions.list and Permissions.create, in the advanced service's
+   argument order (resource first, fileId second for create; fileId first for
+   list). Responder permissions live behind a view, so a list that does not ask
+   for includePermissionsForView='published' must not see them - that is the
+   mistake the builder has to avoid, so the fake models it. */
+function makeDrive(world) {
+  return {
+    Permissions: {
+      list: (fileId, opts) => {
+        world.driveListCalls.push({ fileId, opts: opts || null });
+        const published = !!(opts && opts.includePermissionsForView === 'published');
+        return {
+          permissions: world.drivePermissions.filter((p) =>
+            p.fileId === fileId && (published || p.view !== 'published'))
+        };
+      },
+      create: (resource, fileId) => {
+        if (world.driveCreateFails) {
+          throw new Error('fake Drive: the caller lacks permission to share this file');
+        }
+        const p = Object.assign(
+          { id: 'PERM' + (world.drivePermissions.length + 1), fileId }, resource);
+        world.drivePermissions.push(p);
+        return p;
+      }
+    }
+  };
+}
+
 /* ---------------------------------------------------------------- the world */
 
 function makeWorld(opts) {
@@ -416,7 +479,14 @@ function makeWorld(opts) {
     calledSetCollectEmail: undefined,
     timeZone: opts.timeZone === undefined ? 'Etc/GMT' : opts.timeZone,
     deletedSheets: [],
-    noEmailCollection: !!opts.noEmailCollection
+    noEmailCollection: !!opts.noEmailCollection,
+    drivePermissions: [],
+    driveListCalls: [],
+    setPublishedCalls: [],
+    noFormPublishApi: !!opts.noFormPublishApi,
+    legacyForm: !!opts.legacyForm,
+    noDriveService: !!opts.noDriveService,
+    driveCreateFails: !!opts.driveCreateFails
   };
 
   const ss = makeSpreadsheet(world);
@@ -482,6 +552,11 @@ function makeWorld(opts) {
     },
     console
   };
+
+  // A script project without the advanced Drive service enabled has no Drive
+  // global at all, which is why the builder feels for it with typeof rather
+  // than referencing it.
+  if (!world.noDriveService) sandbox.Drive = makeDrive(world);
 
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(CODE, 'utf8'), sandbox);
@@ -631,6 +706,28 @@ check('one response per user is not enforced (it would force a sign-in)',
    question is a manual step like publishing to the web. */
 check('no file upload question was invented on the form',
   items.filter((i) => /Photo of the items/.test(i.getTitle())).length === 0);
+/* The blocker the second live build found: the form URL answered HTTP 401 to a
+   signed-out client because a script-created form starts unpublished with its
+   responders restricted to the editors. Nothing else in this build matters
+   until that is fixed, so it is asserted here rather than left to a human. */
+check('the build published the form', form.isPublished() === true,
+  String(form.isPublished()));
+check('it asserted the publish state exactly once on a fresh form',
+  w.setPublishedCalls.length === 1 && w.setPublishedCalls[0] === true,
+  JSON.stringify(w.setPublishedCalls));
+const anyoneResponder = w.drivePermissions.filter((p) =>
+  p.fileId === 'FAKE_FORM_ID' && p.type === 'anyone' &&
+  p.view === 'published' && p.role === 'reader');
+check('anyone with the link can respond, as a published-view Drive reader',
+  anyoneResponder.length === 1, JSON.stringify(w.drivePermissions));
+check('no permission was created outside the published view',
+  w.drivePermissions.every((p) => p.view === 'published'),
+  JSON.stringify(w.drivePermissions));
+check('it looked for that permission with includePermissionsForView=published',
+  w.driveListCalls.length >= 1 && w.driveListCalls.every((c) =>
+    c.opts && c.opts.includePermissionsForView === 'published'),
+  JSON.stringify(w.driveListCalls));
+
 check('the supplies section now ends with the closing question',
   /What do you need from us/.test(items[pageBreaks[1].getIndex() - 1].getTitle()),
   items[pageBreaks[1].getIndex() - 1].getTitle());
@@ -744,6 +841,16 @@ const standingTab = w.ss.getSheetByName('Standing needs');
 const termsText = String(standingTab.getRange('B2').getValue());
 check('the handover block was written into Standing needs!B2', termsText.length > 100);
 check('it names the public area', /Thạnh Mỹ Tây/.test(termsText));
+/* Photos used to be a file upload question on the form. One such question
+   forces every respondent to sign in, so the ask moved here, where it rides
+   into the acknowledgement next to the team's Zalo or WhatsApp number. */
+check('it asks for photos over Zalo or WhatsApp, English half first',
+  /photo/i.test(termsText) &&
+  termsText.search(/[Pp]hoto/) < termsText.indexOf('---'),
+  (termsText.match(/[^\n]*[Pp]hoto[^\n]*/) || [''])[0]);
+check('the Vietnamese half asks for them too',
+  /ảnh/i.test(termsText.slice(termsText.indexOf('---'))),
+  (termsText.slice(termsText.indexOf('---')).match(/[^\n]*[Ảả]nh[^\n]*/) || [''])[0]);
 check('it holds nothing shaped like a street address, in either language',
   !ADDRESS.test(termsText), (termsText.match(ADDRESS) || [''])[0]);
 check('it states no opening hours, in either language',
@@ -824,6 +931,11 @@ console.log(`   subject: ${mail.subject}`);
 check('it went to the team address', mail.to === 'vietnam.hearts.volunteering@gmail.com');
 check('it carries the public form URL', /forms\/d\/e\/FAKE\/viewform/.test(mail.htmlBody));
 check('it carries the pre-filled link template', /usp=pp_url/.test(mail.htmlBody));
+/* The one check nothing automated can make, so the email that is a
+   volunteer's only set of instructions has to ask for it by hand. */
+check('it tells them to open the form signed out before sharing it',
+  /private browsing window, signed out of Google/.test(mail.htmlBody) &&
+  /You must see the questions/.test(mail.htmlBody));
 check('it carries the spreadsheet URL', /spreadsheets\/d\/FAKE_SPREADSHEET_ID/.test(mail.htmlBody));
 check('it lists the manual steps', /Manual steps/.test(mail.htmlBody));
 check('a manual step covers Publish to web', /Publish to web/.test(mail.htmlBody));
@@ -832,14 +944,34 @@ check('a manual step covers response receipts', /Response receipts/i.test(mail.h
 check('NO manual step asks for the spreadsheet time zone any more',
   !/<li>[^<]*Time zone/.test(mail.htmlBody) && !/File -&gt; Settings/.test(mail.htmlBody),
   (mail.htmlBody.match(/<li>[^<]*Time zone[^<]*/) || [''])[0]);
-check('a manual step asks for the file upload question by hand',
-  /add a <b>File upload<\/b> question/.test(mail.htmlBody));
-check('that step does not quote a TypeError at a volunteer',
+/* The second live build's 401 was not the publish state after all. The team
+   had added the File upload question the old manual step asked them to add,
+   and Google's own settings note says a form with file upload questions
+   requires respondents to sign in - for the WHOLE form, from page one, so
+   "optional and last" never deferred anything. The step is gone and photos
+   are asked for over Zalo or WhatsApp instead. */
+check('NO manual step asks for a file upload question any more',
+  !/file upload/i.test(mail.htmlBody),
+  (mail.htmlBody.match(/<li>[^<]*[Ff]ile upload[^<]*/) || [''])[0]);
+check('no manual step quotes a TypeError at a volunteer',
   !/TypeError/.test(mail.htmlBody));
+check('the supplies section asks for photos over Zalo or WhatsApp instead',
+  w.form._items.some((i) => /photo/i.test(i.getHelpText()) &&
+    /Zalo/.test(i.getHelpText())),
+  w.form._items.map((i) => i.getHelpText()).filter(Boolean).join(' || '));
+check('nothing on the form asks for a file or an attachment',
+  !/file upload|attach a|upload a/i.test(formText(w)),
+  (formText(w).match(/[^\n]*(file upload|attach a|upload a)[^\n]*/i) || [''])[0]);
 check('a manual step covers turning DRY_RUN off', /DRY_RUN/.test(mail.htmlBody));
 check('a manual step keeps the spreadsheet\'s sharing list narrow',
   /Share the spreadsheet only with the named volunteers who handle requests, as editors; never set General access to Anyone with the link/
     .test(mail.htmlBody));
+check('the notes say the form was published and opened to anyone with the link',
+  /Published the form/.test(mail.htmlBody) &&
+  /respond to it without signing in/.test(mail.htmlBody));
+check('NO manual step asks a volunteer to publish the form on a clean build',
+  !/Responders -&gt; <b>Anyone with the link<\/b>/.test(mail.htmlBody),
+  (mail.htmlBody.match(/<li>[^<]*Responders[^<]*/) || [''])[0]);
 check('the build reports no orphaned response tab on a clean build',
   !/old form/.test(mail.htmlBody));
 check('it warns against publishing the response tab',
@@ -863,7 +995,7 @@ function checkRendersAsHtml(label, m) {
   check(`${label}: no tag other than the email's own markup reaches the email`,
     (m.htmlBody.match(/<\/?([a-z0-9]+)/gi) || [])
       .map((t) => t.replace(/[</]/g, '').toLowerCase())
-      .every((t) => ['p', 'ul', 'ol', 'li', 'b', 'a', 'h3', 'code'].indexOf(t) !== -1),
+      .every((t) => ['p', 'ul', 'ol', 'li', 'b', 'a', 'h3', 'code', 'br'].indexOf(t) !== -1),
     (m.htmlBody.match(/<\/?([a-z0-9]+)/gi) || []).join(' '));
 }
 checkRendersAsHtml('clean build', mail);
@@ -917,6 +1049,11 @@ check('the old B2 and C2 formulas no longer block the A2 spill',
   chartTab.getRange('B2').getValue() === '' && chartTab.getRange('C2').getValue() === '',
   chartTab.getRange('B2:C2').getValues()[0].join(' | '));
 check('both re-runs reported too', w.mails.length === 3, String(w.mails.length));
+check('neither re-run published an already published form again',
+  w.setPublishedCalls.length === 1, JSON.stringify(w.setPublishedCalls));
+check('neither re-run added a second anyone-with-link permission',
+  w.drivePermissions.filter((p) => p.type === 'anyone').length === 1,
+  JSON.stringify(w.drivePermissions));
 
 /* --- degraded Google APIs --- */
 console.log('\n=== a Google account where the email-collection API is absent');
@@ -924,8 +1061,9 @@ const w2 = makeWorld({ noEmailCollection: true });
 w2.sandbox.buildIntake();
 const mail2 = w2.mails[0];
 check('the build still completes', w2.formsCreated === 1);
-check('the file upload is still a manual step',
-  /add a <b>File upload<\/b> question/.test(mail2.htmlBody));
+check('the file upload step is gone from the degraded build too',
+  !/file upload/i.test(mail2.htmlBody),
+  (mail2.htmlBody.match(/<li>[^<]*[Ff]ile upload[^<]*/) || [''])[0]);
 check('email collection becomes a manual step naming Responder input',
   /Collect email addresses -&gt; <b>Responder input<\/b>/.test(mail2.htmlBody));
 check('that step warns that Verified forces a sign-in',
@@ -1033,6 +1171,122 @@ target.setName('Moved');
 check('renaming a tab makes every reference follow it',
   reader.getRange('A1').getFormula() === "={'Moved'!H2:K;'Moved'!M2:M}",
   reader.getRange('A1').getFormula());
+
+
+/* --- publishing, when it cannot be done from script -----------------------
+ *
+ * Four ways the publish can fail, and all four must degrade the same way: the
+ * build finishes, and the step lands FIRST in the manual list, because a form
+ * nobody outside the team can open makes every other step pointless.
+ */
+const FIRST_STEP_IS_PUBLISH = /<ol>\s*<li>In the form: <b>Publish<\/b>/;
+
+function checkPublishDegraded(label, world) {
+  const m = world.mails[0];
+  check(`${label}: the build still completes`, world.formsCreated === 1,
+    String(world.formsCreated));
+  check(`${label}: it still emailed the team`, world.mails.length === 1,
+    String(world.mails.length));
+  check(`${label}: publishing is a manual step`,
+    /Responders -&gt; <b>Anyone with the link<\/b>/.test(m.htmlBody),
+    (m.htmlBody.match(/<li>[^<]{0,120}/g) || []).join(' | '));
+  check(`${label}: it is the FIRST manual step`,
+    FIRST_STEP_IS_PUBLISH.test(m.htmlBody),
+    (/<ol>\s*<li>[^<]{0,80}/.exec(m.htmlBody) || [''])[0]);
+  check(`${label}: it says why that one comes first`,
+    /nothing else on this list matters/.test(m.htmlBody));
+  check(`${label}: it gives the signed-out check command`,
+    /%\{http_code\}/.test(m.htmlBody) && /<code>200<\/code>/.test(m.htmlBody),
+    (m.htmlBody.match(/curl[^<]{0,120}/) || [''])[0]);
+  check(`${label}: it does not quote a raw exception at a volunteer`,
+    !/TypeError|ReferenceError|Exception:/.test(m.htmlBody),
+    (m.htmlBody.match(/(TypeError|ReferenceError|Exception:)[^<]{0,60}/) || [''])[0]);
+  checkRendersAsHtml(label, m);
+}
+
+/* --- a file upload question somebody added in the editor -------------------
+ *
+ * One such item and Forms makes every respondent sign in, which is the login
+ * wall the second live build hit. The build cannot delete it (there is no API
+ * for the item at all), so it has to say so, first, above even the publish
+ * step: a published form with a file upload question is still unusable.
+ */
+console.log('\n=== a file upload question added by hand in the form editor');
+const w12 = makeWorld();
+w12.sandbox.buildIntake();
+w12.form._injectItem('FILE_UPLOAD', 'Photo of the items / Ảnh của đồ');
+w12.sandbox.buildIntake();
+const mail12 = w12.mails[1];
+check('the build reports it', /file upload question/i.test(mail12.htmlBody),
+  (mail12.htmlBody.match(/<li>[^<]{0,140}/g) || []).join(' | '));
+check('it is the FIRST manual step',
+  /<ol>\s*<li>In the form: <b>delete<\/b> the file upload question/.test(mail12.htmlBody),
+  (/<ol>\s*<li>[^<]{0,100}/.exec(mail12.htmlBody) || [''])[0]);
+check('it says why: every submitter is forced to sign in',
+  /forces every submitter to sign in/.test(mail12.htmlBody));
+check('it points at the photo route that does not need a sign-in',
+  /Zalo/.test(mail12.htmlBody));
+checkRendersAsHtml('file upload present', mail12);
+
+console.log('\n=== both a file upload question and no way to publish');
+const w13 = makeWorld({ noFormPublishApi: true });
+w13.sandbox.buildIntake();
+w13.form._injectItem('FILE_UPLOAD', 'Photo of the items / Ảnh của đồ');
+w13.sandbox.buildIntake();
+const steps13 = (/<ol>([\s\S]*?)<\/ol>/.exec(w13.mails[1].htmlBody) || ['', ''])[1]
+  .split('<li>').slice(1);
+check('the file upload step comes first and the publish step second',
+  /^In the form: <b>delete<\/b> the file upload question/.test(steps13[0] || '') &&
+  /^In the form: <b>Publish<\/b>/.test(steps13[1] || ''),
+  steps13.slice(0, 2).map((x) => x.slice(0, 60)).join(' || '));
+
+console.log('\n=== a Forms API with no publishing methods at all');
+const w7 = makeWorld({ noFormPublishApi: true });
+w7.sandbox.buildIntake();
+checkPublishDegraded('no publish API', w7);
+/* The two halves are independent on purpose: the responder permission is
+   still granted, so the human's manual step is one click on Publish rather
+   than a trip through the responder list as well. */
+check('the responder half was still done, so only Publish is left to a human',
+  w7.drivePermissions.filter((p) => p.type === 'anyone' && p.view === 'published' &&
+    p.role === 'reader').length === 1, JSON.stringify(w7.drivePermissions));
+
+console.log('\n=== a legacy form, which has no publishSettings to set');
+const w10 = makeWorld({ legacyForm: true });
+w10.sandbox.buildIntake();
+checkPublishDegraded('legacy form', w10);
+
+console.log('\n=== a script project without the advanced Drive service');
+const w8 = makeWorld({ noDriveService: true });
+w8.sandbox.buildIntake();
+check('the form itself was still published', w8.form.isPublished() === true,
+  String(w8.form.isPublished()));
+checkPublishDegraded('no Drive service', w8);
+check('the step names the service that has to be added',
+  /Drive API/.test(w8.mails[0].htmlBody));
+
+console.log('\n=== the Drive permission call is refused');
+const w11 = makeWorld({ driveCreateFails: true });
+w11.sandbox.buildIntake();
+check('the form itself was still published', w11.form.isPublished() === true,
+  String(w11.form.isPublished()));
+checkPublishDegraded('Drive refused', w11);
+
+console.log('\n=== buildIntake() again after somebody unpublished the form');
+const w9 = makeWorld();
+w9.sandbox.buildIntake();
+check('the first run published it', w9.form.isPublished() === true);
+w9.form._published = false;
+w9.sandbox.buildIntake();
+check('the re-run published it again, so re-running is the one repair instruction',
+  w9.form.isPublished() === true, String(w9.form.isPublished()));
+check('setPublished was called once per unpublished state, not once ever',
+  w9.setPublishedCalls.length === 2, JSON.stringify(w9.setPublishedCalls));
+check('the responder permission was not duplicated',
+  w9.drivePermissions.filter((p) => p.type === 'anyone').length === 1,
+  JSON.stringify(w9.drivePermissions));
+check('neither run asked a human to publish anything',
+  w9.mails.every((m) => !/Responders -&gt; <b>Anyone with the link<\/b>/.test(m.htmlBody)));
 
 /* ------------------------------------------------------------------ result */
 

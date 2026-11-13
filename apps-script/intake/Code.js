@@ -362,7 +362,7 @@ function onIntakeFormSubmit(e) {
 
     var acked = send_(email,
       'Vietnam Hearts: we have your offer / da nhan de xuat cua ban',
-      ackHtml_(name, ticked, terms, fastLane));
+      ackHtml_(name, ticked, terms, fastLane, type));
     if (email && !acked) {
       reportError_('onIntakeFormSubmit', new Error('Row ' + rowNumber +
         ': the acknowledgement was not sent (email quota nearly exhausted).'));
@@ -505,8 +505,26 @@ function footerHtml_() {
 /** The one automated mail a submitter receives. It promises no date, because
  *  the form does not either, and it never states the school's address or
  *  hours, only the public area: a volunteer arranges each handover by hand. */
-function ackHtml_(name, ticked, terms, fastLane) {
+function ackHtml_(name, ticked, terms, fastLane, type) {
   var hi = name ? ' ' + escape_(name) : '';
+
+  // Photos are asked for here rather than with a file upload question on the
+  // form: Google requires a Google sign-in for any form that has one, for the
+  // whole form from page one, which is the login wall the second live build
+  // hit. Supplies only - a partnership or an event has nothing to photograph.
+  // No number is written here; the one in the handover block is the only copy,
+  // which is what keeps every phone number out of this file.
+  var supplies = String(type || '').indexOf('Donate supplies') !== -1;
+  var photoEn = supplies
+    ? '<p>Photos of what you are giving help us plan. Please send them to us on ' +
+      'Zalo or WhatsApp rather than attaching them - the number is in the block ' +
+      'below, or just reply to this email.</p>'
+    : '';
+  var photoVi = supplies
+    ? '<p>Ảnh của đồ bạn tặng giúp chúng tôi chuẩn bị. Xin gửi ảnh qua Zalo hoặc ' +
+      'WhatsApp thay vì đính kèm - số nằm trong phần dưới đây, hoặc bạn có thể ' +
+      'trả lời email này.</p>'
+    : '';
   var fastEn = '', fastVi = '';
   if (fastLane && ticked) {
     // The handover block is itself bilingual and is quoted once, with the
@@ -537,12 +555,14 @@ function ackHtml_(name, ticked, terms, fastLane) {
     'volunteer team, so a reply can take a little while - a volunteer will ' +
     'come back to you.</p>' +
     fastEn +
+    photoEn +
     '<hr>' +
     '<p>Xin chào' + hi + ',</p>' +
     '<p>Cảm ơn bạn đã gửi đề xuất cho Vietnam Hearts. Chúng tôi đã nhận được. ' +
     'Chúng tôi là nhóm tình nguyện, nên xin bạn thông cảm nếu phản hồi mất ít ' +
     'thời gian - một tình nguyện viên sẽ liên hệ với bạn.</p>' +
     fastVi +
+    photoVi +
     footerHtml_();
 }
 

@@ -118,6 +118,14 @@ function buildIntake() {
   setSheetTimeZone_(ss, notes, manual);
 
   var form = openOrCreateForm_(notes, manual);
+
+  // Both of these can only end in a manual step that has to come FIRST, and
+  // the later unshift wins the front, so the order of these two calls is the
+  // order of their steps: a form carrying a file upload question shows a
+  // sign-in wall even when it is correctly published, so that one goes above.
+  ensureFormPublished_(form, notes, manual);
+  warnOnFileUploadItems_(form, manual);
+
   linkFormToSheet_(form, ss, notes, manual);
 
   var responses = ss.getSheetByName(CONFIG.SHEET_NAME);
@@ -299,6 +307,141 @@ function applyFormSettings_(form, manual) {
     'and two confirmation emails for one submission looks broken.');
 }
 
+/** Whatever a Google API throws, in words a volunteer can act on: no class
+ *  name, nothing longer than a sentence. The first live build pasted a raw
+ *  TypeError into the build email, which told the reader nothing and hid the
+ *  step it was attached to. */
+function plainReason_(err) {
+  return String((err && err.message) || err || 'unknown')
+    .replace(/\b(?:Type|Reference|Range|Syntax|Eval|URI)?Error\b:?\s*/g, '')
+    .replace(/\bException\b:?\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+}
+
+/** Make the form reachable by a signed-out stranger, and keep it that way.
+ *
+ *  Two independent things have to be true, and Google splits them across two
+ *  APIs. The form must be PUBLISHED (Forms service), and its responders must
+ *  include "anyone with the link" (a Drive permission in the `published`
+ *  view). Since Google's 2025 publishing change a form created from a script
+ *  can satisfy neither by default: the second live build handed the team a
+ *  URL that answered HTTP 401 to anybody not signed in as an editor.
+ *
+ *  Re-asserted on every run rather than only at creation, because a volunteer
+ *  who clicks Unpublish in the editor breaks the public link and "run
+ *  buildIntake() again" has to be the one repair instruction we owe them.
+ *
+ *  Either half failing is a manual step at the FRONT of the list: a form the
+ *  public cannot open makes every other step on it pointless. */
+function ensureFormPublished_(form, notes, manual) {
+  var reasons = [];
+  var why = setFormPublished_(form, notes);
+  if (why) reasons.push(why);
+  why = setAnyoneWithLinkResponder_(form, notes);
+  if (why) reasons.push(why);
+  if (!reasons.length) return;
+
+  manual.unshift('In the form: **Publish** (top right) -> Responders -> ' +
+    '**Anyone with the link**, then **Publish**. Do this before the form link goes ' +
+    'anywhere: until it is done the public form URL answers a Google sign-in wall ' +
+    'instead of the questions, so nothing else on this list matters. This build could not do ' +
+    'it from script (' + reasons.join('; ') + '). Check it afterwards from a ' +
+    'signed-out browser, or run `curl -s -o /dev/null -w "%{http_code}" "' +
+    form.getPublishedUrl() + '"`, which must print `200` and not `401`.');
+}
+
+/** Publish state, through the Forms service. Returns '' when the form is
+ *  published, or why it is not. */
+function setFormPublished_(form, notes) {
+  if (typeof form.setPublished !== 'function' ||
+      typeof form.isPublished !== 'function' ||
+      typeof form.supportsAdvancedResponderPermissions !== 'function') {
+    return 'this account\'s Forms API has no publish control';
+  }
+  try {
+    if (!form.supportsAdvancedResponderPermissions()) {
+      // A legacy form, from before publishSettings existed. isPublished and
+      // setPublished both throw on one, so there is nothing to assert and the
+      // human has to look at it.
+      return 'the form is a legacy form with no publish settings';
+    }
+    if (form.isPublished()) {
+      notes.push('The form is already published.');
+      return '';
+    }
+    form.setPublished(true);
+    if (!form.isPublished()) return 'the publish setting did not stick';
+    notes.push('Published the form, so its public URL serves the questions rather ' +
+      'than a Google sign-in wall. A form created from a script is not published ' +
+      'by default, so this is asserted on every run.');
+    return '';
+  } catch (err) {
+    return plainReason_(err);
+  }
+}
+
+/** Responder access, through the advanced Drive service: "anyone with the
+ *  link" is a permission with type anyone, role reader and view published.
+ *  Drive hides published-view permissions from an ordinary list, so the read
+ *  has to ask for them by name or it would create a second one every run. */
+function setAnyoneWithLinkResponder_(form, notes) {
+  if (typeof Drive === 'undefined' || !Drive || !Drive.Permissions) {
+    return 'the advanced Drive API service is not enabled in this script project';
+  }
+  var id = form.getId();
+  try {
+    var listed = Drive.Permissions.list(id, { includePermissionsForView: 'published' });
+    var perms = (listed && listed.permissions) || [];
+    for (var i = 0; i < perms.length; i++) {
+      if (perms[i].type === 'anyone' && perms[i].role === 'reader' &&
+          perms[i].view === 'published') {
+        notes.push('Anyone with the link could already respond to the form.');
+        return '';
+      }
+    }
+    Drive.Permissions.create({ type: 'anyone', view: 'published', role: 'reader' }, id);
+    notes.push('Opened the form to anyone with the link, so a member of the public ' +
+      'can respond to it without signing in to a Google account.');
+    return '';
+  } catch (err) {
+    return plainReason_(err);
+  }
+}
+
+/** A file upload question forces a Google sign-in on the WHOLE form, from
+ *  page one. Google says so in the form's own settings: "because this form has
+ *  File Upload questions, respondents will be required to sign in". That is
+ *  what the second live build's login wall actually was - the team had added
+ *  the question an earlier version of this builder asked them to add, and
+ *  "optional and last" defers nothing.
+ *
+ *  There is no API for the item at all, so the build cannot delete it; it can
+ *  only say so, above even the publish step, because a published form with a
+ *  file upload question is still unusable by the public. */
+function warnOnFileUploadItems_(form, manual) {
+  var uploads;
+  try {
+    if (!FormApp.ItemType || !FormApp.ItemType.FILE_UPLOAD) return;
+    uploads = form.getItems(FormApp.ItemType.FILE_UPLOAD) || [];
+  } catch (err) {
+    return;
+  }
+  if (!uploads.length) return;
+
+  var titles = [];
+  for (var i = 0; i < uploads.length; i++) {
+    titles.push('"' + uploads[i].getTitle() + '"');
+  }
+  manual.unshift('In the form: **delete** the file upload question ' +
+    titles.join(', ') + '. Google requires a sign-in for a form that has one, ' +
+    'and it forces every submitter to sign in from the first page, so the ' +
+    'public form is unusable while it is there and nothing else on this list ' +
+    'matters. Photos are asked for over Zalo or WhatsApp instead, in the ' +
+    'acknowledgement email and in the supplies section.');
+}
+
 function addFormItems_(form, manual) {
   // Page breaks first, so the branch choices can point at them. A
   // PageBreakItem begins a page; setGoToPage on a page break controls where
@@ -390,7 +533,17 @@ function addSuppliesQuestions_(form, pb, manual) {
       'thì xin nhắn tin trước.'),
     n++);
 
-  var condition = form.addMultipleChoiceItem().setTitle('Condition / Tình trạng');
+  // Photos are asked for here, in words, rather than with a file upload
+  // question. Google requires a Google sign-in for any form that has a file
+  // upload item, for the whole form from page one, so the question that used
+  // to be a manual step was the login wall the second live build hit. See
+  // warnOnFileUploadItems_.
+  var condition = form.addMultipleChoiceItem().setTitle('Condition / Tình trạng')
+    .setHelpText('Photos help a lot - please send them to us on Zalo or WhatsApp ' +
+      'after you submit; the number is in the email we send you. Do not attach ' +
+      'them here. / Ảnh giúp chúng tôi rất nhiều - xin gửi ảnh qua Zalo hoặc ' +
+      'WhatsApp sau khi bạn gửi biểu mẫu; số điện thoại nằm trong email chúng ' +
+      'tôi gửi bạn.');
   condition.setChoiceValues([
     'New / Mới',
     'Gently used / Đã dùng, còn tốt',
@@ -426,17 +579,14 @@ function addSuppliesQuestions_(form, pb, manual) {
 
   appendTo_(form, pb, form.addParagraphTextItem().setTitle(CLOSING_QUESTION), n++);
 
-  // The photo question is a manual step, not a failed attempt at one.
-  // FormApp.Form has NO addFileUploadItem - there is no such method on any
-  // account, and the first live build raised a TypeError reaching for it, then
-  // showed a volunteer the TypeError text. Forms can only ask for a file
-  // through the editor. Do not add the call back.
-  manual.push('In the form, on the supplies section, add a **File upload** question ' +
-    'titled "Photo of the items (optional) / Ảnh của đồ (không bắt buộc)" as the LAST ' +
-    'question of that section, and leave it optional. Apps Script has no API for a ' +
-    'file upload question, so this one is yours. Optional and last matters: ' +
-    'attaching a file forces a Google sign-in, and last means the submitter has ' +
-    'already answered everything else before meeting it.');
+  // There is deliberately NO file upload question and no manual step asking
+  // for one. Two separate reasons, and the second is the fatal one:
+  // FormApp.Form has no addFileUploadItem on any account (the first live build
+  // raised a TypeError reaching for it), and a form that has such a question
+  // makes Google require a sign-in from every respondent on page one, which
+  // was the login wall behind the second live build's HTTP 401. "Optional and
+  // last" defers nothing. The photo ask lives in the Condition help text above
+  // and in the acknowledgement email instead. Do not add either back.
 }
 
 function addPartnershipQuestions_(form, pb) {
@@ -707,7 +857,8 @@ function buildStandingNeedsTab_(ss, notes) {
     'We arrange each handover with a volunteer.\n' +
     'Our area: Thạnh Mỹ Tây, Ho Chi Minh City.\n' +
     'A volunteer will message you to agree a time and place - please wait for that before bringing anything.\n' +
-    'You can also message us on Zalo or WhatsApp: <number>.\n\n' +
+    'You can also message us on Zalo or WhatsApp: <number>.\n' +
+    'Photos of what you are giving are welcome on that number - please do not attach them to the form.\n\n' +
     'Food please: sealed, in its original packaging, at least 3 months before the expiry date.\n' +
     'Milk cartons: at least 2 weeks before expiry.\n' +
     'We cannot take home-made or repackaged food, opened items, or dented, rusty or unlabelled containers.\n' +
@@ -716,7 +867,8 @@ function buildStandingNeedsTab_(ss, notes) {
     'Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên.\n' +
     'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
     'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm - xin đừng mang đến trước khi hẹn xong.\n' +
-    'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.\n\n' +
+    'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.\n' +
+    'Rất hoan nghênh bạn gửi ảnh đồ tặng qua số đó - xin đừng đính kèm ảnh vào biểu mẫu.\n\n' +
     'Thực phẩm xin: còn nguyên seal, nguyên bao bì gốc, còn hạn ít nhất 3 tháng.\n' +
     'Sữa hộp: còn hạn ít nhất 2 tuần.\n' +
     'Chúng tôi không nhận đồ ăn tự làm hoặc chia lại, đồ đã mở, hộp/lon bị móp, rỉ hoặc mất nhãn.\n' +
@@ -1037,7 +1189,15 @@ function reportBuild_(form, ss, notes, manual) {
     '<p>The Vietnam Hearts request intake has been built. Three links to keep:</p>',
     '<ul>',
     '<li><b>The form, to share publicly</b>: <a href="' + form.getPublishedUrl() + '">' +
-      form.getPublishedUrl() + '</a></li>',
+      form.getPublishedUrl() + '</a><br>' +
+      // The one check nothing automated can make, so it is put next to the
+      // link rather than buried in the numbered list: this email is the only
+      // set of instructions anybody gets. A form that is unpublished, or that
+      // carries a file upload question, looks perfectly healthy to everyone on
+      // the team, because the team is signed in.
+      '<b>Open that link in a private browsing window, signed out of Google, ' +
+      'before you share it.</b> You must see the questions. A sign-in screen ' +
+      'means the form is not public yet: the first steps below fix it.</li>',
     '<li><b>The form, to edit</b>: <a href="' + form.getEditUrl() + '">' +
       form.getEditUrl() + '</a></li>',
     prefilled

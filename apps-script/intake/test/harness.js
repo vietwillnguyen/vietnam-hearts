@@ -283,6 +283,35 @@ w = submit(makeWorld({ type: 'Propose an event / Đề xuất sự kiện' }));
 check('C2 another branch with nothing listed gets no supplies hint',
   teamMails(w).every((m) => !/Supplies request with nothing listed/.test(m.htmlBody)));
 
+/* C3: photos. The form used to ask for them with a File upload question, and
+   one such question makes Forms require a Google sign-in for the whole form,
+   which is the login wall the second live build hit. So a supplies submitter
+   is asked for photos in the acknowledgement instead, over Zalo or WhatsApp,
+   English half first - and no other branch is. */
+w = submit(makeWorld({ ticked: 'Dau an' }));
+const ackC3 = donorMails(w)[0].htmlBody;
+check('C3 the supplies acknowledgement asks for photos',
+  /photo/i.test(ackC3), ackC3.slice(0, 200));
+check('C3 it names Zalo or WhatsApp as where to send them',
+  /(Zalo|WhatsApp)/.test((ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]),
+  (ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]);
+check('C3 the English ask comes before the Vietnamese one',
+  ackC3.search(/[Pp]hoto/) < ackC3.search(/ảnh/i) &&
+  ackC3.search(/ảnh/i) !== -1,
+  `${ackC3.search(/[Pp]hoto/)} vs ${ackC3.search(/ảnh/i)}`);
+/* The handover block rides in only when something was ticked, so the ask has
+   to be in the body of the mail or a supplies offer of unlisted goods would
+   never see it. */
+w = submit(makeWorld({ other: '40 thung sach cu' }));
+check('C3 a supplies offer with nothing ticked is asked for photos too',
+  !TERMS_MARK.test(donorMails(w)[0].htmlBody) &&
+  /photo/i.test(donorMails(w)[0].htmlBody),
+  donorMails(w)[0].htmlBody.slice(0, 200));
+w = submit(makeWorld({ type: 'Propose an event / Đề xuất sự kiện', ticked: '' }));
+check('C3 a non-supplies branch is not asked for photos of goods',
+  !/photo/i.test(donorMails(w)[0].htmlBody),
+  (donorMails(w)[0].htmlBody.match(/[^<>]*photo[^<>]*/i) || [''])[0]);
+
 // D: the handover wording is missing from the sheet - fail soft
 w = submit(makeWorld({ ticked: 'Dau an', terms: '' }));
 show('D. handover cell empty -> TODO anyway, error mail, nothing approved', w);

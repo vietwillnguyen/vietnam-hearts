@@ -74,8 +74,8 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 | `intake/Build.js` | `buildIntake()`, the one-shot builder that creates the form, the sheet tabs and the triggers |
 | `intake/test/harness.js` | Stub harness for the handlers: cases A to S against a fake `SpreadsheetApp` / `MailApp`, plus every `HEADER` needle against the real bilingual column titles |
 | `intake/test/forbidden-shapes.js` | The address, opening-hours and reply-date shapes both harnesses assert never appear |
-| `intake/test/build-harness.js` | Stub harness for the builder, including a second run, a degraded Google account, a lost form and a default tab that is not empty |
-| `intake/appsscript.json` | Runtime, exception logging, and the time zone |
+| `intake/test/build-harness.js` | Stub harness for the builder, including a second run, a degraded Google account, a lost form, a default tab that is not empty, a form somebody unpublished, and a file upload question somebody added |
+| `intake/appsscript.json` | Runtime, exception logging, the time zone, and the one advanced service the project needs (Drive `v3`, for the form's responder permission) |
 | `intake/.clasp.json.example` | Copy to `.clasp.json` and fill in the script id. The real file is gitignored because `clasp clone-script` writes it and the id differs per deployment |
 
 ### Setting the whole thing up from nothing
@@ -85,14 +85,24 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 3. `cp intake/.clasp.json.example intake/.clasp.json` and paste that id in.
 4. `cd intake && npx clasp push`.
 5. In the Apps Script editor, run **`buildIntake`** once and accept the authorization prompt.
-6. Read the email it sends to the team address. It carries the form's public URL, a pre-filled link template, the spreadsheet URL, and a numbered list of the steps Apps Script cannot do.
+6. Read the email it sends to the team address. It carries the form's public URL, a pre-filled link template, the spreadsheet URL, and a numbered list of the steps Apps Script cannot do. It also asks, next to the form link, for the signed-out check in step 8: that email is the only set of instructions anybody gets.
 7. Do those manual steps.
-8. Submit a test response. Two `[DRY RUN]` emails should arrive at the team address.
-9. Set `CONFIG.DRY_RUN = false` in `Code.js`, `npm run verify`, `clasp push`.
+8. Check the form is reachable by a stranger, from a machine that is not signed in to Google, or with `curl`:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' '<the form URL from the build email>'
+   ```
+
+   It must print `200`.
+   A `401` means the form is serving a Google login wall instead of the questions: either it is not published and open to anyone with the link, or somebody has added a file upload question.
+   Read the build email's manual steps - those two cases are the first ones on that list - fix it, and run the check again.
+9. Submit a test response. Two `[DRY RUN]` emails should arrive at the team address.
+10. Set `CONFIG.DRY_RUN = false` in `Code.js`, `npm run verify`, `clasp push`.
 
 `buildIntake()` is idempotent and safe to re-run: it remembers the form it created in script properties, creates each tab only when absent, and rewrites the dropdowns, formats and protection every time, so a second run repairs a hand-edited sheet rather than duplicating it.
 It will not re-add the form's questions once the form has any, because a volunteer may have reworded one.
 It decides whether the form is linked by asking the form for its destination, never by whether a response tab exists, so a re-run after the form was lost cannot hand out a public URL whose submissions reach no sheet.
+It re-asserts the form's publish state and its anyone-with-the-link responder permission every run, so re-running it is the one repair for a form somebody unpublished in the editor.
 
 ### What Apps Script cannot do, so a human must
 
@@ -104,14 +114,15 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 3. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
 4. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
 5. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual and carries the Zalo link; two confirmation emails for one submission looks broken.
-6. **The file upload question.** `FormApp.Form` has no `addFileUploadItem` on any account - the first live build raised a `TypeError` reaching for it and then showed a volunteer the `TypeError` text - so Forms can only be asked for a file through the editor.
-   Add it by hand, optional and last in the supplies section, so nobody meets the sign-in wall before their answers are saved.
-7. **The `Volunteers` tab rows**, and the team Zalo or WhatsApp number in `Standing needs!B2`.
-8. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
+6. **The `Volunteers` tab rows**, and the team Zalo or WhatsApp number in `Standing needs!B2`.
+7. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
    The build renames that tab to `Form Responses 1 (old form)` with every row kept, links the form to a fresh tab, and asks someone to decide what to do with the old rows.
-9. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
+8. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
+9. **Deleting a file upload question somebody added**, which the build cannot do because Forms exposes no API for that item at all. This step is put **first**, above every other, for the reason in the next section.
+10. **Publishing the form**, but only when the build could not do it from script. Also first, and above the step above it when both fire.
 
-Two things used to be on this list and are not any more, because the build now does them: the spreadsheet's own **time zone** (pinned to `Asia/Ho_Chi_Minh`, since a new spreadsheet comes up on the owning account's zone - `Etc/GMT` on the first live build - and every `Next action by` date then reads a day off in Vietnam), and deleting the empty default tab.
+Three things used to be on this list and are not any more. The build now pins the spreadsheet's own **time zone** (`Asia/Ho_Chi_Minh`, since a new spreadsheet comes up on the owning account's zone - `Etc/GMT` on the first live build - and every `Next action by` date then reads a day off in Vietnam) and deletes the empty default tab.
+The third, **adding a file upload question for photos**, was removed rather than automated: see below.
 
 ### Things to know before changing the script
 
@@ -126,6 +137,17 @@ Two things used to be on this list and are not any more, because the build now d
   `A2` is one `FILTER` that spills only the rows the `QUERY` returned, because a formula padding every spare row with `""` would give the chart an empty bar per spare row.
   `buildIntake()` owns `A1:G30` and the chart: it clears that block and rewrites the formulas every run, like `All work`, so a sheet built by an earlier version converges too.
   The chart is updated in place rather than re-inserted, because a published chart's embed URL is keyed to its id and a new chart would blank the iframe on the website.
+- **A public form has to be published AND opened to anyone with the link, and those are two different Google APIs.**
+  `buildIntake()` asserts both on every run (`ensureFormPublished_`): `Form.setPublished(true)` through the Forms service, and a Drive permission of `type: anyone, role: reader, view: published` through the advanced Drive service.
+  Since Google's 2025 publishing change a form created from a script satisfies neither by default, which is why the second live build handed the team a URL that answered `401` to anyone not signed in as an editor.
+  The read that decides whether the permission already exists **must** pass `includePermissionsForView: 'published'`; Drive hides published-view permissions from an ordinary list, so without it the build would grant a second one every run.
+  Either half failing becomes a manual step at the front of the list, because a form the public cannot open makes every other step pointless.
+  This is also the one thing in the project that needs an advanced service: `intake/appsscript.json` enables Drive `v3`, which is what makes Apps Script request the Drive scope at the next authorization prompt.
+- **Never put a file upload question on the form, and never ask a volunteer to add one.**
+  Google requires a Google sign-in for *any* form that has one, for the whole form from page one - its own settings panel says so - so "optional and last in the supplies section" defers nothing.
+  That question, which an earlier version of this README asked the team to add by hand, is what the second live build's login wall actually was.
+  `FormApp.Form` has no `addFileUploadItem` either, so the builder cannot create one; what it does instead is detect one (`warnOnFileUploadItems_` over `form.getItems(FormApp.ItemType.FILE_UPLOAD)`) and put "delete it" first in the manual list, above even the publish step, because a published form carrying one is still unusable.
+  Photos are asked for in words: the `Condition` question's help text, the acknowledgement email's supplies paragraph, and the `Standing needs!B2` handover block next to the team's Zalo or WhatsApp number.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
 - **`onIntakeEdit` must not be renamed to `onEdit`.** A function called `onEdit` is installed as a *simple* trigger, and simple triggers cannot send email. It would fail silently, with nothing in any log a volunteer would read. The name is the guard.
 - **Only the `Decision` column can email a member of the public.** `Status` is the team's own task tracking and emails nobody, which is what lets one spreadsheet hold both intake rows and ordinary team tasks. Case E in `test/harness.js` is that property.
@@ -159,6 +181,6 @@ node apps-script/intake/test/build-harness.js apps-script/intake/Code.js apps-sc
 
 Each harness runs the real file in a `vm` context against fake Google services.
 No account, no network, no credential, which is why CI can run them.
-They prove the script's own logic, not that Google's API behaves as documented; a live test in a real sheet is still step 8 above.
+They prove the script's own logic, not that Google's API behaves as documented; a live test in a real sheet is still steps 8 and 9 above.
 
 One trap if you add assertions: the script creates its `Date` objects inside the `vm` realm, so `value instanceof Date` is false against the host realm's constructor. Duck-type on `getTime()` instead.
