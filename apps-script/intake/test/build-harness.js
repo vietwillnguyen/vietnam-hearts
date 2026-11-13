@@ -145,6 +145,7 @@ function makeSpreadsheet(world) {
 
     const sheet = {
       _meta: meta,
+      _chartBuilder: (spec) => chartBuilder(spec),
       _cells: cells,
       getName: () => meta.name,
       // Like Sheets, a rename drags every formula that referenced the tab.
@@ -207,23 +208,37 @@ function makeSpreadsheet(world) {
         return sheet;
       },
       getCharts: () => meta.charts.slice(),
-      insertChart: (chart) => { meta.charts.push(chart); return sheet; },
+      insertChart: (chart) => {
+        chart.id = world.nextChartId = (world.nextChartId || 0) + 1;
+        meta.charts.push(chart);
+        return sheet;
+      },
+      updateChart: (chart) => {
+        const i = meta.charts.findIndex((c) => c.id === chart.id);
+        if (i === -1) throw new Error('fake: updateChart on a chart not on this sheet');
+        meta.charts[i] = chart;
+        return sheet;
+      },
       removeChart: (chart) => {
         meta.charts = meta.charts.filter((c) => c !== chart);
         return sheet;
       },
-      newChart: () => {
-        const spec = { type: null, ranges: [], options: {} };
-        const b = {
-          setChartType: (t) => { spec.type = t; return b; },
-          addRange: (r) => { spec.ranges.push(r.getA1Notation()); return b; },
-          setOption: (k, v) => { spec.options[k] = v; return b; },
-          setPosition: () => b,
-          build: () => spec
-        };
-        return b;
-      }
+      newChart: () => chartBuilder({ type: null, ranges: [], options: {} })
     };
+    function chartBuilder(spec) {
+      const b = {
+        setChartType: (t) => { spec.type = t; return b; },
+        addRange: (r) => { spec.ranges.push(r.getA1Notation()); return b; },
+        clearRanges: () => { spec.ranges = []; return b; },
+        setOption: (k, v) => { spec.options[k] = v; return b; },
+        setPosition: () => b,
+        build: () => {
+          spec.modify = () => chartBuilder(JSON.parse(JSON.stringify(spec)));
+          return spec;
+        }
+      };
+      return b;
+    }
     return sheet;
   }
 
@@ -879,8 +894,9 @@ check('only one chart still', chartTab.getCharts().length === 1,
    F1 where E1's header now spills, and per-column formulas in B2 and C2. A
    re-run must converge on the current shape rather than keep any of it. */
 console.log('\n=== buildIntake() over a Progress chart tab left by the previous version');
-chartTab._meta.charts = [{ type: 'BAR', ranges: ['A1:A30', 'B1:C30'],
-  options: { title: 'Vietnam Hearts - progress', isStacked: true } }];
+chartTab._meta.charts = [chartTab._chartBuilder({ id: 'published-oid', type: 'BAR',
+  ranges: ['A1:A30', 'B1:C30'],
+  options: { title: 'Vietnam Hearts - progress', isStacked: true } }).build()];
 chartTab.getRange('F1').setValue('Helper columns - leave alone.');
 chartTab.getRange('B2').setFormula('=ARRAYFORMULA(F2:F30)');
 chartTab.getRange('C2').setFormula('=ARRAYFORMULA(G2:G30)');
@@ -890,6 +906,11 @@ check('the old chart was replaced, not kept beside or instead of the new one',
   upgraded.length === 1 && upgraded[0].options.title === 'Vietnam Hearts - percent funded' &&
   (upgraded[0].options.hAxis || {}).format === 'percent',
   JSON.stringify(upgraded.map((c) => c.options.title)));
+check('the published chart kept its id, so the website\'s iframe still points at it',
+  upgraded.length === 1 && upgraded[0].id === 'published-oid',
+  JSON.stringify(upgraded.map((c) => c.id)));
+check('it still reads only A:C after the update',
+  upgraded[0].ranges.join(' ') === 'A1:A30 B1:C30', upgraded[0].ranges.join(' '));
 check('the old F1 note no longer sits where the E1 header spills',
   chartTab.getRange('F1').getValue() === '', String(chartTab.getRange('F1').getValue()));
 check('the old B2 and C2 formulas no longer block the A2 spill',

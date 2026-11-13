@@ -122,7 +122,8 @@ Two things used to be on this list and are not any more, because the build now d
   A fraction is unit-free, so it is right whatever currency a row is in and needs no exchange rate that goes stale between the two tabs. The amounts travel in each bar's label instead.
   `Progress chart` columns `E:G` hold the filtered `QUERY` and are hidden; `A:C` are the label and the two fractions, and they are the only columns the chart reads.
   `A2` is one `FILTER` that spills only the rows the `QUERY` returned, because a formula padding every spare row with `""` would give the chart an empty bar per spare row.
-  `buildIntake()` owns `A1:G30` and the chart: it clears that block, rewrites the formulas and re-inserts the chart every run, like `All work`, so a sheet built by an earlier version converges too.
+  `buildIntake()` owns `A1:G30` and the chart: it clears that block and rewrites the formulas every run, like `All work`, so a sheet built by an earlier version converges too.
+  The chart is updated in place rather than re-inserted, because a published chart's embed URL is keyed to its id and a new chart would blank the iframe on the website.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
 - **`onIntakeEdit` must not be renamed to `onEdit`.** A function called `onEdit` is installed as a *simple* trigger, and simple triggers cannot send email. It would fail silently, with nothing in any log a volunteer would read. The name is the guard.
 - **Only the `Decision` column can email a member of the public.** `Status` is the team's own task tracking and emails nobody, which is what lets one spreadsheet hold both intake rows and ordinary team tasks. Case E in `test/harness.js` is that property.

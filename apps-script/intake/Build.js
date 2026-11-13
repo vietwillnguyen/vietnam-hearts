@@ -961,15 +961,17 @@ function buildProgressTabs_(ss, notes, manual) {
   // a hand edit to one of them must not survive unnoticed.
   buildProgressChartTab_(chartTab);
 
-  // Re-inserted every run rather than only when absent, so a chart left by an
-  // earlier version (other title, other axis, anchored in a now-hidden column)
-  // is replaced rather than kept.
-  chartTab.getCharts().forEach(function (c) { chartTab.removeChart(c); });
+  // Converged in place every run, so a chart left by an earlier version
+  // (other title, other axis, anchored in a now-hidden column) takes the
+  // current shape while keeping its id: a published chart's embed URL is keyed
+  // to that id, and a new chart would blank the iframe on the website.
+  var charts = chartTab.getCharts();
+  charts.slice(1).forEach(function (c) { chartTab.removeChart(c); });
   SpreadsheetApp.flush();
   // Whole-column ranges with spare rows, so a project added at row 5 appears
   // in the chart without anyone editing the chart. A:C only - the helper
   // columns that hold the raw amounts are never charted.
-  chartTab.insertChart(chartTab.newChart()
+  var chart = (charts.length ? charts[0].modify().clearRanges() : chartTab.newChart())
     .setChartType(Charts.ChartType.BAR)
     .addRange(chartTab.getRange('A1:A30'))
     .addRange(chartTab.getRange('B1:C30'))
@@ -982,7 +984,9 @@ function buildProgressTabs_(ss, notes, manual) {
     .setOption('width', 560)
     .setOption('height', 300)
     .setPosition(3, 9, 0, 0)
-    .build());
+    .build();
+  if (charts.length) chartTab.updateChart(chart);
+  else chartTab.insertChart(chart);
   notes.push('Built the percent-funded progress chart on "' +
     TABS.progressChart + '".');
 

@@ -71,13 +71,16 @@ It renders one bar per published row, so a Tết gift drive and the rice fund ca
 
 ```html
 <!-- Vietnam Hearts donation progress bars, one per project. Reads the
-     published "Progress chart" tab. Shows nothing rather than a wrong number. -->
+     published "Progress chart" tab's hidden E:G (project, raised, goal), not
+     the charted A:C, which hold fractions. Shows nothing rather than a wrong
+     number. -->
 <div id="vh-progress" style="font-family:inherit;max-width:560px;margin:0 auto"></div>
 <script>
 (function () {
   var SHEET_ID = '<SPREADSHEET_ID>';
   var SRC = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
-            '/gviz/tq?tqx=out:csv&sheet=Progress%20chart';
+            '/gviz/tq?tqx=out:csv&sheet=Progress%20chart&tq=' +
+            encodeURIComponent('select E, F, G');
 
   var root = document.getElementById('vh-progress');
   if (!root) { return; }
@@ -106,8 +109,7 @@ It renders one bar per published row, so a Tết gift drive and the rice fund ca
     return rows;
   }
 
-  function bar(name, raised, remaining) {
-    var goal = raised + remaining;
+  function bar(name, raised, goal) {
     var pct = goal > 0 ? Math.max(0, Math.min(100, (raised / goal) * 100)) : 0;
     var wrap = document.createElement('div');
     wrap.style.margin = '0 0 18px';
@@ -139,10 +141,10 @@ It renders one bar per published row, so a Tết gift drive and the rice fund ca
       if (idx === 0) { return; }                 // header row
       var name = String(cells[0] || '').trim();
       var raised = num(cells[1]);
-      var remaining = num(cells[2]);
+      var goal = num(cells[2]);
       // Blank beats wrong: skip any row that is not fully numeric.
-      if (!name || !isFinite(raised) || !isFinite(remaining)) { return; }
-      frag.appendChild(bar(name, raised, remaining));
+      if (!name || !isFinite(raised) || !isFinite(goal)) { return; }
+      frag.appendChild(bar(name, raised, goal));
       shown++;
     });
     if (shown) { root.appendChild(frag); }
