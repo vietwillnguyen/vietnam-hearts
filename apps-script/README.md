@@ -117,9 +117,11 @@ Two things used to be on this list and are not any more, because the build now d
 
 - **Every bilingual string reads `English / Tiếng Việt`, in that order.** Question titles, help text, section titles, choice values, the consent line, the confirmation message, the two `Donation tiers` outcome columns and the bodies and subjects of every automated email.
   The order is a contract, not a preference: each `HEADER` needle in `Code.js` is an *English fragment* of a whole bilingual question title, so English leading is what keeps `col_()` resolving a column at all.
-  Flip a string and you must re-check the needle that finds it. `test/harness.js` matches every needle against the real bilingual titles, and `test/build-harness.js` asserts the order as a property over every title, help text and choice value on the form, so a half-done flip fails rather than quietly unhooking a column.
+  Flip a string and you must re-check the needle that finds it.
+  `test/harness.js` matches every needle against the real bilingual titles, and `test/build-harness.js` asserts the order as a property over every title, help text and choice value on the form, so a half-done flip fails rather than quietly unhooking a column.
 - **The published chart shows percent funded, never amounts.** The `Progress` tab deliberately allows one currency per row, so raw totals on one axis compare a VND number with a USD one: the first live build stacked `Monthly rice fund (USD)` 12382 of 13000 against `Tết gifts 2027 (VND)` 400000 of 2600000, and the VND bar dwarfed the USD one while neither bar meant anything.
-  A fraction is unit-free, so it is right whatever currency a row is in and needs no exchange rate that goes stale between the two tabs. The amounts travel in each bar's label instead.
+  A fraction is unit-free, so it is right whatever currency a row is in and needs no exchange rate that goes stale between the two tabs.
+  The amounts travel in each bar's label instead.
   `Progress chart` columns `E:G` hold the filtered `QUERY` and are hidden; `A:C` are the label and the two fractions, and they are the only columns the chart reads.
   `A2` is one `FILTER` that spills only the rows the `QUERY` returned, because a formula padding every spare row with `""` would give the chart an empty bar per spare row.
   `buildIntake()` owns `A1:G30` and the chart: it clears that block and rewrites the formulas every run, like `All work`, so a sheet built by an earlier version converges too.
