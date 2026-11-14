@@ -892,6 +892,38 @@ check('a tab on the second old name is renamed too, wording kept',
   !wLegacy2.ss.getSheetByName('Acknowledgement Email Response') &&
   legacyTab2.getRange('B2').getValue() === 'Second name, kept.',
   wLegacy2.ss.getSheets().map((t) => t.getName()).join(', '));
+const B2_WARNING = /remove the Zalo \/ WhatsApp line/;
+check('a clean B2 draws no remove-the-chat-line step',
+  !B2_WARNING.test(wLegacy.mails[wLegacy.mails.length - 1].htmlBody));
+check('an existing tab gets the current A1 guidance, though its B2 is kept',
+  /every Approved reply to a supplies offer/.test(String(legacyTab.getRange('A1').getValue())),
+  String(legacyTab.getRange('A1').getValue()));
+
+console.log('\n=== B2 still carries the Zalo line an earlier build seeded');
+const wZaloB2 = makeWorld();
+const zaloTab = wZaloB2.ss.insertSheet('Standing needs');
+const zaloB2 = 'We arrange each handover.\nYou can also message us on Zalo or WhatsApp: <number>.\n---\n' +
+  'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.';
+zaloTab.getRange('A1').setValue('B2 is quoted only for ticked always-needed items.');
+zaloTab.getRange('B2').setValue(zaloB2);
+wZaloB2.sandbox.buildIntake();
+const zaloMail = wZaloB2.mails[wZaloB2.mails.length - 1];
+const zaloSteps = ((/<ol>([\s\S]*?)<\/ol>/.exec(zaloMail.htmlBody) || ['', ''])[1]).split('<li>').slice(1);
+const zaloStepAt = zaloSteps.findIndex((t) => B2_WARNING.test(t));
+check('a manual step asks the team to remove the chat line from B2',
+  zaloStepAt !== -1, zaloMail.htmlBody.slice(0, 400));
+check('it sits near the top of the list', zaloStepAt >= 0 && zaloStepAt <= 2, String(zaloStepAt));
+check('it says why: acknowledgements and Approved replies quote B2, and the public replies by email',
+  zaloStepAt !== -1 && /acknowledgement/.test(zaloSteps[zaloStepAt]) &&
+  /Approved reply/.test(zaloSteps[zaloStepAt]) && /replies by email/.test(zaloSteps[zaloStepAt]),
+  zaloSteps[zaloStepAt]);
+check('the volunteer wording in B2 is left untouched',
+  zaloTab.getRange('B2').getValue() === zaloB2);
+check('the stale A1 guidance is rewritten',
+  /every Approved reply to a supplies offer/.test(String(zaloTab.getRange('A1').getValue())),
+  String(zaloTab.getRange('A1').getValue()));
+checkRendersAsHtml('Zalo line in B2', zaloMail);
+
 const standingTab = w.ss.getSheetByName('Supplies handover');
 const termsText = String(standingTab.getRange('B2').getValue());
 check('the handover block was written into Supplies handover!B2', termsText.length > 100);

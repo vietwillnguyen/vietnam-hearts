@@ -137,10 +137,12 @@ function buildIntake() {
 
   var form = openOrCreateForm_(notes, manual);
 
-  // Both of these can only end in a manual step that has to come FIRST, and
-  // the later unshift wins the front, so the order of these two calls is the
+  // These can only end in a manual step that has to come FIRST, and the later
+  // unshift wins the front, so the order of these calls is the reverse of the
   // order of their steps: a form carrying a file upload question shows a
-  // sign-in wall even when it is correctly published, so that one goes above.
+  // sign-in wall even when it is correctly published, so that one goes above,
+  // and both outrank a stale chat line in the handover wording.
+  warnOnChatLinesInHandover_(ss, manual);
   ensureFormPublished_(form, notes, manual);
   warnOnFileUploadItems_(form, manual);
 
@@ -923,6 +925,21 @@ function tab_(ss, name, notes) {
   return sh;
 }
 
+/** B2 is the volunteers' wording, so the build never rewrites it. Builds
+ *  before the public moved to email seeded it with a Zalo/WhatsApp line and a
+ *  number placeholder, and that text now rides into decision emails too. */
+function warnOnChatLinesInHandover_(ss, manual) {
+  var sh = termsSheet_(ss);
+  if (!sh) return;
+  var text = String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '');
+  if (!/Zalo|WhatsApp|zalo\.me|<number>|<số>/i.test(text)) return;
+  manual.unshift('On the "' + CONFIG.TERMS_TAB + '" tab, cell ' + CONFIG.TERMS_CELL +
+    ': **remove the Zalo / WhatsApp line** (and any number placeholder) from both ' +
+    'languages. Every acknowledgement of ticked always-needed items and every ' +
+    'Approved reply to a supplies offer quotes this cell word for word, and the ' +
+    'public now replies by email: a volunteer contacts each submitter.');
+}
+
 function buildStandingNeedsTab_(ss, notes) {
   // B2 is quoted only into supplies mail - the acknowledgement when the donor
   // ticked always-needed items, and every Approved reply - so the tab is named
@@ -934,11 +951,11 @@ function buildStandingNeedsTab_(ss, notes) {
     legacy.setName(CONFIG.TERMS_TAB);
   }
   var sh = tab_(ss, CONFIG.TERMS_TAB, notes);
-  if (String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim()) return sh;
-
   sh.getRange('A1').setValue('Supplies donations only: B2 is quoted in the ' +
     'acknowledgement when the donor ticked an always-needed item, and in every ' +
     'Approved reply to a supplies offer. Edit B2.');
+  if (String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim()) return sh;
+
   sh.getRange('A2').setValue('Handover and condition block (B2):');
   sh.getRange(CONFIG.TERMS_CELL).setValue(
     'We arrange each handover with a volunteer.\n' +
@@ -1290,7 +1307,7 @@ function collectManualSteps_(manual) {
     'replies to the team address and the build emails you about it.');
   manual.push('On the "' + CONFIG.TERMS_TAB + '" tab, cell ' + CONFIG.TERMS_CELL +
     ': read the whole block once. It is quoted verbatim into the acknowledgement ' +
-    'email, so it must name no group chat and no team number: a volunteer contacts ' +
+    'email and every Approved reply to a supplies offer, so it must name no group chat and no team number: a volunteer contacts ' +
     'each submitter, and the submitter replies by email.');
   manual.push('In Code.js: set CONFIG.DRY_RUN to false and push again, once you have ' +
     'submitted a test response and seen the two [DRY RUN] emails arrive. Until then ' +
