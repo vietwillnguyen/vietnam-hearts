@@ -758,7 +758,7 @@ check('nothing on the form promises a reply within any number of days',
 /* --- the sheet --- */
 console.log('\n--- the spreadsheet');
 const names = w.ss.getSheets().map((s) => s.getName());
-['Form Responses 1', 'Team tasks', 'All work', 'Standing needs', 'Volunteers',
+['Form Responses 1', 'Team tasks', 'All work', 'Acknowledgement Email Response', 'Volunteers',
   'Donation tiers', 'Progress', 'Progress chart'].forEach((t) => {
   check(`tab "${t}" exists`, names.indexOf(t) !== -1, names.join(', '));
 });
@@ -797,6 +797,22 @@ check('there is an overdue rule on Next action by',
   overdue && overdue.formula);
 check('status colours keep the word as well as the colour',
   responses._meta.formats.filter((r) => r.text).length >= 5);
+/* Forms INSERTS each response row at the first empty row. A rule range that
+   starts at row 2 is pushed below the data by every submission; the second
+   live build's colours had all drifted to row 7 after five rows. Starting at
+   the header, the range grows around each insert instead. */
+check('every colour rule starts at the header row, so inserts grow it',
+  responses._meta.formats.length >= 6 &&
+  responses._meta.formats.every((r) => (r.ranges || []).every((a) => /^([A-Z]+1:|r1c)/.test(a))),
+  JSON.stringify(responses._meta.formats.map((r) => r.ranges)));
+check('the overdue rule ignores the text header',
+  /ISNUMBER\(\$C1\)/.test(overdue.formula), overdue.formula);
+const before = responses._meta.validations.length;
+w.sandbox.afterStamp_(responses, 7);
+const row7 = responses._meta.validations.slice(before).filter((x) => x.row === 7);
+check('a stamped row gets its own Status, Priority, Owner and Decision dropdowns',
+  [1, 2, 4, 5].every((col) => row7.some((x) => x.col === col)),
+  JSON.stringify(row7.map((x) => x.col)));
 check('row 1 and columns A to C are frozen',
   responses._meta.frozenRows === 1 && responses._meta.frozenColumns === 3);
 const prot = responses._meta.protections;
@@ -855,9 +871,20 @@ check('the chart reads spare rows, so a new project appears by itself',
   chartTab.getCharts()[0].ranges.join(' ').indexOf('30') !== -1,
   chartTab.getCharts()[0].ranges.join(' '));
 
-const standingTab = w.ss.getSheetByName('Standing needs');
+console.log('\n=== a sheet built when the tab was still called "Standing needs"');
+const wLegacy = makeWorld();
+const legacyTab = wLegacy.ss.insertSheet('Standing needs');
+legacyTab.getRange('B2').setValue('Our own wording, kept.');
+wLegacy.sandbox.buildIntake();
+check('the old tab is renamed, not duplicated',
+  !wLegacy.ss.getSheetByName('Standing needs') &&
+  wLegacy.ss.getSheetByName('Acknowledgement Email Response') === legacyTab,
+  wLegacy.ss.getSheets().map((t) => t.getName()).join(', '));
+check('and its wording survives the rename',
+  legacyTab.getRange('B2').getValue() === 'Our own wording, kept.');
+const standingTab = w.ss.getSheetByName('Acknowledgement Email Response');
 const termsText = String(standingTab.getRange('B2').getValue());
-check('the handover block was written into Standing needs!B2', termsText.length > 100);
+check('the handover block was written into Acknowledgement Email Response!B2', termsText.length > 100);
 check('it names the public area', /Thạnh Mỹ Tây/.test(termsText));
 /* B2 rides into the acknowledgement, and a volunteer reaches out to each
    submitter, so it names no chat app, no group and no team number. The photo
@@ -881,7 +908,7 @@ check('the tab warns against putting the address in that cell',
   /DO NOT put the school address/.test(String(standingTab.getRange('A4').getValue())));
 check('the tab says the item list lives in the form, not here',
   /lives in the form/.test(String(standingTab.getRange('A5').getValue())));
-check('Standing needs does not restate the five items',
+check('the acknowledgement tab does not restate the five items',
   !/Cooking oil/.test(String(standingTab.getRange('A5').getValue())));
 
 /* An inline array literal, ={"a","b";"c","d"}: "," separates columns and ";"
@@ -1361,7 +1388,7 @@ check('the step says the acknowledgement asks for photos on any form',
   /acknowledgement email already asks every supplies submitter for photos/
     .test(step12), step12.slice(0, 300));
 check('the step asks for no B2 edit: the acknowledgement body carries the photo ask',
-  !/Standing needs'!B2/.test(step12), step12.slice(0, 400));
+  !/Acknowledgement Email Response'!B2/.test(step12), step12.slice(0, 400));
 check('the step promises no number in the email',
   !/number is in|số điện thoại nằm/i.test(step12), step12.slice(0, 300));
 checkRendersAsHtml('file upload present', mail12);

@@ -44,7 +44,7 @@ var CONFIG = {
   // in the acknowledgement. It lives in the sheet, not here, so a volunteer can
   // reword it without opening Apps Script. It must NOT contain the school
   // address: see section 7.5.3.
-  TERMS_TAB: 'Standing needs',
+  TERMS_TAB: 'Acknowledgement Email Response',
   TERMS_CELL: 'B2',
 
   // Tab mapping a volunteer's Owner name to their email address, headed
@@ -399,6 +399,7 @@ function processUnstampedRow_(sh, headers, rowNumber, row) {
     due.setDate(due.getDate() + CONFIG.TARGET_DAYS);
     sh.getRange(rowNumber, cDue + 1).setValue(due);
   }
+  afterStamp_(sh, rowNumber);
 
   var terms = ticked ? termsBlockOrEmpty_() : '';
 
@@ -454,6 +455,21 @@ function processUnstampedRow_(sh, headers, rowNumber, row) {
  *  a Timestamp must be present or the row is just a blank line in the sheet.
  *
  *  Returns the number of rows it repaired. */
+/** The new row's dropdowns and date formats. Forms pushes the build's
+ *  validation ranges below every row it inserts (see applyTeamRowRules_ in
+ *  Build.js), so the row that just arrived has none until this writes them.
+ *  Build.js shares this script's global scope in Apps Script; the Code.js-only
+ *  test harness has no Build.js, hence the typeof. Never fatal: a row without
+ *  a dropdown is still a handled row. */
+function afterStamp_(sh, rowNumber) {
+  if (typeof applyTeamRowRules_ !== 'function') return;
+  try {
+    applyTeamRowRules_(sh, rowNumber, 1);
+  } catch (err) {
+    reportError_('Dropdowns for row ' + rowNumber, err);
+  }
+}
+
 function sweepUnstamped() {
   var sh = sheet_();
   var lastRow = sh.getLastRow();

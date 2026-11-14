@@ -134,7 +134,7 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 3. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
 4. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
 5. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual; two confirmation emails for one submission looks broken.
-6. **The `Volunteers` tab rows**, and one read of the `Standing needs!B2` wording.
+6. **The `Volunteers` tab rows**, and one read of the `Acknowledgement Email Response!B2` wording.
 7. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
    The build renames that tab to `Form Responses 1 (old form)` with every row kept, links the form to a fresh tab, and asks someone to decide what to do with the old rows.
 8. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
@@ -170,7 +170,7 @@ The third, **adding a file upload question for photos**, was removed rather than
   Photos are asked for in words: the `Condition` question's help text, and the acknowledgement email's supplies paragraph, both asking for a reply to the acknowledgement.
   The acknowledgement's ask is in code, so it reaches every supplies submitter on any form; the help text is written only into a form the build creates, so on a form an earlier version built the delete step quotes it (`CONDITION_PHOTO_HELP`) for the team to paste in.
 - **No mail to a member of the public names a group chat, a chat app or a team number.** A volunteer reaches out to each submitter, and the submitter replies by email.
-  That covers the acknowledgement, the Approved and Declined replies, the form's confirmation message and `Standing needs!B2`; `test/harness.js` pins it over every mail the cases produce.
+  That covers the acknowledgement, the Approved and Declined replies, the form's confirmation message and `Acknowledgement Email Response!B2`; `test/harness.js` pins it over every mail the cases produce.
   The Zalo group is for volunteers, and its invite is only shared after someone signs up through the volunteer form.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
 - **A trigger that is installed is not the same as a trigger that is authorized.** The two ways this script goes quiet are different and both are silent: renaming `onIntakeEdit` to `onEdit` (below) makes it a simple trigger that cannot send mail, and a new OAuth scope makes every installed trigger refuse to run until somebody re-authorizes. The second leaves rows with a `Timestamp` and no `Status`; `sweepUnstamped()` is the repair and `buildIntake()` calls it last, after the triggers are installed.
@@ -182,6 +182,9 @@ The third, **adding a file upload question for photos**, was removed rather than
   Every range in the A2 query is text inside `INDIRECT(...)`, because Sheets rewrites a literal reference into the response tab each time the form inserts a row (`A2:A` drifts to `A7:A` after five submissions).
   The drift leaves the two stacked blocks with different widths, `QUERY` errors, and `IFERROR` shows an empty tab with no warning.
   To make the last column read a different question, change `allWorkQuery_` in `Build.js` rather than the cell, which the next run would overwrite.
+- **Forms inserts each response row, so nothing on the response tab may start at row 2.** A range that begins at the first empty row is pushed down one row per submission and soon covers no real row: the second live build's colours had drifted to row 7 after five submissions.
+  Colour rules therefore start at the header row, which no rule matches, so each insert lands inside the range and grows it.
+  Dropdowns cannot include the header, so `onIntakeFormSubmit` writes them on the row it just stamped (`afterStamp_` calling `applyTeamRowRules_`), and every `buildIntake()` run rewrites them over rows 2-1000.
 - **Guidance on a published tab is a cell note, never a cell value.** Publish to web renders every visible cell, so the wording rules for `Donation tiers` and the ownership note for `Progress chart` live as notes on their `A1`, which only editors see on hover.
 - **`Reply sent` is an idempotency stamp.** While it is non-empty the script will not email that row again. Clearing it by hand is the one way to make it re-email somebody.
   Each row's read, send and stamp run under the document lock, and the row is read again once the lock is held, so two overlapping edits of one row send one reply.

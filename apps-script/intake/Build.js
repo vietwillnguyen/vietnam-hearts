@@ -81,7 +81,6 @@ var DECISION_CHOICES = ['Approved', 'Declined'];
 var TABS = {
   teamTasks: 'Team tasks',
   allWork: 'All work',
-  standingNeeds: 'Standing needs',
   volunteers: 'Volunteers',
   tiers: 'Donation tiers',
   progress: 'Progress',
@@ -773,10 +772,18 @@ function addTeamColumns_(responses, notes) {
     TEAM_COLUMNS.join(', ') + ') to the left of the form answers.');
 }
 
-function applyTeamColumnFormatting_(responses, volunteers) {
-  var lastRow = 1000;
+/** The dropdowns and date formats on the team columns of rows
+ *  firstRow..firstRow+numRows-1. Forms INSERTS each new response row at the
+ *  first empty row, which is always the top of a range that starts below the
+ *  data, so a validation written over rows 2-1000 at build time is pushed one
+ *  row further down by every submission and never covers a real row. The
+ *  build writes them over every row, and onIntakeFormSubmit writes them again
+ *  on the row it just stamped (afterStamp_ in Code.js). */
+function applyTeamRowRules_(responses, firstRow, numRows, volunteers) {
   var c = {};
   TEAM_COLUMNS.forEach(function (h, i) { c[h] = i + 1; });
+  volunteers = volunteers ||
+    SpreadsheetApp.getActive().getSheetByName(TABS.volunteers);
 
   function listRule(values) {
     return SpreadsheetApp.newDataValidation()
@@ -785,25 +792,35 @@ function applyTeamColumnFormatting_(responses, volunteers) {
       .build();
   }
 
-  responses.getRange(2, c['Status'], lastRow - 1, 1)
+  responses.getRange(firstRow, c['Status'], numRows, 1)
     .setDataValidation(listRule(STATUS_VALUES));
-  responses.getRange(2, c['Priority'], lastRow - 1, 1)
+  responses.getRange(firstRow, c['Priority'], numRows, 1)
     .setDataValidation(listRule(PRIORITY_VALUES));
-  responses.getRange(2, c['Decision'], lastRow - 1, 1)
+  responses.getRange(firstRow, c['Decision'], numRows, 1)
     .setDataValidation(listRule(DECISION_CHOICES));
 
   // Owner reads the Volunteers tab, so adding a volunteer there adds them to
   // the dropdown and to the Reply-To lookup in one edit.
-  responses.getRange(2, c['Owner'], lastRow - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(volunteers.getRange('A2:A200'), true)
-      .setAllowInvalid(true)        // a name not yet on the tab is a warning, not a block
-      .build());
+  if (volunteers) {
+    responses.getRange(firstRow, c['Owner'], numRows, 1).setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInRange(volunteers.getRange('A2:A200'), true)
+        .setAllowInvalid(true)      // a name not yet on the tab is a warning, not a block
+        .build());
+  }
 
-  responses.getRange(2, c['Next action by'], lastRow - 1, 1)
+  responses.getRange(firstRow, c['Next action by'], numRows, 1)
     .setNumberFormat('yyyy-mm-dd');
-  responses.getRange(2, c['Reply sent'], lastRow - 1, 1)
+  responses.getRange(firstRow, c['Reply sent'], numRows, 1)
     .setNumberFormat('yyyy-mm-dd hh:mm');
+}
+
+function applyTeamColumnFormatting_(responses, volunteers) {
+  var lastRow = 1000;
+  var c = {};
+  TEAM_COLUMNS.forEach(function (h, i) { c[h] = i + 1; });
+
+  applyTeamRowRules_(responses, 2, lastRow - 1, volunteers);
 
   var statusA1 = colLetter_(c['Status']);
   var dueA1 = colLetter_(c['Next action by']);
@@ -820,12 +837,14 @@ function applyTeamColumnFormatting_(responses, volunteers) {
     textRule_(responses, priorityA1, 'High', '#ffe0cc'),
     // The overdue flag: a date in the past on a row nobody has finished. The
     // cheapest accountability mechanism in the whole design.
+    // ISNUMBER keeps the header row (text) out: these ranges start at row 1,
+    // see textRule_.
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=AND($' + dueA1 + '2<>"", $' + dueA1 + '2<TODAY(), $' +
-        statusA1 + '2<>"DONE")')
+      .whenFormulaSatisfied('=AND(ISNUMBER($' + dueA1 + '1), $' + dueA1 + '1<TODAY(), $' +
+        statusA1 + '1<>"DONE")')
       .setBackground('#f4b6b6')
       .setBold(true)
-      .setRanges([responses.getRange(2, c['Next action by'], lastRow - 1, 1)])
+      .setRanges([responses.getRange(1, c['Next action by'], lastRow, 1)])
       .build()
   ];
   responses.setConditionalFormatRules(rules);
@@ -851,7 +870,11 @@ function textRule_(sheet, columnLetter, text, background) {
   return SpreadsheetApp.newConditionalFormatRule()
     .whenTextContains(text)
     .setBackground(background)
-    .setRanges([sheet.getRange(columnLetter + '2:' + columnLetter + '1000')])
+    // From row 1, the header, never row 2. Forms inserts each response row at
+    // the first empty row; a range that starts there is pushed down a row per
+    // submission and ends up colouring nothing, while a range that starts at
+    // the header grows around every insert. No header contains a rule's text.
+    .setRanges([sheet.getRange(columnLetter + '1:' + columnLetter + '1000')])
     .build();
 }
 
@@ -866,6 +889,8 @@ function colLetter_(index) {
 }
 
 /** Create a tab if it is absent, and hand it back either way. */
+var LEGACY_TERMS_TAB = 'Standing needs';
+
 function tab_(ss, name, notes) {
   var sh = ss.getSheetByName(name);
   if (sh) return sh;
@@ -875,6 +900,13 @@ function tab_(ss, name, notes) {
 }
 
 function buildStandingNeedsTab_(ss, notes) {
+  // The tab was called "Standing needs" until the team renamed it for what it
+  // holds. Rename an old one rather than create a second, empty tab beside it.
+  var legacy = ss.getSheetByName(LEGACY_TERMS_TAB);
+  if (legacy && !ss.getSheetByName(CONFIG.TERMS_TAB)) {
+    legacy.setName(CONFIG.TERMS_TAB);
+    notes.push('Renamed the "' + LEGACY_TERMS_TAB + '" tab to "' + CONFIG.TERMS_TAB + '".');
+  }
   var sh = tab_(ss, CONFIG.TERMS_TAB, notes);
   if (String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim()) return sh;
 
