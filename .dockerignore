@@ -78,4 +78,7 @@ docker-*.sh
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Apps Script lives in Google, not in the image
+apps-script/
