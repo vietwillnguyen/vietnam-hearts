@@ -99,7 +99,10 @@ var HEADER = {
   // only how we find the column. Keep "Other" switched off on this question.
   standing: 'always need',
   // The free-text escape hatch. Anything here means more than the five items.
-  other: 'Other items'
+  other: 'Other items',
+  // Forms writes this on every submission, so it is what tells a real row
+  // from a blank line below the data. sweepUnstamped() is its only reader.
+  timestamp: 'Timestamp'
 };
 
 /** Run once, by hand, from the Apps Script editor. Safe to re-run. */
@@ -319,7 +322,18 @@ function onIntakeFormSubmit(e) {
   try {
     var sh = sheet_();
     var rowNumber = e && e.range ? e.range.getRow() : sh.getLastRow();
-    var headers = headerRow_();
+    processSubmissionRow_(sh, headerRow_(), rowNumber);
+  } catch (err) {
+    reportError_('onIntakeFormSubmit', err);
+  }
+}
+
+/** Everything a new submission causes: the three stamps, the submitter's
+ *  acknowledgement and the team notice. Separated from the trigger so
+ *  sweepUnstamped() can give a missed row the identical treatment rather
+ *  than a second, drifting copy of it. */
+function processSubmissionRow_(sh, headers, rowNumber) {
+  {
     var row = rowValues_(sh, rowNumber);
 
     var cStatus = col_(headers, HEADER.status);
@@ -389,9 +403,67 @@ function onIntakeFormSubmit(e) {
       '<p>Put one line in <b>Decision note</b> first - that line is what the ' +
       'person receives - then set <b>Decision</b> to Approved or Declined. ' +
       'Changing <b>Status</b> emails nobody.</p>');
-  } catch (err) {
-    reportError_('onIntakeFormSubmit', err);
   }
+}
+
+/** Repair rows the form wrote while the installed triggers were not running.
+ *
+ *  A trigger stops firing whenever the project's authorization goes stale,
+ *  and the one change that does that silently is a new OAuth scope: an
+ *  advanced service added to appsscript.json and pushed with clasp leaves
+ *  every installed trigger dead until the owner opens the editor and
+ *  re-authorizes. Live pass 3 lost a real submission that way. Nothing in
+ *  the sheet says so - the row is simply there with a Timestamp and nothing
+ *  else - so this is the only way those people ever hear back.
+ *
+ *  Exported on purpose, and also called at the end of buildIntake(), because
+ *  running buildIntake() in the editor is exactly what re-authorizing looks
+ *  like: the repair then happens in the same step that fixes the cause.
+ *
+ *  What counts as missed is deliberately narrower than "Status is empty".
+ *  Status alone cannot tell a row the trigger never saw from one a volunteer
+ *  cleared by hand, and guessing wrong emails a member of the public twice.
+ *  The trigger writes three cells together, so all three must be empty, and
+ *  a Timestamp must be present or the row is just a blank line in the sheet.
+ *
+ *  Returns the number of rows it repaired. */
+function sweepUnstamped() {
+  var repaired = 0;
+  try {
+    var sh = sheet_();
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) return 0;
+
+    var headers = headerRow_();
+    var cStatus = col_(headers, HEADER.status);
+    var cPriority = col_(headers, HEADER.priority);
+    var cDue = col_(headers, HEADER.due);
+    var cStamp = col_(headers, HEADER.timestamp);
+
+    var values = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+    for (var i = 0; i < values.length; i++) {
+      var row = values[i];
+      if (!row || !row.length) continue;
+      if (String(row[cStamp] || '').trim() === '') continue;
+      if (String(row[cStatus] || '').trim() !== '') continue;
+      if (String(row[cPriority] || '').trim() !== '') continue;
+      if (String(row[cDue] || '').trim() !== '') continue;
+
+      var rowNumber = i + 2;
+      try {
+        processSubmissionRow_(sh, headers, rowNumber);
+        repaired++;
+      } catch (err) {
+        reportError_('sweepUnstamped row ' + rowNumber, err);
+      }
+    }
+    if (repaired) {
+      Logger.log('sweepUnstamped repaired %s row(s).', repaired);
+    }
+  } catch (err) {
+    reportError_('sweepUnstamped', err);
+  }
+  return repaired;
 }
 
 /* ------------------------------------------ on a change in the DECISION cell */

@@ -6,9 +6,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node --check intake/Code.js && node --check intake/Build.js",
-    "test": "node intake/test/harness.js intake/Code.js && node intake/test/build-harness.js intake/Code.js intake/Build.js",
-    "verify": "npm run check && npm run test"
+    "check": "node --check intake/Code.js && node --check intake/Build.js && node --check tools/scope-change-reminder.js",
+    "test": "node intake/test/harness.js intake/Code.js && node intake/test/build-harness.js intake/Code.js intake/Build.js && node tools/test/scope-change-reminder.test.js",
+    "verify": "npm run check && npm run test && npm run scope-reminder",
+    "scope-reminder": "node tools/scope-change-reminder.js"
   },
   "devDependencies": {
     "@google/clasp": "3.4.1"

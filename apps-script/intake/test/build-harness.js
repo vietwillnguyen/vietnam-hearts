@@ -1211,6 +1211,48 @@ function checkPublishDegraded(label, world) {
  * for the item at all), so it has to say so, first, above even the publish
  * step: a published form with a file upload question is still unusable.
  */
+/* --- the rows a dead trigger missed ----------------------------------------
+ *
+ * Live pass 3: adding the advanced Drive service to appsscript.json added a
+ * scope, and after clasp push every INSTALLED trigger stopped firing until
+ * the owner re-authorized. A real submission landed with a Timestamp and
+ * nothing else. Running buildIntake() in the editor is what re-authorizing
+ * looks like, so the repair belongs in the same step as the cause's fix.
+ */
+console.log('\n=== buildIntake() repairs rows that arrived while the triggers were dead');
+const w14 = makeWorld();
+w14.sandbox.buildIntake();
+const resp14 = w14.ss.getSheetByName('Form Responses 1');
+const hdr14 = resp14.getRange(1, 1, 1, resp14.getLastColumn()).getValues()[0];
+const colOf = (needle) => w14.sandbox.col_(hdr14, needle) + 1;
+// One row exactly as Forms writes it when no trigger is listening: a
+// Timestamp, the submitter's answers, and none of the three team stamps.
+resp14.getRange(2, colOf('Timestamp')).setValue(new Date('2026-11-14T09:40:00Z'));
+resp14.getRange(2, colOf('Email Address')).setValue('missed@example.com');
+resp14.getRange(2, colOf('Your name')).setValue('Linh');
+const mailsBefore14 = w14.mails.length;
+w14.sandbox.buildIntake();
+check('the missed row was stamped by the build',
+  String(resp14.getRange(2, colOf('Status')).getValue()) === 'TODO',
+  String(resp14.getRange(2, colOf('Status')).getValue()));
+check('its submitter was acknowledged',
+  w14.mails.some((m) => /da nhan de xuat/.test(m.subject || '')),
+  w14.mails.slice(mailsBefore14).map((m) => m.subject).join(' | '));
+check('the build email says how many rows it repaired',
+  /1 submission that arrived while the triggers were not running/
+    .test(w14.mails[w14.mails.length - 1].htmlBody),
+  (w14.mails[w14.mails.length - 1].htmlBody.match(/<li>[^<]*repair[^<]*/i) || [''])[0]);
+const mailsAfter14 = w14.mails.length;
+w14.sandbox.buildIntake();
+check('a later build does not acknowledge that row again',
+  w14.mails.length === mailsAfter14 + 1,
+  `${mailsAfter14} -> ${w14.mails.length}`);
+check('and says nothing about repairs when there were none',
+  !/arrived while the triggers were not running/
+    .test(w14.mails[w14.mails.length - 1].htmlBody));
+check('a clean build reports no repair line at all',
+  !/arrived while the triggers were not running/.test(mail.htmlBody));
+
 console.log('\n=== a file upload question added by hand in the form editor');
 const w12 = makeWorld();
 w12.sandbox.buildIntake();

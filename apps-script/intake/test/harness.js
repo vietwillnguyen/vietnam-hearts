@@ -87,7 +87,17 @@ function makeWorld(opts) {
     getLastRow: () => grid.length,
     getSheetId: () => 1234,
     getRange: (r, c, nr, nc) => ({
-      getValues: () => [grid[r - 1].slice(c - 1, c - 1 + (nc || 1))],
+      /* Real getValues returns numRows rows. The fake used to return one
+         whatever it was asked for, which would have let a whole-sheet scan
+         pass while only ever seeing its first row. */
+      getValues: () => {
+        const out = [];
+        for (let i = 0; i < (nr || 1); i++) {
+          const line = grid[r - 1 + i];
+          out.push(line ? line.slice(c - 1, c - 1 + (nc || 1)) : []);
+        }
+        return out;
+      },
       setValue: (v) => { grid[r - 1][c - 1] = v; },
       getRow: () => r,
       getColumn: () => c,
@@ -526,6 +536,103 @@ check('R the skipped row is reported by number',
 w = editCell(makeWorld({ lockHeld: true }), H['Decision']);
 check('S a blank Decision neither waits on the lock nor reports',
   w.lock.waits.length === 0 && w.mails.length === 0);
+
+/* ----------------------------------- T: the missed-row sweep -------------
+ *
+ * Live pass 3: adding an advanced service to appsscript.json added a scope,
+ * and after `clasp push` the INSTALLED triggers stopped firing until the
+ * owner re-authorized. A real submission landed in the sheet with a
+ * Timestamp and nothing else - no Status, no acknowledgement, no team
+ * notice - and nothing in the sheet said so. sweepUnstamped() is the repair:
+ * it processes exactly those rows, once.
+ */
+console.log('\n--- T. sweepUnstamped(), the repair for rows that arrived while the triggers were dead');
+
+function sweep(w) {
+  w.sandbox.sweepUnstamped();
+  return record(w);
+}
+
+// T1: one row that the dead trigger never touched
+w = makeWorld({ ticked: 'Dau an' });
+w.grid[1][H['Status']] = '';
+w.grid[1][H['Priority']] = '';
+w.grid[1][H['Next action by']] = '';
+sweep(w);
+check('T1 the missed row is stamped TODO', w.grid[1][H['Status']] === 'TODO',
+  String(w.grid[1][H['Status']]));
+check('T1 priority is set the same way the trigger would',
+  w.grid[1][H['Priority']] === 'High', String(w.grid[1][H['Priority']]));
+check('T1 Next action by is filled', isDate(w.grid[1][H['Next action by']]));
+check('T1 the submitter is acknowledged after all', donorMails(w).length === 1,
+  String(donorMails(w).length));
+check('T1 the team is notified after all', teamMails(w).length === 1,
+  teamMails(w).map((m) => m.subject).join(' | '));
+check('T1 nothing is approved by a sweep', w.grid[1][H['Decision']] === '');
+
+// T2: running it twice must not email anybody twice
+const beforeT2 = w.mails.length;
+w.sandbox.sweepUnstamped();
+check('T2 a second sweep processes the row again zero times',
+  w.mails.length === beforeT2, `${beforeT2} -> ${w.mails.length}`);
+
+// T3: a row the trigger already handled is left alone
+w = makeWorld({ ticked: 'Dau an', preset: { [H['Status']]: 'IN PROGRESS' } });
+w.grid[1][H['Priority']] = 'Low';
+sweep(w);
+check('T3 a stamped row is not reprocessed', w.mails.length === 0,
+  w.mails.map((m) => m.subject).join(' | '));
+check('T3 its Status is untouched', w.grid[1][H['Status']] === 'IN PROGRESS');
+check('T3 its Priority is untouched', w.grid[1][H['Priority']] === 'Low');
+
+/* T4: a volunteer who clears Status on a handled row must NOT cause a second
+   acknowledgement to a member of the public. Status alone cannot tell
+   "never processed" from "processed, then edited", so the sweep requires the
+   whole submit stamp - Status, Priority and Next action by - to be empty. */
+w = makeWorld({ ticked: 'Dau an' });
+w.grid[1][H['Status']] = '';
+w.grid[1][H['Priority']] = 'High';
+w.grid[1][H['Next action by']] = new Date('2026-11-21T00:00:00Z');
+sweep(w);
+check('T4 a cleared Status on an otherwise stamped row is not re-acknowledged',
+  donorMails(w).length === 0, donorMails(w).map((m) => m.subject).join(' | '));
+check('T4 and the sweep does not re-stamp it either',
+  w.grid[1][H['Status']] === '', String(w.grid[1][H['Status']]));
+
+// T5: a blank trailing row has no Timestamp, so it is not a missed submission
+w = makeWorld({ rows: 2, rowPresets: [null, Object.fromEntries(
+  HEADERS.map((h, i) => [i, '']))] });
+w.grid[1][H['Status']] = '';
+w.grid[1][H['Priority']] = '';
+w.grid[1][H['Next action by']] = '';
+sweep(w);
+check('T5 only the row with a Timestamp is treated as a submission',
+  donorMails(w).length === 1, String(donorMails(w).length));
+check('T5 the empty row is left empty', w.grid[2][H['Status']] === '');
+
+// T6: several missed rows are all repaired, each once
+w = makeWorld({ rows: 3 });
+[1, 2, 3].forEach((r) => {
+  w.grid[r][H['Status']] = '';
+  w.grid[r][H['Priority']] = '';
+  w.grid[r][H['Next action by']] = '';
+});
+sweep(w);
+check('T6 every missed row is stamped',
+  [1, 2, 3].every((r) => w.grid[r][H['Status']] === 'TODO'),
+  [1, 2, 3].map((r) => w.grid[r][H['Status']]).join(','));
+check('T6 each missed row is acknowledged exactly once',
+  donorMails(w).length === 3, String(donorMails(w).length));
+
+// T7: the sweep reports what it repaired, so a silent no-op is distinguishable
+w = makeWorld({ ticked: 'Dau an' });
+w.grid[1][H['Status']] = '';
+w.grid[1][H['Priority']] = '';
+w.grid[1][H['Next action by']] = '';
+check('T7 it returns the number of rows it repaired',
+  w.sandbox.sweepUnstamped() === 1);
+check('T7 and zero when there is nothing to repair',
+  w.sandbox.sweepUnstamped() === 0);
 
 /* ------------------------- the needles against the real column titles ---- */
 

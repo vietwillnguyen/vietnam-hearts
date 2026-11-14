@@ -181,6 +181,26 @@ function buildIntake() {
       'nobody is emailed - not the submitter and not the team.');
   }
 
+  // After the triggers, and last of all, because this is the step that needs
+  // them: a new OAuth scope pushed with clasp leaves every installed trigger
+  // dead until somebody opens the editor and re-authorizes, and running
+  // buildIntake() is what re-authorizing looks like. Live pass 3 lost a real
+  // submission that way, so the run that fixes the cause also repairs the
+  // rows it cost. Never fatal - a build that dies here would take the
+  // instructions email down with it.
+  try {
+    var repaired = sweepUnstamped();
+    if (repaired) {
+      notes.push('Processed ' + repaired + ' submission' +
+        (repaired === 1 ? '' : 's') + ' that arrived while the triggers were ' +
+        'not running: each row was stamped and its sender acknowledged, the ' +
+        'same way the form-submit trigger would have.');
+    }
+  } catch (err) {
+    notes.push('Could not check for submissions missed while the triggers ' +
+      'were down: ' + plainReason_(err));
+  }
+
   collectManualSteps_(manual);
   reportBuild_(form, ss, notes, manual);
   return { formUrl: form.getPublishedUrl(), sheetUrl: ss.getUrl() };

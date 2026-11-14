@@ -39,3 +39,6 @@ jobs:
       run: |
         node apps-script/intake/test/build-harness.js \
           apps-script/intake/Code.js apps-script/intake/Build.js
+
+    - name: Scope-change reminder
+      run: node apps-script/tools/test/scope-change-reminder.test.js

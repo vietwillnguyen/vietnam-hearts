@@ -60,6 +60,22 @@ cd intake && npx clasp push      # this IS the deploy
 A container-bound trigger script needs no deployment or version: the installable triggers run whatever code is currently saved, so a successful push is live immediately.
 That is worth knowing in both directions - it is why there is no release step, and why a bad push is in production the moment it lands.
 
+### If you changed `appsscript.json`, you are not done after the push
+
+**A change to `intake/appsscript.json` that adds an OAuth scope, including enabling an advanced service, stops every installed trigger from firing until the owner opens the editor and re-authorizes the project.**
+The push reports success. The script is deployed. The form keeps accepting submissions, and each one lands in the sheet with a Timestamp and **nothing else**: no `Status`, no acknowledgement to the person who submitted it, no notice to the team, and nothing anywhere saying it happened.
+This is not hypothetical: it cost a real submission on the live pass that added the Drive advanced service, and the row sat unnoticed because a half-processed row looks exactly like a new one nobody has got to yet.
+
+So whenever that file changes, immediately after `clasp push`, signed in as the shared team Gmail:
+
+1. Apps Script editor -> run **`buildIntake`** -> accept the new permissions prompt.
+   This re-authorizes the project, and because `buildIntake()` ends with `sweepUnstamped()`, the same run also repairs the rows that arrived while the triggers were down: each is stamped and its sender acknowledged, exactly as the trigger would have.
+2. Check the sheet. **Every row with a `Timestamp` must have a `Status`.** A row with one and not the other is a person who has heard nothing.
+
+`npm run verify` prints a loud reminder of this whenever `apps-script/intake/appsscript.json` differs from the default branch (`tools/scope-change-reminder.js`).
+It is advice and never fails the run; a checkout with no base to compare against simply prints nothing.
+If you ever need the repair on its own, `sweepUnstamped()` is exported and safe to run by hand - it only touches rows that have a `Timestamp` and none of the three stamps the submit trigger writes, so it cannot email anybody twice.
+
 To check whether anyone edited in the browser:
 
 ```bash
@@ -74,7 +90,8 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 | `intake/Build.js` | `buildIntake()`, the one-shot builder that creates the form, the sheet tabs and the triggers |
 | `intake/test/harness.js` | Stub harness for the handlers: cases A to S against a fake `SpreadsheetApp` / `MailApp`, plus every `HEADER` needle against the real bilingual column titles |
 | `intake/test/forbidden-shapes.js` | The address, opening-hours and reply-date shapes both harnesses assert never appear |
-| `intake/test/build-harness.js` | Stub harness for the builder, including a second run, a degraded Google account, a lost form, a default tab that is not empty, a form somebody unpublished, and a file upload question somebody added |
+| `intake/test/build-harness.js` | Stub harness for the builder, including a second run, a degraded Google account, a lost form, a default tab that is not empty, a form somebody unpublished, a file upload question somebody added, and rows that arrived while the triggers were dead |
+| `tools/scope-change-reminder.js` | The verify-time warning that a manifest change needs a re-authorization, with its own test under `tools/test/` |
 | `intake/appsscript.json` | Runtime, exception logging, the time zone, and the one advanced service the project needs (Drive `v3`, for the form's responder permission) |
 | `intake/.clasp.json.example` | Copy to `.clasp.json` and fill in the script id. The real file is gitignored because `clasp clone-script` writes it and the id differs per deployment |
 
@@ -96,8 +113,9 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
    It must print `200`.
    A `401` means the form is serving a Google login wall instead of the questions: either it is not published and open to anyone with the link, or somebody has added a file upload question.
    Read the build email's manual steps - those two cases are the first ones on that list - fix it, and run the check again.
-9. Submit a test response. Two `[DRY RUN]` emails should arrive at the team address.
-10. Set `CONFIG.DRY_RUN = false` in `Code.js`, `npm run verify`, `clasp push`.
+9. Submit a test response. Two `[DRY RUN]` emails should arrive at the team address, and the new row must get a `Status`.
+   A row with a `Timestamp` and no `Status` means the triggers are not firing, which after a manifest change means the project needs re-authorizing: see the section above.
+10. Set `CONFIG.DRY_RUN = false` in `Code.js`, `npm run verify`, `clasp push`. If that push carried a manifest change, run `buildIntake` once more and accept the prompt.
 
 `buildIntake()` is idempotent and safe to re-run: it remembers the form it created in script properties, creates each tab only when absent, and rewrites the dropdowns, formats and protection every time, so a second run repairs a hand-edited sheet rather than duplicating it.
 It will not re-add the form's questions once the form has any, because a volunteer may have reworded one.
@@ -151,6 +169,7 @@ The third, **adding a file upload question for photos**, was removed rather than
   The acknowledgement's ask is in code, so it reaches every supplies submitter on any form; the other two are written only into a form and a `B2` the build creates, so on a form an earlier version built the delete step quotes the `Condition` help text (`CONDITION_PHOTO_HELP`) for the team to paste in, and asks for the `B2` photo line if that cell has none.
   The decision mails offer no Zalo or group link at all: they go to a member of the public and ask for a reply instead.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
+- **A trigger that is installed is not the same as a trigger that is authorized.** The two ways this script goes quiet are different and both are silent: renaming `onIntakeEdit` to `onEdit` (below) makes it a simple trigger that cannot send mail, and a new OAuth scope makes every installed trigger refuse to run until somebody re-authorizes. The second leaves rows with a `Timestamp` and no `Status`; `sweepUnstamped()` is the repair and `buildIntake()` calls it last, after the triggers are installed.
 - **`onIntakeEdit` must not be renamed to `onEdit`.** A function called `onEdit` is installed as a *simple* trigger, and simple triggers cannot send email. It would fail silently, with nothing in any log a volunteer would read. The name is the guard.
 - **Only the `Decision` column can email a member of the public.** `Status` is the team's own task tracking and emails nobody, which is what lets one spreadsheet hold both intake rows and ordinary team tasks. Case E in `test/harness.js` is that property.
 - **Nothing in the script approves anything.** The submit handler writes `Status`, `Priority` and `Next action by`; only a human sets `Decision`.
