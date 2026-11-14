@@ -212,7 +212,8 @@ function makeSpreadsheet(world) {
       getProtections: () => meta.protections.slice(),
       setConditionalFormatRules: (rules) => { meta.formats = rules.slice(); return sheet; },
       autoResizeColumns: () => sheet,
-      setColumnWidth: () => sheet,
+      setColumnWidth: (c, px) => { (meta.columnWidths ||= {})[c] = px; return sheet; },
+      getColumnWidth: (c) => (meta.columnWidths || {})[c] || 100,
       hideColumns: (col, num) => {
         meta.hiddenColumns.push([col, num === undefined ? 1 : num]);
         return sheet;
@@ -888,6 +889,18 @@ function arrayLiteralRows(formula) {
   if (!m) return null;
   return m[1].split(';').map((r) => r.split(',').map((c) => c.replace(/^"|"$/g, '')));
 }
+/* The header of the response-tab column that All work shows as "What". */
+function allWorkWhatHeader(world) {
+  const q = world.ss.getSheetByName('All work').getRange('A2').getFormula();
+  const m = /INDIRECT\("'Form Responses 1'!([A-Z]+)2:\1"\);/.exec(q);
+  if (!m) return null;
+  const letter = m[1];
+  let col = 0;
+  for (const ch of letter) col = col * 26 + (ch.charCodeAt(0) - 64);
+  return world.ss.getSheetByName('Form Responses 1').getRange(1, col).getValue();
+}
+check('All work shows the offer question as "What"',
+  /What would you like to offer/.test(allWorkWhatHeader(w)), String(allWorkWhatHeader(w)));
 /* Publish to web renders every visible cell, so guidance on a published tab
    must be a cell note, never a cell value. */
 for (const [tabName, needle] of [['Donation tiers', /Khoảng \/ About/], ['Progress chart', /Published to the web/]]) {
@@ -1055,6 +1068,11 @@ chartTab._meta.charts = [chartTab._chartBuilder({ id: 'published-oid', type: 'BA
   ranges: ['A1:A30', 'B1:C30'],
   options: { title: 'Vietnam Hearts - progress', isStacked: true } }).build()];
 chartTab.getRange('F1').setValue('Helper columns - leave alone.');
+chartTab.getRange('I1').setValue('Published to the web. Nothing personal may ever be added.');
+chartTab.setColumnWidth(9, 420);
+const oldTiers = w.ss.getSheetByName('Donation tiers');
+oldTiers.getRange('G1').setValue('Head the published table "Khoảng / About".');
+oldTiers.setColumnWidth(7, 420);
 chartTab.getRange('B2').setFormula('=ARRAYFORMULA(F2:F30)');
 chartTab.getRange('C2').setFormula('=ARRAYFORMULA(G2:G30)');
 w.sandbox.buildIntake();
@@ -1073,6 +1091,12 @@ check('the old F1 note no longer sits where the E1 header spills',
 check('the old B2 and C2 formulas no longer block the A2 spill',
   chartTab.getRange('B2').getValue() === '' && chartTab.getRange('C2').getValue() === '',
   chartTab.getRange('B2:C2').getValues()[0].join(' | '));
+check('the old Progress chart guidance column is cleared and narrowed again',
+  chartTab.getRange('I1').getValue() === '' && chartTab.getColumnWidth(9) === 100,
+  `${chartTab.getRange('I1').getValue()} / ${chartTab.getColumnWidth(9)}`);
+check('the old Donation tiers guidance column is cleared and narrowed again',
+  oldTiers.getRange('G1').getValue() === '' && oldTiers.getColumnWidth(7) === 100,
+  `${oldTiers.getRange('G1').getValue()} / ${oldTiers.getColumnWidth(7)}`);
 check('both re-runs reported too', w.mails.length === 3, String(w.mails.length));
 check('neither re-run published an already published form again',
   w.setPublishedCalls.length === 1, JSON.stringify(w.setPublishedCalls));
@@ -1089,6 +1113,8 @@ check('the build still completes', w2.formsCreated === 1);
 check('the file upload step is gone from the degraded build too',
   !/file upload/i.test(mail2.htmlBody),
   (mail2.htmlBody.match(/<li>[^<]*[Ff]ile upload[^<]*/) || [''])[0]);
+check('All work still shows the offer question when the tab has no email column',
+  /What would you like to offer/.test(allWorkWhatHeader(w2)), String(allWorkWhatHeader(w2)));
 check('email collection becomes a manual step naming Responder input',
   /Collect email addresses -&gt; <b>Responder input<\/b>/.test(mail2.htmlBody));
 check('that step warns that Verified forces a sign-in',
@@ -1142,9 +1168,8 @@ check('the All work query reads the new response tab after the rename',
 check('every All work range is INDIRECT text, so form row inserts cannot shift it',
   !/[^"]'(Form Responses 1|Team tasks)'!/.test(a2.replace(/INDIRECT\("'[^"]*"\)/g, '')) &&
   (a2.match(/INDIRECT\(/g) || []).length === 6, a2);
-check('requests show the offer type (column J) as What, not the Decision note',
-  a2.indexOf(`INDIRECT("'Form Responses 1'!J2:J")`) !== -1 &&
-  a2.indexOf("'Form Responses 1'!F2:F") === -1, a2);
+check('requests show the offer type as What, not the Decision note',
+  /What would you like to offer/.test(allWorkWhatHeader(w3)), String(allWorkWhatHeader(w3)));
 check('All work formats Next action by as a date',
   allWork3.getRange(2, 4).getNumberFormat &&
   allWork3.getRange(2, 4).getNumberFormat() === 'yyyy-mm-dd');
@@ -1189,6 +1214,18 @@ w4.sandbox.buildIntake();
 check('a hand-edited query is rebuilt to read the response tab',
   allWork4.getRange('A2').getFormula() === w4.sandbox.allWorkQuery_(),
   allWork4.getRange('A2').getFormula());
+
+console.log('\n=== All work over a response tab without the offer question');
+const w7 = makeWorld();
+w7.ss._addResponseSheet('Form Responses 1',
+  ['Status', 'Priority', 'Next action by', 'Owner', 'Decision', 'Decision note',
+    'Reply sent', 'Timestamp', 'Your name', 'Phone']);
+const notes7 = [];
+w7.sandbox.buildAllWorkTab_(w7.ss, notes7);
+check('it shows the Decision note as What rather than whatever sits in column J',
+  allWorkWhatHeader(w7) === 'Decision note', String(allWorkWhatHeader(w7)));
+check('the build notes say All work fell back to the Decision note',
+  notes7.some((n) => /shows each request's Decision note/.test(n)), JSON.stringify(notes7));
 
 /* The fake must rewrite formulas the way Sheets does, or the checks above
    pass on text that real Sheets would have changed under them. */

@@ -979,6 +979,15 @@ function buildTeamTasksTab_(ss, notes) {
   return sh;
 }
 
+/** 0-based column of the offer-type question on the response tab, or -1. */
+function offerTypeColumn_(headers) {
+  try {
+    return col_(headers, HEADER.type);
+  } catch (e) {
+    return -1;
+  }
+}
+
 function allWorkQuery_() {
   // Every range is a string inside INDIRECT. A literal reference into the
   // response tab is rewritten by Sheets each time the form inserts a row
@@ -986,12 +995,18 @@ function allWorkQuery_() {
   // when someone inserts or drags a column there. Either drift leaves the two
   // stacked blocks with different widths, QUERY errors, and IFERROR shows an
   // empty tab. INDIRECT text is never rewritten.
-  // Requests show the offer type (column J) as "What"; Team tasks show "What".
+  // Requests show the offer type as "What", found by its header because its
+  // position depends on how the form was built; a form without that question
+  // shows the Decision note instead. Team tasks show their own "What".
   function ref(tab, a1) { return 'INDIRECT("\'' + tab + '\'!' + a1 + '")'; }
+  var headers = headerRow_();
+  var what = offerTypeColumn_(headers);
+  if (what < 0) what = col_(headers, HEADER.note);
+  var whatA1 = colLetter_(what + 1);
   var r = CONFIG.SHEET_NAME, t = TABS.teamTasks;
   return '=IFERROR(QUERY({' +
     'ARRAYFORMULA(IF(' + ref(r, 'A2:A') + '<>"","Request","")),' +
-    ref(r, 'A2:D') + ',' + ref(r, 'J2:J') + ';' +
+    ref(r, 'A2:D') + ',' + ref(r, whatA1 + '2:' + whatA1) + ';' +
     'ARRAYFORMULA(IF(' + ref(t, 'A2:A') + '<>"","Task","")),' +
     ref(t, 'A2:D') + ',' + ref(t, 'E2:E') +
     '},"select * where Col1 is not null and Col2 <> \'DONE\' order by Col4",0),"")';
@@ -1007,6 +1022,10 @@ function buildAllWorkTab_(ss, notes) {
   sh.getRange('A1').setFormula(
     '={"Where","Status","Priority","Next action by","Owner","What"}');
   sh.getRange('A2').setFormula(allWorkQuery_());
+  if (offerTypeColumn_(headerRow_()) < 0) {
+    notes.push('The response tab has no "' + HEADER.type + '" column, so the ' +
+      'All work tab shows each request\'s Decision note as "What" instead.');
+  }
   // QUERY returns bare date serials (46344); format them as dates.
   sh.getRange(2, 4, 999, 1).setNumberFormat('yyyy-mm-dd');
   sh.getRange('H1').setValue(
@@ -1068,8 +1087,9 @@ function buildProgressChartTab_(sh) {
   sh.hideColumns(5, 3);
 
   // A cell note, not a cell value: Publish to web renders every visible cell,
-  // so a note in I1 would sit on the public page. Notes stay in the editor.
+  // so text in I1 would sit on the public page. Notes stay in the editor.
   sh.getRange('I1').clearContent();
+  sh.setColumnWidth(9, 100);
   sh.getRange('A1').setNote(
     'Published to the web. Nothing personal may ever be added to this tab. ' +
     'A1:G30 and the chart are rewritten by buildIntake() on every run, so ' +
@@ -1094,6 +1114,7 @@ function buildTiersTab_(ss, notes) {
   // a cell note on A1 (editor only). A tab built before this held it in G1.
   if (/^Head the published table/.test(String(sh.getRange('G1').getValue() || ''))) {
     sh.getRange('G1').clearContent();
+    sh.setColumnWidth(7, 100);
   }
   sh.getRange('A1').setNote(TIERS_NOTE_);
   if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
