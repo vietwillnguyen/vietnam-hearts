@@ -605,9 +605,14 @@ function replyToDecision_(sh, headers, rowNumber, row) {
   // the call. Only Approved names them, because only Approved promises
   // contact.
   var owner = ownerContact_(row[cOwner], decision === 'Approved');
+  // An approved supplies offer is about to be handed over, so it carries the
+  // handover and food-condition block whatever the donor ticked: an offer of
+  // only off-list goods never saw it in the acknowledgement.
+  var terms = decision === 'Approved' &&
+    isSuppliesOffer_(row[col_(headers, HEADER.type)]) ? termsBlockOrEmpty_() : '';
   var sent = send_(email,
     decisionSubject_(decision),
-    decisionHtml_(decision, name, note, owner.name),
+    decisionHtml_(decision, name, note, owner.name, terms),
     owner.email);
   if (!sent) {
     reportError_('onIntakeEdit', new Error('Row ' + rowNumber + ': the ' +
@@ -658,7 +663,7 @@ function ackHtml_(name, ticked, terms, fastLane, type) {
   // It points at a reply to this email and nowhere else: no mail to a member
   // of the public names a group chat or a team number, because a volunteer
   // reaches out to them.
-  var supplies = String(type || '').indexOf('Donate supplies') !== -1;
+  var supplies = isSuppliesOffer_(type);
   var photoEn = supplies
     ? '<p>Photos of what you are giving help us plan. Please reply to this email ' +
       'with them.</p>'
@@ -714,7 +719,13 @@ function decisionSubject_(decision) {
     : 'Vietnam Hearts: about your request / phan hoi ve de xuat cua ban';
 }
 
-function decisionHtml_(decision, name, note, ownerName) {
+/** True for the supplies branch of the form, matched on its English fragment. */
+function isSuppliesOffer_(type) {
+  return String(type || '').indexOf('Donate supplies') !== -1;
+}
+
+/** `terms` is the quoted handover block, or ''. Only Approved shows it. */
+function decisionHtml_(decision, name, note, ownerName, terms) {
   var hi = name ? ' ' + escape_(name) : '';
   var who = ownerName ? escape_(ownerName) : '';
   var noteHtml = note
@@ -734,6 +745,7 @@ function decisionHtml_(decision, name, note, ownerName) {
           'a place. ') +
       'You can also reply straight to this email.</p>' +
       noteHtml +
+      (terms || '') +
       '<hr>' +
       '<p>Xin chào' + hi + ',</p>' +
       '<p>Chúng tôi rất vui được tiếp tục với đề xuất của bạn. ' +

@@ -50,8 +50,8 @@ const TEAM = 'vietnam.hearts.volunteering@gmail.com';
 
 /* The handover wording a volunteer would type into 'Supplies handover'!B2. It
    names the public area, which is allowed, and that string does double duty:
-   it proves the acknowledgement DID include the block, and it proves the
-   decision mail did NOT, because the decision path never reads that cell. */
+   it proves which mails include the block: the acknowledgement of ticked
+   items, and the Approved reply to any supplies offer. */
 const TERMS = 'Chúng tôi hẹn từng lần nhận đồ. Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
   'Xin con nguyen seal, con han 3 thang.';
 const TERMS_MARK = /Thạnh Mỹ Tây/;
@@ -373,8 +373,8 @@ check('F Reply sent stamped', isDate(w.grid[1][H['Reply sent']]));
 check('F status moved to IN PROGRESS', w.grid[1][H['Status']] === 'IN PROGRESS');
 check('F the note reached the donor verbatim',
   /Tue or Thu works\./.test(donorMails(w)[0].htmlBody));
-check('F the decision mail carries no handover block',
-  !TERMS_MARK.test(donorMails(w)[0].htmlBody));
+check('F the approved supplies mail carries the handover block exactly once',
+  (donorMails(w)[0].htmlBody.match(/Thạnh Mỹ Tây/g) || []).length === 1);
 check('F the owner is named', /Mai from Vietnam Hearts will contact you/
   .test(donorMails(w)[0].htmlBody));
 check('F the owner is named in Vietnamese too',
@@ -433,6 +433,25 @@ check('J the decline reason reached the donor',
 w = editCell(makeWorld({ preset: { [H['Decision']]: 'Declined' } }), H['Decision']);
 check('J unassigned decline reports nothing', teamMails(w).length === 0,
   teamMails(w).map((m) => m.subject).join(' | '));
+
+// J2: an approved supplies offer carries the handover block whatever was
+//     ticked; a decline and an approved non-supplies offer do not
+w = editCell(makeWorld({ other: '40 thung sach cu',
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' } }), H['Decision']);
+check('J2 an approved off-list supplies offer carries the handover block',
+  TERMS_MARK.test(donorMails(w)[0].htmlBody), donorMails(w)[0].htmlBody.slice(0, 300));
+check('J2 the block sits in the English half, above the divider',
+  donorMails(w)[0].htmlBody.search(TERMS_MARK) < donorMails(w)[0].htmlBody.indexOf('<hr>'));
+check('J2 and no error mail', teamMails(w).length === 0,
+  teamMails(w).map((m) => m.subject).join(' | '));
+w = editCell(makeWorld({ ticked: 'Dau an',
+  preset: { [H['Decision']]: 'Declined', [H['Owner']]: 'Mai' } }), H['Decision']);
+check('J2 a declined supplies offer gets no handover block',
+  !TERMS_MARK.test(donorMails(w)[0].htmlBody));
+w = editCell(makeWorld({ type: 'Propose an event / Đề xuất sự kiện', ticked: '',
+  preset: { [H['Decision']]: 'Approved', [H['Owner']]: 'Mai' } }), H['Decision']);
+check('J2 an approved event gets no handover block',
+  !TERMS_MARK.test(donorMails(w)[0].htmlBody));
 
 // K: no Volunteers tab at all - the reply must still go out
 w = editCell(makeWorld({

@@ -924,8 +924,9 @@ function tab_(ss, name, notes) {
 }
 
 function buildStandingNeedsTab_(ss, notes) {
-  // B2 is quoted only into the acknowledgement of a supplies offer that ticked
-  // always-needed items, so the tab is named for that. Rename a tab still on
+  // B2 is quoted only into supplies mail - the acknowledgement when the donor
+  // ticked always-needed items, and every Approved reply - so the tab is named
+  // for that. Rename a tab still on
   // an earlier name rather than create a second, empty one beside it.
   var legacy = termsSheet_(ss);
   if (legacy && legacy.getName() !== CONFIG.TERMS_TAB) {
@@ -935,8 +936,9 @@ function buildStandingNeedsTab_(ss, notes) {
   var sh = tab_(ss, CONFIG.TERMS_TAB, notes);
   if (String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim()) return sh;
 
-  sh.getRange('A1').setValue('Supplies donations only: the acknowledgement quotes B2 ' +
-    'when the donor ticked any always-needed item. Edit B2.');
+  sh.getRange('A1').setValue('Supplies donations only: B2 is quoted in the ' +
+    'acknowledgement when the donor ticked an always-needed item, and in every ' +
+    'Approved reply to a supplies offer. Edit B2.');
   sh.getRange('A2').setValue('Handover and condition block (B2):');
   sh.getRange(CONFIG.TERMS_CELL).setValue(
     'We arrange each handover with a volunteer.\n' +
