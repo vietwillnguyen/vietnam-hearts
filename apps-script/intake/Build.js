@@ -112,18 +112,9 @@ var CLOSING_QUESTION =
  *  form an earlier version built, so both read this one string. */
 var CONDITION_PHOTO_HELP =
   'Photos help a lot - please do not attach them here. After you submit, reply ' +
-  'to our acknowledgement email with them, or send them to us on Zalo using the ' +
-  'link at the end of that email. / Ảnh giúp chúng tôi rất nhiều - xin đừng đính ' +
-  'kèm ảnh ở đây. Sau khi gửi biểu mẫu, bạn hãy trả lời email xác nhận của chúng ' +
-  'tôi kèm theo ảnh, hoặc gửi ảnh qua Zalo bằng đường dẫn ở cuối email đó.';
-
-/** The photo line in each half of the Standing needs B2 block, each under that
- *  half's number line. The build seeds B2 with them and the delete-file-upload
- *  step quotes them for a B2 that predates them. */
-var TERMS_PHOTO_LINE_EN =
-  'Photos of what you are giving are welcome on that number - please do not attach them to the form.';
-var TERMS_PHOTO_LINE_VI =
-  'Rất hoan nghênh bạn gửi ảnh đồ tặng qua số đó - xin đừng đính kèm ảnh vào biểu mẫu.';
+  'to our acknowledgement email with them. / Ảnh giúp chúng tôi rất nhiều - xin ' +
+  'đừng đính kèm ảnh ở đây. Sau khi gửi biểu mẫu, bạn hãy trả lời email xác nhận ' +
+  'của chúng tôi kèm theo ảnh.';
 
 /* ------------------------------------------------------------------ build */
 
@@ -309,10 +300,9 @@ function applyFormSettings_(form, manual) {
   // No date is promised anywhere a submitter can read. The seven-day target
   // lives in the sheet's "Next action by" column, for the team only.
   form.setConfirmationMessage(
-    'Thank you. We have your request and will get back to you. ' +
-    'You can also message us on Zalo or WhatsApp.\n\n' +
-    'Cảm ơn bạn. Chúng tôi đã nhận được đề xuất của bạn và sẽ liên hệ lại. ' +
-    'Bạn cũng có thể nhắn cho chúng tôi trên Zalo hoặc WhatsApp.');
+    'Thank you. We have your request, and a volunteer will contact you.\n\n' +
+    'Cảm ơn bạn. Chúng tôi đã nhận được đề xuất của bạn, và một tình nguyện viên ' +
+    'sẽ liên hệ với bạn.');
 
   form.setProgressBar(true);
   form.setLimitOneResponsePerUser(false);   // limiting forces a Google sign-in
@@ -341,7 +331,7 @@ function applyFormSettings_(form, manual) {
 
   // There is no Apps Script setting for response receipts. Off is the default.
   manual.push('In the form: Settings -> Responses -> confirm **Response receipts** ' +
-    'is off. The script sends a better bilingual acknowledgement with the Zalo link, ' +
+    'is off. The script sends its own bilingual acknowledgement, ' +
     'and two confirmation emails for one submission looks broken.');
 }
 
@@ -480,11 +470,7 @@ function warnOnFileUploadItems_(form, manual) {
     'for photos, from the script, whatever the form says. A form built by an ' +
     'earlier version of this builder asks for them nowhere else, so also paste ' +
     'this into the help text of the supplies section\'s **Condition** question: "' +
-    CONDITION_PHOTO_HELP + '" And if \'Standing needs\'!B2 has no line about ' +
-    'photos, add both of these lines there. Put "' + TERMS_PHOTO_LINE_EN +
-    '" under the English Zalo or WhatsApp number line, and put "' +
-    TERMS_PHOTO_LINE_VI + '" under the Vietnamese one, below the --- line, ' +
-    'not at the end of the block.');
+    CONDITION_PHOTO_HELP + '"');
 }
 
 function addFormItems_(form, manual) {
@@ -897,23 +883,19 @@ function buildStandingNeedsTab_(ss, notes) {
   sh.getRange(CONFIG.TERMS_CELL).setValue(
     'We arrange each handover with a volunteer.\n' +
     'Our area: Thạnh Mỹ Tây, Ho Chi Minh City.\n' +
-    'A volunteer will message you to agree a time and place - please wait for that before bringing anything.\n' +
-    'You can also message us on Zalo or WhatsApp: <number>.\n' +
-    TERMS_PHOTO_LINE_EN + '\n\n' +
+    'A volunteer will message you to agree a time and place - please wait for that before bringing anything.\n\n' +
     'Food please: sealed, in its original packaging, at least 3 months before the expiry date.\n' +
     'Milk cartons: at least 2 weeks before expiry.\n' +
     'We cannot take home-made or repackaged food, opened items, or dented, rusty or unlabelled containers.\n' +
-    'If you have more than roughly 20 kg or 20 L, please message first so we can make space.\n\n' +
+    'If you have more than roughly 20 kg or 20 L, please tell the volunteer when they contact you, so we can make space.\n\n' +
     '---\n' +
     'Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên.\n' +
     'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
-    'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm - xin đừng mang đến trước khi hẹn xong.\n' +
-    'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.\n' +
-    TERMS_PHOTO_LINE_VI + '\n\n' +
+    'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm - xin đừng mang đến trước khi hẹn xong.\n\n' +
     'Thực phẩm xin: còn nguyên seal, nguyên bao bì gốc, còn hạn ít nhất 3 tháng.\n' +
     'Sữa hộp: còn hạn ít nhất 2 tuần.\n' +
     'Chúng tôi không nhận đồ ăn tự làm hoặc chia lại, đồ đã mở, hộp/lon bị móp, rỉ hoặc mất nhãn.\n' +
-    'Nếu nhiều hơn khoảng 20 kg hoặc 20 lít, xin nhắn trước để chúng tôi chuẩn bị chỗ chứa.');
+    'Nếu nhiều hơn khoảng 20 kg hoặc 20 lít, xin báo cho tình nguyện viên khi họ liên hệ, để chúng tôi chuẩn bị chỗ chứa.');
   sh.getRange(CONFIG.TERMS_CELL).setWrap(true);
   sh.setColumnWidth(2, 560);
 
@@ -1247,8 +1229,9 @@ function collectManualSteps_(manual) {
     'own a request, Name and Email. Until a volunteer is listed, an approved request ' +
     'replies to the team address and the build emails you about it.');
   manual.push('On the "' + CONFIG.TERMS_TAB + '" tab, cell ' + CONFIG.TERMS_CELL +
-    ': replace <số> / <number> with the team Zalo or WhatsApp number, and read the ' +
-    'whole block once. It is quoted verbatim into the acknowledgement email.');
+    ': read the whole block once. It is quoted verbatim into the acknowledgement ' +
+    'email, so it must name no group chat and no team number: a volunteer contacts ' +
+    'each submitter, and the submitter replies by email.');
   manual.push('In Code.js: set CONFIG.DRY_RUN to false and push again, once you have ' +
     'submitted a test response and seen the two [DRY RUN] emails arrive. Until then ' +
     'every message goes to the team address instead of to the submitter.');
@@ -1256,7 +1239,7 @@ function collectManualSteps_(manual) {
 
 /** Notes and manual steps are plain text with the README's **bold** and
  * `code`, so the same wording reads right in both. Escape first: a step quotes
- * `<iframe>` and the <số> placeholder, which pasted in raw became real tags and
+ * `<iframe>`, which pasted in raw became a real tag and
  * hid every step after them in the team's inbox. */
 function stepHtml_(text) {
   return String(text)

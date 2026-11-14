@@ -51,7 +51,7 @@ const SAMPLES = {
     pass: [
       'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.',
       'Our area: Thạnh Mỹ Tây, Ho Chi Minh City.',
-      'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.',
+      'Một tình nguyện viên sẽ liên hệ với bạn.',
       'at least 3 months before the expiry date',
       'more than roughly 20 kg or 20 L',
       'Tue or Thu works.'

@@ -859,16 +859,18 @@ const standingTab = w.ss.getSheetByName('Standing needs');
 const termsText = String(standingTab.getRange('B2').getValue());
 check('the handover block was written into Standing needs!B2', termsText.length > 100);
 check('it names the public area', /Thạnh Mỹ Tây/.test(termsText));
-/* Photos used to be a file upload question on the form. One such question
-   forces every respondent to sign in, so the ask moved here, where it rides
-   into the acknowledgement next to the team's Zalo or WhatsApp number. */
-check('it asks for photos over Zalo or WhatsApp, English half first',
-  /photo/i.test(termsText) &&
-  termsText.search(/[Pp]hoto/) < termsText.indexOf('---'),
-  (termsText.match(/[^\n]*[Pp]hoto[^\n]*/) || [''])[0]);
-check('the Vietnamese half asks for them too',
-  /ảnh/i.test(termsText.slice(termsText.indexOf('---'))),
-  (termsText.slice(termsText.indexOf('---')).match(/[^\n]*[Ảả]nh[^\n]*/) || [''])[0]);
+/* B2 rides into the acknowledgement, and a volunteer reaches out to each
+   submitter, so it names no chat app, no group and no team number. The photo
+   ask lives in the acknowledgement body, so B2 does not repeat it. */
+check('it names no Zalo, WhatsApp or group chat',
+  !/Zalo|WhatsApp|zalo\.me/i.test(termsText), termsText.slice(0, 200));
+check('it holds no number placeholder to fill in',
+  !/<number>|<số>/.test(termsText));
+check('it does not repeat the acknowledgement\'s photo ask',
+  !/photo|ảnh đồ/i.test(termsText), (termsText.match(/[^\n]*([Pp]hoto|ảnh đồ)[^\n]*/) || [''])[0]);
+check('it says the volunteer makes contact, in both halves',
+  /A volunteer will message you/.test(termsText) &&
+  /Một tình nguyện viên sẽ nhắn bạn/.test(termsText.slice(termsText.indexOf('---'))));
 check('it holds nothing shaped like a street address, in either language',
   !ADDRESS.test(termsText), (termsText.match(ADDRESS) || [''])[0]);
 check('it states no opening hours, in either language',
@@ -987,15 +989,15 @@ check('NO manual step asks for the spreadsheet time zone any more',
    and Google's own settings note says a form with file upload questions
    requires respondents to sign in - for the WHOLE form, from page one, so
    "optional and last" never deferred anything. The step is gone and photos
-   are asked for over Zalo or WhatsApp instead. */
+   are asked for as a reply to the acknowledgement instead. */
 check('NO manual step asks for a file upload question any more',
   !/file upload/i.test(mail.htmlBody),
   (mail.htmlBody.match(/<li>[^<]*[Ff]ile upload[^<]*/) || [''])[0]);
 check('no manual step quotes a TypeError at a volunteer',
   !/TypeError/.test(mail.htmlBody));
-check('the supplies section asks for photos by reply or Zalo instead',
+check('the supplies section asks for photos by reply, naming no chat app',
   w.form._items.some((i) => /photo/i.test(i.getHelpText()) &&
-    /reply/.test(i.getHelpText()) && /Zalo/.test(i.getHelpText())),
+    /reply/.test(i.getHelpText()) && !/Zalo|WhatsApp/.test(i.getHelpText())),
   w.form._items.map((i) => i.getHelpText()).filter(Boolean).join(' || '));
 check('nothing on the form asks for a file or an attachment',
   !/file upload|attach a|upload a/i.test(formText(w)),
@@ -1037,8 +1039,10 @@ function checkRendersAsHtml(label, m) {
     (m.htmlBody.match(/<\/?([a-z0-9]+)/gi) || []).join(' '));
 }
 checkRendersAsHtml('clean build', mail);
-check('the iframe and the number placeholder show as text',
-  /&lt;iframe&gt;/.test(mail.htmlBody) && /&lt;số&gt; \/ &lt;number&gt;/.test(mail.htmlBody));
+check('the iframe shows as text',
+  /&lt;iframe&gt;/.test(mail.htmlBody));
+check('no manual step asks for a team chat number in B2',
+  !/&lt;số&gt;|&lt;number&gt;|Zalo or WhatsApp number/.test(mail.htmlBody));
 check('buildIntake returns both URLs',
   !!result.formUrl && !!result.sheetUrl, JSON.stringify(result));
 
@@ -1356,24 +1360,8 @@ check('the step does not claim the supplies section already asks for photos',
 check('the step says the acknowledgement asks for photos on any form',
   /acknowledgement email already asks every supplies submitter for photos/
     .test(step12), step12.slice(0, 300));
-check('the step asks for the B2 photo line when the cell predates it',
-  /Standing needs'!B2/.test(step12) && /photo/i.test(step12), step12.slice(0, 400));
-const b2Lines12 = String(w12.ss.getSheetByName('Standing needs').getRange('B2')
-  .getValue()).split('\n');
-const sep12 = b2Lines12.indexOf('---');
-const enAt12 = b2Lines12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_EN);
-const viAt12 = b2Lines12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_VI);
-check('the B2 the build writes holds each photo line under its own number line',
-  enAt12 > 0 && enAt12 < sep12 && /WhatsApp/.test(b2Lines12[enAt12 - 1]) &&
-  viAt12 > sep12 && /WhatsApp/.test(b2Lines12[viAt12 - 1]),
-  `en=${enAt12} vi=${viAt12} sep=${sep12}`);
-check('the step quotes both of those B2 photo lines, English then Vietnamese',
-  step12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_EN) !== -1 &&
-  step12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_VI) >
-    step12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_EN),
-  step12.slice(0, 600));
-check('the step places the Vietnamese line under the Vietnamese number, below ---',
-  /under the Vietnamese one, below the --- line/.test(step12), step12.slice(0, 600));
+check('the step asks for no B2 edit: the acknowledgement body carries the photo ask',
+  !/Standing needs'!B2/.test(step12), step12.slice(0, 400));
 check('the step promises no number in the email',
   !/number is in|số điện thoại nằm/i.test(step12), step12.slice(0, 300));
 checkRendersAsHtml('file upload present', mail12);

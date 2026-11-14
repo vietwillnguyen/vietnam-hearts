@@ -297,17 +297,18 @@ check('C2 another branch with nothing listed gets no supplies hint',
 /* C3: photos. The form used to ask for them with a File upload question, and
    one such question makes Forms require a Google sign-in for the whole form,
    which is the login wall the second live build hit. So a supplies submitter
-   is asked for photos in the acknowledgement instead, over Zalo or WhatsApp,
-   English half first - and no other branch is. */
+   is asked for photos in the acknowledgement instead, as a reply to that
+   email, English half first - and no other branch is. */
 w = submit(makeWorld({ ticked: 'Dau an' }));
 const ackC3 = donorMails(w)[0].htmlBody;
 check('C3 the supplies acknowledgement asks for photos',
   /photo/i.test(ackC3), ackC3.slice(0, 200));
-check('C3 it names Zalo or WhatsApp as where to send them',
-  /(Zalo|WhatsApp)/.test((ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]),
+check('C3 it asks for a reply to this email, and names no chat app',
+  /reply to this email/.test((ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]) &&
+  !/(Zalo|WhatsApp)/.test((ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]),
   (ackC3.match(/<p>[^<]*photo[^<]*<\/p>/i) || [''])[0]);
-/* The handover block that carries the number is often absent, so the ask
-   points at a reply or the footer's Zalo link and never at a number. */
+/* A volunteer reaches out to the submitter, so the ask points at a reply
+   and never at a number. */
 check('C3 the ask promises no number anywhere in the mail',
   !/number|số điện thoại|số nằm/i.test(
     (ackC3.match(/<p>[^<]*(photo|ảnh)[^<]*<\/p>/gi) || []).join(' ')),
@@ -771,8 +772,8 @@ check('every submitter subject leads in English', subjectOrder.length === 0,
    find the block's Vietnamese line and prove nothing about the footer. */
 const footer = makeWorld().sandbox.footerHtml_();
 check('the footer leads in English',
-  footer.indexOf('You can also message us on') !== -1 &&
-  footer.indexOf('You can also message us on') < footer.indexOf('Bạn cũng có thể'),
+  footer.indexOf('A volunteer will contact you') !== -1 &&
+  footer.indexOf('A volunteer will contact you') < footer.indexOf('Một tình nguyện viên'),
   footer);
 
 /* -------------------------------------------------- the global invariants */
@@ -801,12 +802,11 @@ check(`no phone number in any of the ${allMails.length} mails`,
     hits.map((m) => m.subject + ': ' +
       (String(m.subject + ' ' + m.htmlBody).match(re) || [''])[0]).join(' | '));
 });
-/* The decision mails go to a member of the public and offer no group chat;
-   the acknowledgement keeps its Zalo group link. Both directions are pinned so
-   a later footer edit can neither leak the link nor strip it. */
+/* Every mail to a member of the public points them at a reply and nowhere
+   else: a volunteer reaches out to them, so no acknowledgement or decision
+   names a group chat, a chat app or a team number. */
 const approvedSubject = w.sandbox.decisionSubject_('Approved');
 const declinedSubject = w.sandbox.decisionSubject_('Declined');
-const zaloUrl = w.sandbox.CONFIG.ZALO_GROUP_URL;
 const decisions = donorAll.filter((m) =>
   m.subject === approvedSubject || m.subject === declinedSubject);
 const acks = donorAll.filter((m) =>
@@ -814,16 +814,15 @@ const acks = donorAll.filter((m) =>
 check('the cases produced both Approved and Declined mails',
   decisions.some((m) => m.subject === approvedSubject) &&
   decisions.some((m) => m.subject === declinedSubject));
-const chatLeaks = decisions.filter((m) =>
-  /zalo\.me|Zalo|WhatsApp/i.test(String(m.htmlBody)) ||
-  String(m.htmlBody).indexOf(zaloUrl) !== -1);
-check(`no Zalo, WhatsApp or group link in any of the ${decisions.length} decision mails`,
+check('the cases produced acknowledgements', acks.length > 0);
+const chatLeaks = donorAll.filter((m) =>
+  /zalo\.me|chat\.whatsapp|wa\.me|Zalo|WhatsApp/i.test(String(m.htmlBody)));
+check(`no Zalo, WhatsApp or group link in any of the ${donorAll.length} mails to the public`,
   chatLeaks.length === 0, chatLeaks.map((m) => m.subject).join(' | '));
 check(`every decision mail asks for a reply for next steps`,
   decisions.every((m) => /reply to this email for next steps/i.test(String(m.htmlBody))));
-check(`every one of the ${acks.length} acknowledgements keeps the Zalo group link`,
-  acks.length > 0 &&
-  acks.every((m) => String(m.htmlBody).indexOf('href="' + zaloUrl + '"') !== -1));
+check(`every one of the ${acks.length} acknowledgements says a volunteer will contact them`,
+  acks.every((m) => /A volunteer will contact you/.test(String(m.htmlBody))));
 check('every recipient is an address the script was given',
   allMails.every((m) => m.to === DONOR || m.to === TEAM),
   allMails.map((m) => m.to).filter((t) => t !== DONOR && t !== TEAM).join(', '));

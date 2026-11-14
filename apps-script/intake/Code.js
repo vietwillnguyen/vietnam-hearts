@@ -39,7 +39,6 @@ var CONFIG = {
   TEAM_EMAIL: 'vietnam.hearts.volunteering@gmail.com',
 
   // Shown to submitters as the alternative channel.
-  ZALO_GROUP_URL: 'https://zalo.me/g/gcmgkowx6gvotsghvsji',
 
   // Tab and cell holding the bilingual handover + food-condition block quoted
   // in the acknowledgement. It lives in the sheet, not here, so a volunteer can
@@ -603,8 +602,8 @@ function escape_(s) {
 
 function footerHtml_() {
   return '<p style="color:#6b4f3a">' +
-    'You can also message us on <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.<br>' +
-    'Bạn cũng có thể nhắn cho chúng tôi trên <a href="' + CONFIG.ZALO_GROUP_URL + '">Zalo</a>.</p>' +
+    'A volunteer will contact you. If you have a question before then, reply to this email.<br>' +
+    'Một tình nguyện viên sẽ liên hệ với bạn. Nếu bạn có câu hỏi trước đó, xin trả lời email này.</p>' +
     '<p style="color:#8b7355">' + escape_(CONFIG.ORG_NAME) + '</p>';
 }
 
@@ -628,17 +627,17 @@ function ackHtml_(name, ticked, terms, fastLane, type) {
   // form: Google requires a Google sign-in for any form that has one, for the
   // whole form from page one, which is the login wall the second live build
   // hit. Supplies only - a partnership or an event has nothing to photograph.
-  // It points at a reply or the footer's Zalo link, never at a number: the
-  // handover block that carries one is often absent from this mail.
+  // It points at a reply to this email and nowhere else: no mail to a member
+  // of the public names a group chat or a team number, because a volunteer
+  // reaches out to them.
   var supplies = String(type || '').indexOf('Donate supplies') !== -1;
   var photoEn = supplies
     ? '<p>Photos of what you are giving help us plan. Please reply to this email ' +
-      'with them, or send them to us on Zalo using the link at the end of this ' +
-      'email.</p>'
+      'with them.</p>'
     : '';
   var photoVi = supplies
     ? '<p>Ảnh của đồ bạn tặng giúp chúng tôi chuẩn bị. Xin bạn trả lời email này ' +
-      'kèm theo ảnh, hoặc gửi ảnh qua Zalo bằng đường dẫn ở cuối email này.</p>'
+      'kèm theo ảnh.</p>'
     : '';
   var fastEn = '', fastVi = '';
   if (fastLane && ticked) {
