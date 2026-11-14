@@ -34,6 +34,8 @@ function makeSpreadsheet(world) {
     const meta = {
       name,
       validations: [],         // { a1, rule }
+      numberFormats: {},       // key(row, col) -> number format
+      notes: {},               // key(row, col) -> cell note
       formats: [],             // conditional format rules
       protections: [],
       charts: [],
@@ -122,8 +124,16 @@ function makeSpreadsheet(world) {
           meta.validations.push({ a1, row, col, rule });
           return self;
         },
-        setNumberFormat: () => self,
+        setNumberFormat: (f) => {
+          for (let r = row; r < row + numRows; r++) {
+            for (let c = col; c < col + numCols; c++) meta.numberFormats[key(r, c)] = f;
+          }
+          return self;
+        },
+        getNumberFormat: () => meta.numberFormats[key(row, col)] || '',
         setWrap: () => self,
+        setNote: (n) => { meta.notes[key(row, col)] = n; return self; },
+        getNote: () => meta.notes[key(row, col)] || '',
         setBackground: () => self,
         setFontWeight: () => self,
         setBold: () => self,
@@ -231,6 +241,7 @@ function makeSpreadsheet(world) {
         addRange: (r) => { spec.ranges.push(r.getA1Notation()); return b; },
         clearRanges: () => { spec.ranges = []; return b; },
         setOption: (k, v) => { spec.options[k] = v; return b; },
+        setNumHeaders: (n) => { spec.numHeaders = n; return b; },
         setPosition: () => b,
         build: () => {
           spec.modify = () => chartBuilder(JSON.parse(JSON.stringify(spec)));
@@ -834,6 +845,8 @@ check('its value axis is a percent axis pinned to 0..1',
     return h.format === 'percent' && h.viewWindow &&
       h.viewWindow.min === 0 && h.viewWindow.max === 1;
   })(), JSON.stringify(chartTab.getCharts()[0].options.hAxis));
+check('the chart treats row 1 as a header, so "Project" is not a bar',
+  chartTab.getCharts()[0].numHeaders === 1, String(chartTab.getCharts()[0].numHeaders));
 check('neither raw-amount column is charted',
   chartTab.getCharts()[0].ranges.every((r) => !/^[EFG]/.test(r)),
   chartTab.getCharts()[0].ranges.join(' '));
@@ -874,6 +887,14 @@ function arrayLiteralRows(formula) {
   const m = /^=\{(.*)\}$/.exec(String(formula));
   if (!m) return null;
   return m[1].split(';').map((r) => r.split(',').map((c) => c.replace(/^"|"$/g, '')));
+}
+/* Publish to web renders every visible cell, so guidance on a published tab
+   must be a cell note, never a cell value. */
+for (const [tabName, needle] of [['Donation tiers', /Khoảng \/ About/], ['Progress chart', /Published to the web/]]) {
+  const t = w.ss.getSheetByName(tabName);
+  const values = t.getRange(1, 1, 1, 12).getValues()[0].filter((v) => typeof v === 'string' && v.length > 60);
+  check(`${tabName}: no long guidance text in a visible header cell`, values.length === 0, JSON.stringify(values));
+  check(`${tabName}: the guidance is a note on A1`, needle.test(t.getRange('A1').getNote()), t.getRange('A1').getNote());
 }
 const allWork = w.ss.getSheetByName('All work');
 const allWorkHeader = arrayLiteralRows(allWork.getRange('A1').getValue());
@@ -1118,6 +1139,15 @@ check('"Form Responses 1" is now the new form\'s tab', fresh && fresh !== oldTab
 const a2 = allWork3.getRange('A2').getFormula();
 check('the All work query reads the new response tab after the rename',
   a2.indexOf("'Form Responses 1'!A2:D") !== -1 && a2.indexOf('old form') === -1, a2);
+check('every All work range is INDIRECT text, so form row inserts cannot shift it',
+  !/[^"]'(Form Responses 1|Team tasks)'!/.test(a2.replace(/INDIRECT\("'[^"]*"\)/g, '')) &&
+  (a2.match(/INDIRECT\(/g) || []).length === 6, a2);
+check('requests show the offer type (column J) as What, not the Decision note',
+  a2.indexOf(`INDIRECT("'Form Responses 1'!J2:J")`) !== -1 &&
+  a2.indexOf("'Form Responses 1'!F2:F") === -1, a2);
+check('All work formats Next action by as a date',
+  allWork3.getRange(2, 4).getNumberFormat &&
+  allWork3.getRange(2, 4).getNumberFormat() === 'yyyy-mm-dd');
 check('the All work query is exactly the one the build generates',
   a2 === w3.sandbox.allWorkQuery_(), a2);
 check('the All work header row is rewritten too',

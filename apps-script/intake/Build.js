@@ -980,11 +980,20 @@ function buildTeamTasksTab_(ss, notes) {
 }
 
 function allWorkQuery_() {
+  // Every range is a string inside INDIRECT. A literal reference into the
+  // response tab is rewritten by Sheets each time the form inserts a row
+  // (A2:A becomes A3:A, then A4:A ...), and a reference into Team tasks moves
+  // when someone inserts or drags a column there. Either drift leaves the two
+  // stacked blocks with different widths, QUERY errors, and IFERROR shows an
+  // empty tab. INDIRECT text is never rewritten.
+  // Requests show the offer type (column J) as "What"; Team tasks show "What".
+  function ref(tab, a1) { return 'INDIRECT("\'' + tab + '\'!' + a1 + '")'; }
+  var r = CONFIG.SHEET_NAME, t = TABS.teamTasks;
   return '=IFERROR(QUERY({' +
-    'ARRAYFORMULA(IF(\'' + CONFIG.SHEET_NAME + '\'!A2:A<>"","Request","")),' +
-    '\'' + CONFIG.SHEET_NAME + '\'!A2:D,\'' + CONFIG.SHEET_NAME + '\'!F2:F;' +
-    'ARRAYFORMULA(IF(\'' + TABS.teamTasks + '\'!A2:A<>"","Task","")),' +
-    '\'' + TABS.teamTasks + '\'!A2:D,\'' + TABS.teamTasks + '\'!E2:E' +
+    'ARRAYFORMULA(IF(' + ref(r, 'A2:A') + '<>"","Request","")),' +
+    ref(r, 'A2:D') + ',' + ref(r, 'J2:J') + ';' +
+    'ARRAYFORMULA(IF(' + ref(t, 'A2:A') + '<>"","Task","")),' +
+    ref(t, 'A2:D') + ',' + ref(t, 'E2:E') +
     '},"select * where Col1 is not null and Col2 <> \'DONE\' order by Col4",0),"")';
 }
 
@@ -998,6 +1007,8 @@ function buildAllWorkTab_(ss, notes) {
   sh.getRange('A1').setFormula(
     '={"Where","Status","Priority","Next action by","Owner","What"}');
   sh.getRange('A2').setFormula(allWorkQuery_());
+  // QUERY returns bare date serials (46344); format them as dates.
+  sh.getRange(2, 4, 999, 1).setNumberFormat('yyyy-mm-dd');
   sh.getRange('H1').setValue(
     'Read-only. Both task sources in one list, overdue first, DONE rows left out. ' +
     'buildIntake() rewrites A1 and A2 on every run, so an edit to those cells does ' +
@@ -1056,21 +1067,35 @@ function buildProgressChartTab_(sh) {
 
   sh.hideColumns(5, 3);
 
-  sh.getRange('I1').setValue(
+  // A cell note, not a cell value: Publish to web renders every visible cell,
+  // so a note in I1 would sit on the public page. Notes stay in the editor.
+  sh.getRange('I1').clearContent();
+  sh.getRange('A1').setNote(
     'Published to the web. Nothing personal may ever be added to this tab. ' +
     'A1:G30 and the chart are rewritten by buildIntake() on every run, so ' +
     'an edit to them does not survive: change buildProgressChartTab_ in ' +
     'Build.js instead. The two charted series are fractions of each project\'s ' +
     'own goal, which is what lets one chart hold a VND project and a USD one; ' +
     'the amounts are in the bar labels. Columns E to G are hidden on purpose.');
-  sh.getRange('I1').setWrap(true);
-  sh.setColumnWidth(9, 420);
   sh.setFrozenRows(1);
   return sh;
 }
 
+var TIERS_NOTE_ =
+  'Head the published table "Khoảng / About", never "Your donation pays for": a ' +
+    'promise that a specific amount buys a specific thing reads as a restricted gift, ' +
+    'which the organisation is then obliged to honour. Re-check every six months, ' +
+    'rice first, at the regular shelf price rather than a promotion, and refresh the ' +
+    '"As of" date in the same sitting.';
+
 function buildTiersTab_(ss, notes) {
   var sh = tab_(ss, TABS.tiers, notes);
+  // Publish to web renders every visible cell, so the wording guidance lives in
+  // a cell note on A1 (editor only). A tab built before this held it in G1.
+  if (/^Head the published table/.test(String(sh.getRange('G1').getValue() || ''))) {
+    sh.getRange('G1').clearContent();
+  }
+  sh.getRange('A1').setNote(TIERS_NOTE_);
   if (String(sh.getRange('A1').getValue() || '').trim()) return sh;
 
   // VND leads the two amount columns because a tier IS a VND amount and the
@@ -1096,14 +1121,6 @@ function buildTiersTab_(ss, notes) {
       'Gạo cho bốn mươi em trong một tháng', '2026-11-13']
   ]);
   sh.getRange('A2:A6').setNumberFormat('#,##0');
-  sh.getRange('G1').setValue(
-    'Head the published table "Khoảng / About", never "Your donation pays for": a ' +
-    'promise that a specific amount buys a specific thing reads as a restricted gift, ' +
-    'which the organisation is then obliged to honour. Re-check every six months, ' +
-    'rice first, at the regular shelf price rather than a promotion, and refresh the ' +
-    '"As of" date in the same sitting.');
-  sh.getRange('G1').setWrap(true);
-  sh.setColumnWidth(7, 420);
   sh.setFrozenRows(1);
   return sh;
 }
@@ -1168,6 +1185,9 @@ function buildProgressTabs_(ss, notes, manual) {
     .setChartType(Charts.ChartType.BAR)
     .addRange(chartTab.getRange('A1:A30'))
     .addRange(chartTab.getRange('B1:C30'))
+    // Row 1 is the header. Left to guess, Sheets sees an all-text column A
+    // and charts "Project" as a bar of its own.
+    .setNumHeaders(1)
     .setOption('isStacked', true)
     .setOption('title', 'Vietnam Hearts - percent funded')
     .setOption('legend', { position: 'bottom' })
