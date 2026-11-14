@@ -140,6 +140,8 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 8. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
 9. **Deleting a file upload question somebody added**, which the build cannot do because Forms exposes no API for that item at all. This step is put **first**, above every other, for the reason in the next section.
 10. **Publishing the form**, but only when the build could not do it from script. Also at the front of the list: first when it fires alone, and directly below the file upload step when both fire.
+11. **Removing a Zalo / WhatsApp line from `Supplies handover!B2`**, only when that cell still names Zalo, WhatsApp, `zalo.me` or a `<number>` / `<số>` placeholder, as builds before the public moved to email seeded it.
+    B2 is the volunteers' wording, so the build flags it rather than rewriting it; the step goes at the front of the list, below the two above when they fire.
 
 Three things used to be on this list and are not any more. The build now pins the spreadsheet's own **time zone** (`Asia/Ho_Chi_Minh`, since a new spreadsheet comes up on the owning account's zone - `Etc/GMT` on the first live build - and every `Next action by` date then reads a day off in Vietnam) and deletes the empty default tab.
 The third, **adding a file upload question for photos**, was removed rather than automated: see below.
@@ -170,8 +172,9 @@ The third, **adding a file upload question for photos**, was removed rather than
   Photos are asked for in words: the `Condition` question's help text, and the acknowledgement email's supplies paragraph, both asking for a reply to the acknowledgement.
   The acknowledgement's ask is in code, so it reaches every supplies submitter on any form; the help text (`CONDITION_PHOTO_HELP`) is written into a form the build creates, migrated in place on a reused one (next bullet), and quoted by the delete step.
 - **No mail to a member of the public names a group chat, a chat app or a team number.** A volunteer reaches out to each submitter, and the submitter replies by email.
-  That covers the acknowledgement, the Approved and Declined replies, the form's confirmation message and `Supplies handover!B2`; `test/harness.js` pins it over every mail the cases produce.
+  That covers the acknowledgement, the Approved and Declined replies, the form's confirmation message and `Supplies handover!B2`, which every acknowledgement of ticked always-needed items and every Approved supplies reply quotes; `test/harness.js` pins it over every mail the cases produce.
   A reused form whose confirmation message still names Zalo or WhatsApp, or whose `Condition` help text still names Zalo, is migrated in place to `CONFIRMATION_MESSAGE` and `CONDITION_PHOTO_HELP` by `migratePublicTexts_`; no question is added or rebuilt.
+  A B2 that still names a chat app is never rewritten, only flagged as manual step 11.
   The Zalo group is for volunteers, and its invite is only shared after someone signs up through the volunteer form.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.
 - **A trigger that is installed is not the same as a trigger that is authorized.** The two ways this script goes quiet are different and both are silent: renaming `onIntakeEdit` to `onEdit` (below) makes it a simple trigger that cannot send mail, and a new OAuth scope makes every installed trigger refuse to run until somebody re-authorizes. The second leaves rows with a `Timestamp` and no `Status`; `sweepUnstamped()` is the repair and `buildIntake()` calls it last, after the triggers are installed.

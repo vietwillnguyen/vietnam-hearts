@@ -943,8 +943,8 @@ function warnOnChatLinesInHandover_(ss, manual) {
 function buildStandingNeedsTab_(ss, notes) {
   // B2 is quoted only into supplies mail - the acknowledgement when the donor
   // ticked always-needed items, and every Approved reply - so the tab is named
-  // for that. Rename a tab still on
-  // an earlier name rather than create a second, empty one beside it.
+  // for that. Rename a tab still on an earlier name rather than create a
+  // second, empty one beside it.
   var legacy = termsSheet_(ss);
   if (legacy && legacy.getName() !== CONFIG.TERMS_TAB) {
     notes.push('Renamed the "' + legacy.getName() + '" tab to "' + CONFIG.TERMS_TAB + '".');

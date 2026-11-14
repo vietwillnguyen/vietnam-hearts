@@ -39,9 +39,9 @@ var CONFIG = {
   TEAM_EMAIL: 'vietnam.hearts.volunteering@gmail.com',
 
   // Tab and cell holding the bilingual handover + food-condition block quoted
-  // in the supplies acknowledgement and every Approved supplies reply. It lives in the sheet, not here, so a volunteer can
-  // reword it without opening Apps Script. It must NOT contain the school
-  // address: see section 7.5.3.
+  // in the supplies acknowledgement and every Approved supplies reply. It
+  // lives in the sheet, not here, so a volunteer can reword it without opening
+  // Apps Script. It must NOT contain the school address: see section 7.5.3.
   TERMS_TAB: 'Supplies handover',
   TERMS_CELL: 'B2',
   // Earlier names of TERMS_TAB, oldest first. A push goes live before the
