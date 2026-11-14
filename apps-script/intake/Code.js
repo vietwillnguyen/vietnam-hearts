@@ -38,7 +38,6 @@ var CONFIG = {
   // Where team notifications and error reports go.
   TEAM_EMAIL: 'vietnam.hearts.volunteering@gmail.com',
 
-
   // Tab and cell holding the bilingual handover + food-condition block quoted
   // in the acknowledgement. It lives in the sheet, not here, so a volunteer can
   // reword it without opening Apps Script. It must NOT contain the school
