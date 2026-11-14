@@ -44,6 +44,9 @@ var CONFIG = {
   // address: see section 7.5.3.
   TERMS_TAB: 'Supplies handover',
   TERMS_CELL: 'B2',
+  // Earlier names of TERMS_TAB, oldest first. A push goes live before the
+  // next buildIntake renames the tab, so the wording is read from these too.
+  LEGACY_TERMS_TABS: ['Standing needs', 'Acknowledgement Email Response'],
 
   // Tab mapping a volunteer's Owner name to their email address, headed
   // "Name" and "Email" in row 1. The decision mail sets Reply-To to that
@@ -228,17 +231,28 @@ function notifyTeam_(subject, htmlBody) {
   MailApp.sendEmail({ to: CONFIG.TEAM_EMAIL, subject: subject, htmlBody: htmlBody });
 }
 
+/** The tab holding the handover wording: CONFIG.TERMS_TAB, else the first
+ *  tab still on one of CONFIG.LEGACY_TERMS_TABS, else null. */
+function termsSheet_(ss) {
+  var names = [CONFIG.TERMS_TAB].concat(CONFIG.LEGACY_TERMS_TABS);
+  for (var i = 0; i < names.length; i++) {
+    var sh = ss.getSheetByName(names[i]);
+    if (sh) return sh;
+  }
+  return null;
+}
+
 /** The handover and food-condition block, read from the sheet so a volunteer
  *  owns the wording. Returns '' and reports if the tab or cell is missing:
  *  nothing is gated on it, because nothing is auto-approved.
  *  white-space:pre-line keeps the volunteer's line breaks from the cell. */
 function termsBlockOrEmpty_() {
   try {
-    var sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.TERMS_TAB);
+    var sh = termsSheet_(SpreadsheetApp.getActive());
     if (!sh) throw new Error('No tab named "' + CONFIG.TERMS_TAB + '"');
     var text = String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim();
     if (!text) {
-      throw new Error('Cell ' + CONFIG.TERMS_CELL + ' of "' + CONFIG.TERMS_TAB +
+      throw new Error('Cell ' + CONFIG.TERMS_CELL + ' of "' + sh.getName() +
         '" is empty. It must hold the handover and food-condition wording.');
     }
     return '<p style="padding:12px;background:#f5f1e8;border-left:4px solid #7a8c6b;' +

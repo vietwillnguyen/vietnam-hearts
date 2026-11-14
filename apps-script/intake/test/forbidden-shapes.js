@@ -1,5 +1,5 @@
 /*
- * What the automated mail and Standing needs!B2 must never contain, for both
+ * What the automated mail and Supplies handover!B2 must never contain, for both
  * harnesses: a street address, opening hours, or a promise to reply by a date.
  *
  * The public area (Thạnh Mỹ Tây, TP.HCM) may appear, and so may ordinary

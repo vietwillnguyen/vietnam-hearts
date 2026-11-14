@@ -915,9 +915,6 @@ function colLetter_(index) {
 }
 
 /** Create a tab if it is absent, and hand it back either way. */
-// Earlier names of the CONFIG.TERMS_TAB tab, oldest first.
-var LEGACY_TERMS_TABS = ['Standing needs', 'Acknowledgement Email Response'];
-
 function tab_(ss, name, notes) {
   var sh = ss.getSheetByName(name);
   if (sh) return sh;
@@ -930,13 +927,11 @@ function buildStandingNeedsTab_(ss, notes) {
   // B2 is quoted only into the acknowledgement of a supplies offer that ticked
   // always-needed items, so the tab is named for that. Rename a tab still on
   // an earlier name rather than create a second, empty one beside it.
-  LEGACY_TERMS_TABS.forEach(function (old) {
-    var legacy = ss.getSheetByName(old);
-    if (legacy && !ss.getSheetByName(CONFIG.TERMS_TAB)) {
-      legacy.setName(CONFIG.TERMS_TAB);
-      notes.push('Renamed the "' + old + '" tab to "' + CONFIG.TERMS_TAB + '".');
-    }
-  });
+  var legacy = termsSheet_(ss);
+  if (legacy && legacy.getName() !== CONFIG.TERMS_TAB) {
+    notes.push('Renamed the "' + legacy.getName() + '" tab to "' + CONFIG.TERMS_TAB + '".');
+    legacy.setName(CONFIG.TERMS_TAB);
+  }
   var sh = tab_(ss, CONFIG.TERMS_TAB, notes);
   if (String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim()) return sh;
 

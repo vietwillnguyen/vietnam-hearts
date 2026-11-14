@@ -108,8 +108,9 @@ function makeWorld(opts) {
     })
   };
 
+  const termsTabName = opts.termsTabName || 'Supplies handover';
   const termsTab = {
-    getName: () => 'Supplies handover',
+    getName: () => termsTabName,
     getRange: () => ({
       getValue: () => (opts.terms === undefined ? TERMS : opts.terms)
     })
@@ -155,7 +156,7 @@ function makeWorld(opts) {
         getUrl: () => 'https://docs.google.com/spreadsheets/d/FAKE/edit',
         getSheetByName: (n) => {
           if (n === 'Form Responses 1') return responses;
-          if (n === 'Supplies handover') return opts.noTermsTab ? null : termsTab;
+          if (n === termsTabName) return opts.noTermsTab ? null : termsTab;
           if (n === 'Volunteers') return opts.noVolunteersTab ? null : volunteersTab;
           return null;
         }
@@ -338,6 +339,15 @@ check('D Decision still empty', w.grid[1][H['Decision']] === '');
 check('D donor still acknowledged', donorMails(w).length === 1);
 check('D team told which function failed',
   teamMails(w).some((m) => /termsBlockOrEmpty_/.test(m.subject)));
+
+/* A push goes live before buildIntake renames the tab, so the wording is
+   still read from the tab under its old name, with no error mail. */
+w = submit(makeWorld({ ticked: 'Dau an', termsTabName: 'Acknowledgement Email Response' }));
+check('D a tab still on its old name still feeds the acknowledgement',
+  TERMS_MARK.test(donorMails(w)[0].htmlBody), donorMails(w)[0].htmlBody.slice(0, 200));
+check('D and nobody is told it is missing',
+  !teamMails(w).some((m) => /termsBlockOrEmpty_/.test(m.subject)),
+  teamMails(w).map((m) => m.subject).join(' | '));
 
 // E: a team task status change must email nobody. THE property that lets one
 //    spreadsheet hold both intake rows and ordinary team tasks.
