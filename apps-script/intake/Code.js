@@ -42,7 +42,7 @@ var CONFIG = {
   // in the acknowledgement. It lives in the sheet, not here, so a volunteer can
   // reword it without opening Apps Script. It must NOT contain the school
   // address: see section 7.5.3.
-  TERMS_TAB: 'Acknowledgement Email Response',
+  TERMS_TAB: 'Supplies handover',
   TERMS_CELL: 'B2',
 
   // Tab mapping a volunteer's Owner name to their email address, headed

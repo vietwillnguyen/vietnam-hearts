@@ -915,7 +915,8 @@ function colLetter_(index) {
 }
 
 /** Create a tab if it is absent, and hand it back either way. */
-var LEGACY_TERMS_TAB = 'Standing needs';
+// Earlier names of the CONFIG.TERMS_TAB tab, oldest first.
+var LEGACY_TERMS_TABS = ['Standing needs', 'Acknowledgement Email Response'];
 
 function tab_(ss, name, notes) {
   var sh = ss.getSheetByName(name);
@@ -926,17 +927,21 @@ function tab_(ss, name, notes) {
 }
 
 function buildStandingNeedsTab_(ss, notes) {
-  // The tab was called "Standing needs" until the team renamed it for what it
-  // holds. Rename an old one rather than create a second, empty tab beside it.
-  var legacy = ss.getSheetByName(LEGACY_TERMS_TAB);
-  if (legacy && !ss.getSheetByName(CONFIG.TERMS_TAB)) {
-    legacy.setName(CONFIG.TERMS_TAB);
-    notes.push('Renamed the "' + LEGACY_TERMS_TAB + '" tab to "' + CONFIG.TERMS_TAB + '".');
-  }
+  // B2 is quoted only into the acknowledgement of a supplies offer that ticked
+  // always-needed items, so the tab is named for that. Rename a tab still on
+  // an earlier name rather than create a second, empty one beside it.
+  LEGACY_TERMS_TABS.forEach(function (old) {
+    var legacy = ss.getSheetByName(old);
+    if (legacy && !ss.getSheetByName(CONFIG.TERMS_TAB)) {
+      legacy.setName(CONFIG.TERMS_TAB);
+      notes.push('Renamed the "' + old + '" tab to "' + CONFIG.TERMS_TAB + '".');
+    }
+  });
   var sh = tab_(ss, CONFIG.TERMS_TAB, notes);
   if (String(sh.getRange(CONFIG.TERMS_CELL).getValue() || '').trim()) return sh;
 
-  sh.getRange('A1').setValue('Wording the acknowledgement email quotes. Edit B2.');
+  sh.getRange('A1').setValue('Supplies donations only: the acknowledgement quotes B2 ' +
+    'when the donor ticked any always-needed item. Edit B2.');
   sh.getRange('A2').setValue('Handover and condition block (B2):');
   sh.getRange(CONFIG.TERMS_CELL).setValue(
     'We arrange each handover with a volunteer.\n' +

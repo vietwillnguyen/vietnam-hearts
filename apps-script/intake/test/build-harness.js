@@ -759,7 +759,7 @@ check('nothing on the form promises a reply within any number of days',
 /* --- the sheet --- */
 console.log('\n--- the spreadsheet');
 const names = w.ss.getSheets().map((s) => s.getName());
-['Form Responses 1', 'Team tasks', 'All work', 'Acknowledgement Email Response', 'Volunteers',
+['Form Responses 1', 'Team tasks', 'All work', 'Supplies handover', 'Volunteers',
   'Donation tiers', 'Progress', 'Progress chart'].forEach((t) => {
   check(`tab "${t}" exists`, names.indexOf(t) !== -1, names.join(', '));
 });
@@ -879,13 +879,22 @@ legacyTab.getRange('B2').setValue('Our own wording, kept.');
 wLegacy.sandbox.buildIntake();
 check('the old tab is renamed, not duplicated',
   !wLegacy.ss.getSheetByName('Standing needs') &&
-  wLegacy.ss.getSheetByName('Acknowledgement Email Response') === legacyTab,
+  wLegacy.ss.getSheetByName('Supplies handover') === legacyTab,
   wLegacy.ss.getSheets().map((t) => t.getName()).join(', '));
 check('and its wording survives the rename',
   legacyTab.getRange('B2').getValue() === 'Our own wording, kept.');
-const standingTab = w.ss.getSheetByName('Acknowledgement Email Response');
+const wLegacy2 = makeWorld();
+const legacyTab2 = wLegacy2.ss.insertSheet('Acknowledgement Email Response');
+legacyTab2.getRange('B2').setValue('Second name, kept.');
+wLegacy2.sandbox.buildIntake();
+check('a tab on the second old name is renamed too, wording kept',
+  wLegacy2.ss.getSheetByName('Supplies handover') === legacyTab2 &&
+  !wLegacy2.ss.getSheetByName('Acknowledgement Email Response') &&
+  legacyTab2.getRange('B2').getValue() === 'Second name, kept.',
+  wLegacy2.ss.getSheets().map((t) => t.getName()).join(', '));
+const standingTab = w.ss.getSheetByName('Supplies handover');
 const termsText = String(standingTab.getRange('B2').getValue());
-check('the handover block was written into Acknowledgement Email Response!B2', termsText.length > 100);
+check('the handover block was written into Supplies handover!B2', termsText.length > 100);
 check('it names the public area', /Thạnh Mỹ Tây/.test(termsText));
 /* B2 rides into the acknowledgement, and a volunteer reaches out to each
    submitter, so it names no chat app, no group and no team number. The photo
@@ -1389,7 +1398,7 @@ check('the step says the acknowledgement asks for photos on any form',
   /acknowledgement email already asks every supplies submitter for photos/
     .test(step12), step12.slice(0, 300));
 check('the step asks for no B2 edit: the acknowledgement body carries the photo ask',
-  !/Acknowledgement Email Response'!B2/.test(step12), step12.slice(0, 400));
+  !/Supplies handover'!B2/.test(step12), step12.slice(0, 400));
 check('the step promises no number in the email',
   !/number is in|số điện thoại nằm/i.test(step12), step12.slice(0, 300));
 checkRendersAsHtml('file upload present', mail12);

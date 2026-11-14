@@ -134,7 +134,7 @@ They are listed in `Build.js` (`collectManualSteps_` and the `manual.push` calls
 3. **Filter views.** No API. One per working state plus one for `Priority = High`. Filter views are per-viewer, so two volunteers can filter differently at the same time; a plain filter is shared and they would fight over it.
 4. **Email collection mode**, when the account's API does not expose it. It must be **Responder input**. Verified forces a Google sign-in, which is the biggest drop-off risk for a submitter on a phone, and the script needs that column before `setUp()` will install the triggers.
 5. **Response receipts** must stay off. No API, and off is the default. The script's own acknowledgement is bilingual; two confirmation emails for one submission looks broken.
-6. **The `Volunteers` tab rows**, and one read of the `Acknowledgement Email Response!B2` wording.
+6. **The `Volunteers` tab rows**, and one read of the `Supplies handover!B2` wording.
 7. **An old response tab**, only when a re-run found a `Form Responses 1` tab that its form does not write to, typically because the remembered form was deleted.
    The build renames that tab to `Form Responses 1 (old form)` with every row kept, links the form to a fresh tab, and asks someone to decide what to do with the old rows.
 8. **A default `Sheet1` tab that is not empty.** The build deletes Google's blank first tab, but only when it is untouched; anything typed into it is a volunteer's work, so that case becomes a step instead of a deletion.
@@ -170,7 +170,7 @@ The third, **adding a file upload question for photos**, was removed rather than
   Photos are asked for in words: the `Condition` question's help text, and the acknowledgement email's supplies paragraph, both asking for a reply to the acknowledgement.
   The acknowledgement's ask is in code, so it reaches every supplies submitter on any form; the help text (`CONDITION_PHOTO_HELP`) is written into a form the build creates, migrated in place on a reused one (next bullet), and quoted by the delete step.
 - **No mail to a member of the public names a group chat, a chat app or a team number.** A volunteer reaches out to each submitter, and the submitter replies by email.
-  That covers the acknowledgement, the Approved and Declined replies, the form's confirmation message and `Acknowledgement Email Response!B2`; `test/harness.js` pins it over every mail the cases produce.
+  That covers the acknowledgement, the Approved and Declined replies, the form's confirmation message and `Supplies handover!B2`; `test/harness.js` pins it over every mail the cases produce.
   A reused form whose confirmation message still names Zalo or WhatsApp, or whose `Condition` help text still names Zalo, is migrated in place to `CONFIRMATION_MESSAGE` and `CONDITION_PHOTO_HELP` by `migratePublicTexts_`; no question is added or rebuilt.
   The Zalo group is for volunteers, and its invite is only shared after someone signs up through the volunteer form.
 - **Columns are found by header text, not by index**, so adding a form question cannot break it. `col_()` prefers an exact header match over a substring one, which is what lets `Decision` and `Decision note` coexist.

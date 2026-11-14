@@ -48,7 +48,7 @@ HEADERS.forEach((h, i) => (H[h] = i));
 const DONOR = 'donor@example.com';
 const TEAM = 'vietnam.hearts.volunteering@gmail.com';
 
-/* The handover wording a volunteer would type into 'Acknowledgement Email Response'!B2. It
+/* The handover wording a volunteer would type into 'Supplies handover'!B2. It
    names the public area, which is allowed, and that string does double duty:
    it proves the acknowledgement DID include the block, and it proves the
    decision mail did NOT, because the decision path never reads that cell. */
@@ -109,7 +109,7 @@ function makeWorld(opts) {
   };
 
   const termsTab = {
-    getName: () => 'Acknowledgement Email Response',
+    getName: () => 'Supplies handover',
     getRange: () => ({
       getValue: () => (opts.terms === undefined ? TERMS : opts.terms)
     })
@@ -155,7 +155,7 @@ function makeWorld(opts) {
         getUrl: () => 'https://docs.google.com/spreadsheets/d/FAKE/edit',
         getSheetByName: (n) => {
           if (n === 'Form Responses 1') return responses;
-          if (n === 'Acknowledgement Email Response') return opts.noTermsTab ? null : termsTab;
+          if (n === 'Supplies handover') return opts.noTermsTab ? null : termsTab;
           if (n === 'Volunteers') return opts.noVolunteersTab ? null : volunteersTab;
           return null;
         }
