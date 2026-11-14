@@ -38,7 +38,6 @@ var CONFIG = {
   // Where team notifications and error reports go.
   TEAM_EMAIL: 'vietnam.hearts.volunteering@gmail.com',
 
-  // Shown to submitters as the alternative channel.
 
   // Tab and cell holding the bilingual handover + food-condition block quoted
   // in the acknowledgement. It lives in the sheet, not here, so a volunteer can
@@ -434,6 +433,21 @@ function processUnstampedRow_(sh, headers, rowNumber, row) {
     'Changing <b>Status</b> emails nobody.</p>');
 }
 
+/** The new row's dropdowns and date formats. Forms pushes the build's
+ *  validation ranges below every row it inserts (see applyTeamRowRules_ in
+ *  Build.js), so the row that just arrived has none until this writes them.
+ *  Build.js shares this script's global scope in Apps Script; the Code.js-only
+ *  test harness has no Build.js, hence the typeof. Never fatal: a row without
+ *  a dropdown is still a handled row. */
+function afterStamp_(sh, rowNumber) {
+  if (typeof applyTeamRowRules_ !== 'function') return;
+  try {
+    applyTeamRowRules_(sh, rowNumber, 1);
+  } catch (err) {
+    reportError_('Dropdowns for row ' + rowNumber, err);
+  }
+}
+
 /** Repair rows the form wrote while the installed triggers were not running.
  *
  *  A trigger stops firing whenever the project's authorization goes stale,
@@ -455,21 +469,6 @@ function processUnstampedRow_(sh, headers, rowNumber, row) {
  *  a Timestamp must be present or the row is just a blank line in the sheet.
  *
  *  Returns the number of rows it repaired. */
-/** The new row's dropdowns and date formats. Forms pushes the build's
- *  validation ranges below every row it inserts (see applyTeamRowRules_ in
- *  Build.js), so the row that just arrived has none until this writes them.
- *  Build.js shares this script's global scope in Apps Script; the Code.js-only
- *  test harness has no Build.js, hence the typeof. Never fatal: a row without
- *  a dropdown is still a handled row. */
-function afterStamp_(sh, rowNumber) {
-  if (typeof applyTeamRowRules_ !== 'function') return;
-  try {
-    applyTeamRowRules_(sh, rowNumber, 1);
-  } catch (err) {
-    reportError_('Dropdowns for row ' + rowNumber, err);
-  }
-}
-
 function sweepUnstamped() {
   var sh = sheet_();
   var lastRow = sh.getLastRow();

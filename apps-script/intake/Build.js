@@ -115,6 +115,16 @@ var CONDITION_PHOTO_HELP =
   'đừng đính kèm ảnh ở đây. Sau khi gửi biểu mẫu, bạn hãy trả lời email xác nhận ' +
   'của chúng tôi kèm theo ảnh.';
 
+/** What a submitter sees after sending the form. A new form gets it from
+ *  applyFormSettings_; a reused one is migrated to it by
+ *  migratePublicTexts_ when it still points at Zalo or WhatsApp. No date is
+ *  promised anywhere a submitter can read: the seven-day target lives in the
+ *  sheet's "Next action by" column, for the team only. */
+var CONFIRMATION_MESSAGE =
+  'Thank you. We have your request, and a volunteer will contact you.\n\n' +
+  'Cảm ơn bạn. Chúng tôi đã nhận được đề xuất của bạn, và một tình nguyện viên ' +
+  'sẽ liên hệ với bạn.';
+
 /* ------------------------------------------------------------------ build */
 
 function buildIntake() {
@@ -272,6 +282,7 @@ function openOrCreateForm_(notes, manual) {
           'untouched: the form is the source of truth for the always-needed list, ' +
           'so this builder never rewrites a form that already has questions.');
       }
+      migratePublicTexts_(existing, notes);
       return existing;
     } catch (err) {
       notes.push('Script properties named form ' + id + ' but it could not be ' +
@@ -288,6 +299,26 @@ function openOrCreateForm_(notes, manual) {
   return form;
 }
 
+/** A form an earlier version built tells the public to message the team on
+ *  Zalo or WhatsApp, and to send photos via a group link the acknowledgement
+ *  no longer carries. Questions stay untouched; only those two public texts
+ *  are replaced, and only while they still mention the old channel. */
+function migratePublicTexts_(form, notes) {
+  if (/Zalo|WhatsApp/i.test(form.getConfirmationMessage() || '')) {
+    form.setConfirmationMessage(CONFIRMATION_MESSAGE);
+    notes.push('Replaced the form\'s confirmation message, which still pointed ' +
+      'submitters at Zalo or WhatsApp.');
+  }
+  var items = form.getItems();
+  for (var i = 0; i < items.length; i++) {
+    if (!/^Condition\b/.test(items[i].getTitle())) continue;
+    if (!/Zalo/i.test(items[i].getHelpText() || '')) continue;
+    items[i].setHelpText(CONDITION_PHOTO_HELP);
+    notes.push('Replaced the help text of the form\'s "' + items[i].getTitle() +
+      '" question, which still sent photos to Zalo.');
+  }
+}
+
 function applyFormSettings_(form, manual) {
   form.setDescription(
     'Want to donate supplies, partner with us long term, or host an event? Tell us here. ' +
@@ -296,12 +327,7 @@ function applyFormSettings_(form, manual) {
     'Hãy cho chúng tôi biết tại đây. Chúng tôi là nhóm tình nguyện, sẽ có người đọc và ' +
     'liên hệ lại với bạn.');
 
-  // No date is promised anywhere a submitter can read. The seven-day target
-  // lives in the sheet's "Next action by" column, for the team only.
-  form.setConfirmationMessage(
-    'Thank you. We have your request, and a volunteer will contact you.\n\n' +
-    'Cảm ơn bạn. Chúng tôi đã nhận được đề xuất của bạn, và một tình nguyện viên ' +
-    'sẽ liên hệ với bạn.');
+  form.setConfirmationMessage(CONFIRMATION_MESSAGE);
 
   form.setProgressBar(true);
   form.setLimitOneResponsePerUser(false);   // limiting forces a Google sign-in

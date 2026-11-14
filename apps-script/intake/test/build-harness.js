@@ -340,6 +340,7 @@ function makeFormApp(world, ss) {
         return form;
       },
       setDescription: (d) => { form._settings.description = d; return form; },
+      getConfirmationMessage: () => form._settings.confirmation || '',
       setConfirmationMessage: (m) => { form._settings.confirmation = m; return form; },
       setProgressBar: (v) => { form._settings.progressBar = v; return form; },
       setLimitOneResponsePerUser: (v) => { form._settings.limitOne = v; return form; },
@@ -1392,6 +1393,48 @@ check('the step asks for no B2 edit: the acknowledgement body carries the photo 
 check('the step promises no number in the email',
   !/number is in|số điện thoại nằm/i.test(step12), step12.slice(0, 300));
 checkRendersAsHtml('file upload present', mail12);
+
+console.log('\n=== a form an earlier version built still points the public at Zalo');
+const w15 = makeWorld();
+w15.sandbox.buildIntake();
+const condition15 = w15.form._items.filter((i) => /^Condition/.test(i.getTitle()))[0];
+const confirmation15 = w15.form._settings.confirmation;
+const others15 = w15.form._items.filter((i) => i !== condition15)
+  .map((i) => i.getTitle() + '|' + i.getHelpText());
+const itemCount15 = w15.form._items.length;
+w15.form._settings.confirmation = 'Thank you. You can also message us on Zalo or WhatsApp.';
+condition15.setHelpText('Photos help - send them to us on Zalo using the link at ' +
+  'the end of that email.');
+w15.sandbox.buildIntake();
+check('the confirmation message is migrated to the current one',
+  w15.form._settings.confirmation === confirmation15 &&
+  w15.form._settings.confirmation === w15.sandbox.CONFIRMATION_MESSAGE,
+  w15.form._settings.confirmation);
+check('the Condition help text is migrated to the shared photo ask',
+  condition15.getHelpText() === w15.sandbox.CONDITION_PHOTO_HELP, condition15.getHelpText());
+check('no question was added, removed or otherwise changed',
+  w15.form._items.length === itemCount15 &&
+  JSON.stringify(w15.form._items.filter((i) => i !== condition15)
+    .map((i) => i.getTitle() + '|' + i.getHelpText())) === JSON.stringify(others15));
+check('the build email notes both changes',
+  /Replaced the form's confirmation message/.test(w15.mails[1].htmlBody) &&
+  /Replaced the help text of the form's &quot;Condition|Replaced the help text of the form's "Condition/
+    .test(w15.mails[1].htmlBody),
+  (w15.mails[1].htmlBody.match(/<li>Replaced[^<]*/g) || []).join(' | '));
+w15.sandbox.buildIntake();
+check('a form already migrated is left alone and noted nowhere',
+  !/Replaced the/.test(w15.mails[2].htmlBody) &&
+  w15.form._settings.confirmation === w15.sandbox.CONFIRMATION_MESSAGE &&
+  condition15.getHelpText() === w15.sandbox.CONDITION_PHOTO_HELP);
+const w16 = makeWorld();
+w16.sandbox.buildIntake();
+const custom16 = 'Thanks - a volunteer will be in touch.';
+w16.form._settings.confirmation = custom16;
+w16.sandbox.buildIntake();
+check('a clean custom confirmation message is not overwritten',
+  w16.form._settings.confirmation === custom16, w16.form._settings.confirmation);
+check('a clean form produces no migration notes',
+  !/Replaced the/.test(w16.mails[1].htmlBody));
 
 console.log('\n=== both a file upload question and no way to publish');
 const w13 = makeWorld({ noFormPublishApi: true });
