@@ -11,7 +11,7 @@
  */
 'use strict';
 
-const { reminderFor, MANIFEST } = require('../scope-change-reminder');
+const { reminderFor, changedAgainstBase, MANIFEST } = require('../scope-change-reminder');
 
 const failures = [];
 function check(label, ok, detail) {
@@ -52,6 +52,44 @@ check('a path with surrounding whitespace, as git can print it, still matches',
   reminderFor(['  ' + MANIFEST + '  ']) !== '');
 check('a different manifest elsewhere in the repo does not match',
   reminderFor(['some/other/appsscript.json']) === '');
+
+console.log('\n--- the diff covers uncommitted edits, as `clasp push` does');
+
+/* A fake git: `merge-base` answers only for the refs in `known`, and `diff`
+   prints `changed`. Every call is recorded so the arguments can be checked. */
+function fakeGit(known, changed) {
+  const calls = [];
+  const exec = (cmd, args) => {
+    calls.push([cmd].concat(args).join(' '));
+    if (args[0] === 'merge-base') {
+      if (!(args[1] in known)) throw new Error('unknown revision');
+      return known[args[1]] + '\n';
+    }
+    if (args[0] === 'diff') return changed.join('\n') + '\n';
+    throw new Error('unexpected git ' + args.join(' '));
+  };
+  return { exec, calls };
+}
+
+let git = fakeGit({ 'origin/main': 'abc123' }, [MANIFEST, 'apps-script/README.md']);
+let got = changedAgainstBase(git.exec);
+check('it diffs the working tree against the merge-base, not against HEAD',
+  git.calls.indexOf('git diff --name-only abc123') !== -1 &&
+    git.calls.every((c) => !/HEAD/.test(c) || /^git merge-base/.test(c)),
+  git.calls.join(' ; '));
+check('it returns each printed path', got.length === 2 && got[0] === MANIFEST,
+  JSON.stringify(got));
+check('so an uncommitted manifest edit still reminds', reminderFor(got) !== '');
+
+git = fakeGit({ main: 'def456' }, ['apps-script/intake/Code.js']);
+got = changedAgainstBase(git.exec);
+check('it falls through to the first base that exists',
+  git.calls.indexOf('git diff --name-only def456') !== -1 && got.length === 1,
+  git.calls.join(' ; '));
+
+git = fakeGit({}, [MANIFEST]);
+check('no base at all is an empty list, not a throw',
+  changedAgainstBase(git.exec).length === 0);
 
 console.log('');
 if (failures.length) {

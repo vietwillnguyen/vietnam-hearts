@@ -74,7 +74,7 @@ So whenever that file changes, immediately after `clasp push`, signed in as the 
 
 `npm run verify` prints a loud reminder of this whenever `apps-script/intake/appsscript.json` differs from the default branch (`tools/scope-change-reminder.js`).
 It is advice and never fails the run; a checkout with no base to compare against simply prints nothing.
-If you ever need the repair on its own, `sweepUnstamped()` is exported and safe to run by hand - it only touches rows that have a `Timestamp` and none of the three stamps the submit trigger writes, so it cannot email anybody twice.
+If you ever need the repair on its own, `sweepUnstamped()` is exported and safe to run by hand - it only touches rows that have a `Timestamp` (`Dấu thời gian` on a Vietnamese sheet) and none of the three stamps the submit trigger writes, and it re-reads each row under the same document lock the trigger takes, so it cannot email anybody twice even when a submission arrives mid-sweep.
 
 To check whether anyone edited in the browser:
 

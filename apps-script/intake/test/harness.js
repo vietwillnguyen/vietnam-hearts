@@ -74,7 +74,8 @@ function makeWorld(opts) {
   row[H[Q.other]] = opts.other || '';
   Object.assign(row, opts.preset || {});
 
-  const grid = [HEADERS.slice()];
+  const header = opts.headers || HEADERS;
+  const grid = [header.slice()];
   for (let i = 0; i < (opts.rows || 1); i++) {
     grid.push(Object.assign(row.slice(), (opts.rowPresets || [])[i] || {}));
   }
@@ -83,7 +84,7 @@ function makeWorld(opts) {
 
   const responses = {
     getName: () => 'Form Responses 1',
-    getLastColumn: () => HEADERS.length,
+    getLastColumn: () => header.length,
     getLastRow: () => grid.length,
     getSheetId: () => 1234,
     getRange: (r, c, nr, nc) => ({
@@ -633,6 +634,87 @@ check('T7 it returns the number of rows it repaired',
   w.sandbox.sweepUnstamped() === 1);
 check('T7 and zero when there is nothing to repair',
   w.sandbox.sweepUnstamped() === 0);
+
+/* U: the trigger and a sweep racing for one row. Both share
+   processSubmissionRow_, which re-reads the row under the document lock, so
+   whichever gets there second finds the stamps and sends nothing. */
+function unstamped(w, r) {
+  w.grid[r][H['Status']] = '';
+  w.grid[r][H['Priority']] = '';
+  w.grid[r][H['Next action by']] = '';
+  return w;
+}
+
+// U1: the sweep reaches the row first; the trigger fires right after
+w = unstamped(makeWorld({ ticked: 'Dau an',
+  onTryLock: () => w.sandbox.sweepUnstamped() }), 1);
+submit(w);
+check('U1 a trigger arriving after the sweep acknowledges nobody twice',
+  donorMails(w).length === 1, String(donorMails(w).length));
+check('U1 and tells the team once', teamMails(w).length === 1,
+  teamMails(w).map((m) => m.subject).join(' | '));
+
+// U2: the trigger reaches the row first; the sweep read it before that
+w = unstamped(makeWorld({ ticked: 'Dau an',
+  onTryLock: () => w.sandbox.onIntakeFormSubmit({ range: w.responses.getRange(2, 1, 1, 1) }) }), 1);
+let repairedU2 = w.sandbox.sweepUnstamped();
+record(w);
+check('U2 a sweep arriving after the trigger acknowledges nobody twice',
+  donorMails(w).length === 1, String(donorMails(w).length));
+check('U2 and does not count the row as repaired', repairedU2 === 0, String(repairedU2));
+
+// U3: the lock never frees: nothing is sent, the row stays unstamped, and the
+// team is told which row and what to run
+w = submit(makeWorld({ lockHeld: true }));
+check('U3 a submission that cannot get the lock emails no submitter',
+  donorMails(w).length === 0, String(donorMails(w).length));
+check('U3 and leaves the row for the sweep', w.grid[1][H['Status']] === '');
+check('U3 the team is told the row and the repair',
+  teamMails(w).length === 1 && /Row 2/.test(teamMails(w)[0].htmlBody) &&
+    /sweepUnstamped/.test(teamMails(w)[0].htmlBody),
+  teamMails(w).map((m) => m.subject).join(' | '));
+w = unstamped(makeWorld({ lockHeld: true }), 1);
+check('U3 a sweep that cannot get the lock repairs nothing',
+  w.sandbox.sweepUnstamped() === 0 && donorMails(record(w)).length === 0);
+
+// U4: a half-written row is not a handled one; the trigger still finishes it
+w = submit(makeWorld({ ticked: 'Dau an', preset: { [H['Status']]: 'TODO' } }));
+check('U4 a row with only Status set is still acknowledged',
+  donorMails(w).length === 1, String(donorMails(w).length));
+check('U4 and its missing stamps are filled',
+  w.grid[1][H['Priority']] === 'High' && isDate(w.grid[1][H['Next action by']]));
+
+// U5: a row with all three stamps already set is the sweep's work, finished
+w = submit(makeWorld({ preset: { [H['Status']]: 'TODO', [H['Priority']]: 'Normal',
+  [H['Next action by']]: new Date('2026-11-21T00:00:00Z') } }));
+check('U5 a fully stamped row is not acknowledged again by the trigger',
+  w.mails.length === 0, w.mails.map((m) => m.subject).join(' | '));
+
+/* V: a Vietnamese-locale spreadsheet. Forms titles its own columns in the
+   sheet's language, so setUp() must not depend on the Timestamp title and
+   the sweep must still find it. */
+const VI_HEADERS = HEADERS.map((h) =>
+  h === 'Timestamp' ? 'Dấu thời gian' : h === 'Email Address' ? 'Địa chỉ email' : h);
+w = unstamped(makeWorld({ headers: VI_HEADERS, ticked: 'Dau an' }), 1);
+check('V setUp() resolves every HEADER entry on a Vietnamese sheet', (function () {
+  try { w.sandbox.setUp(); return true; } catch (err) { return 'threw: ' + err.message; }
+})() === true);
+check('V the sweep finds and repairs a missed row there',
+  w.sandbox.sweepUnstamped() === 1 && w.grid[1][H['Status']] === 'TODO');
+record(w);
+check('V and its submitter is acknowledged once', donorMails(w).length === 1,
+  String(donorMails(w).length));
+
+// V2: a Timestamp title in no known spelling: report it and guess nothing
+w = unstamped(makeWorld({ headers: HEADERS.map((h) =>
+  h === 'Timestamp' ? 'Zeitstempel' : h) }), 1);
+const repairedV2 = w.sandbox.sweepUnstamped();
+record(w);
+check('V2 an unknown Timestamp title repairs nothing',
+  repairedV2 === 0 && donorMails(w).length === 0 && w.grid[1][H['Status']] === '');
+check('V2 and the team is told why',
+  teamMails(w).length === 1 && /Dấu thời gian/.test(teamMails(w)[0].htmlBody),
+  teamMails(w).map((m) => m.htmlBody).join(' | '));
 
 /* ------------------------- the needles against the real column titles ---- */
 

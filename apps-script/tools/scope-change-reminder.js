@@ -58,15 +58,19 @@ function reminderFor(changedFiles) {
   return hit ? BANNER : '';
 }
 
-/** Paths that differ from the first base ref that exists, or [] if none
- *  does. Never throws: this is a hint, not a gate. */
+/** Paths whose working tree differs from where this branch left the first
+ *  base ref that exists, or [] if none does. The working tree, not HEAD,
+ *  because `clasp push` uploads uncommitted edits too. Never throws: this is
+ *  a hint, not a gate. */
 function changedAgainstBase(execFileSync) {
   const bases = ['origin/main', 'origin/master', 'main', 'master'];
+  const opts = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
   for (let i = 0; i < bases.length; i++) {
     try {
-      const out = execFileSync(
-        'git', ['diff', '--name-only', bases[i] + '...HEAD'],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const mergeBase = String(execFileSync(
+        'git', ['merge-base', bases[i], 'HEAD'], opts)).trim();
+      if (!mergeBase) continue;
+      const out = execFileSync('git', ['diff', '--name-only', mergeBase], opts);
       return String(out).split('\n').filter((l) => l.trim() !== '');
     } catch (ignored) { /* that base does not exist here; try the next */ }
   }

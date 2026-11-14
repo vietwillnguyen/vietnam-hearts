@@ -494,6 +494,10 @@ function makeWorld(opts) {
   if (world.noEmailCollection) delete formApp.EmailCollectionType;
 
   const sandbox = {
+    /* A bound script's document lock; nothing else contends for it here. */
+    LockService: {
+      getDocumentLock: () => ({ tryLock: () => true, releaseLock: () => {} })
+    },
     SpreadsheetApp: {
       getActive: () => ss,
       flush: () => {},

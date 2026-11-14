@@ -99,11 +99,13 @@ var HEADER = {
   // only how we find the column. Keep "Other" switched off on this question.
   standing: 'always need',
   // The free-text escape hatch. Anything here means more than the five items.
-  other: 'Other items',
-  // Forms writes this on every submission, so it is what tells a real row
-  // from a blank line below the data. sweepUnstamped() is its only reader.
-  timestamp: 'Timestamp'
+  other: 'Other items'
 };
+
+/** The Timestamp column, as Forms titles it in the spreadsheet's language.
+ *  Kept out of HEADER so setUp() never fails on a locale it does not list;
+ *  sweepUnstamped() is its only reader. */
+var TIMESTAMP_HEADERS = ['Timestamp', 'Dấu thời gian'];
 
 /** Run once, by hand, from the Apps Script editor. Safe to re-run. */
 function setUp() {
@@ -331,79 +333,105 @@ function onIntakeFormSubmit(e) {
 /** Everything a new submission causes: the three stamps, the submitter's
  *  acknowledgement and the team notice. Separated from the trigger so
  *  sweepUnstamped() can give a missed row the identical treatment rather
- *  than a second, drifting copy of it. */
+ *  than a second, drifting copy of it. The row is re-read under the document
+ *  lock, so when the trigger and a sweep race for one row only the first
+ *  sends anything. Returns true when it processed the row. */
 function processSubmissionRow_(sh, headers, rowNumber) {
-  {
-    var row = rowValues_(sh, rowNumber);
-
-    var cStatus = col_(headers, HEADER.status);
-    var cPriority = col_(headers, HEADER.priority);
-    var cDue = col_(headers, HEADER.due);
-    var cEmail = col_(headers, HEADER.email);
-    var cName = col_(headers, HEADER.name);
-    var cType = col_(headers, HEADER.type);
-    var cStand = col_(headers, HEADER.standing);
-    var cOther = col_(headers, HEADER.other);
-
-    var name = String(row[cName] || '').trim();
-    var email = String(row[cEmail] || '').trim();
-    var type = String(row[cType] || '').trim() || 'Other / Khac';
-
-    // `ticked` is whatever Forms joined together from the checkbox question.
-    // Nothing parses it, because every choice on that question is already an
-    // always-needed item (section 7.5.2).
-    var ticked = String(row[cStand] || '').trim();
-    var other = String(row[cOther] || '').trim();
-
-    // The fast lane. Only the five items and nothing written in the free-text
-    // box means the answer is a yes in principle, so it jumps the queue - but a
-    // volunteer still confirms it and arranges the handover.
-    var fastLane = ticked !== '' && other === '';
-
-    if (!String(row[cStatus]).trim()) {
-      sh.getRange(rowNumber, cStatus + 1).setValue(CONFIG.STATUS_ON_SUBMIT);
-    }
-    if (!String(row[cPriority]).trim()) {
-      sh.getRange(rowNumber, cPriority + 1).setValue(fastLane ? 'High' : 'Normal');
-    }
-    if (!String(row[cDue]).trim()) {
-      var due = new Date();
-      due.setDate(due.getDate() + CONFIG.TARGET_DAYS);
-      sh.getRange(rowNumber, cDue + 1).setValue(due);
-    }
-
-    var terms = ticked ? termsBlockOrEmpty_() : '';
-
-    var acked = send_(email,
-      'Vietnam Hearts: we have your offer / da nhan de xuat cua ban',
-      ackHtml_(name, ticked, terms, fastLane, type));
-    if (email && !acked) {
-      reportError_('onIntakeFormSubmit', new Error('Row ' + rowNumber +
-        ': the acknowledgement was not sent (email quota nearly exhausted).'));
-    }
-
-    notifyTeam_(
-      (fastLane ? 'FAST LANE: ' : '') +
-      'New request (' + type + ') from ' + (name || 'someone'),
-      (fastLane
-        ? '<p><b>Always-needed items only (' + escape_(ticked) + ').</b> ' +
-          'Flagged Priority=High. The answer is a yes in principle, but it still ' +
-          'needs a volunteer to confirm it and agree a handover - nobody has been ' +
-          'given a time or a place.</p>'
-        : '<p><b>' + escape_(type) + '</b> from ' + escape_(name || 'unknown') + '</p>') +
-      (ticked && other
-        ? '<p><b>Mixed.</b> Always-needed items (' + escape_(ticked) + ') plus ' +
-          'something else they typed in. Deal with both in one reply.</p>'
-        : '') +
-      (ticked === '' && other === '' && type.indexOf('Donate supplies') !== -1
-        ? '<p>Supplies request with nothing listed. Ask them what they have.</p>'
-        : '') +
-      '<p>Row ' + rowNumber + ': <a href="' + rowLink_(rowNumber) +
-      '">open it in the sheet</a></p>' +
-      '<p>Put one line in <b>Decision note</b> first - that line is what the ' +
-      'person receives - then set <b>Decision</b> to Approved or Declined. ' +
-      'Changing <b>Status</b> emails nobody.</p>');
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(CONFIG.DECISION_LOCK_WAIT_MS)) {
+    reportError_('Submission handling', new Error('Row ' + rowNumber + ': another ' +
+      'run was still handling a submission, so this one sent nothing. If Status, ' +
+      'Priority and Next action by are still empty, run sweepUnstamped().'));
+    return false;
   }
+  try {
+    var row = rowValues_(sh, rowNumber);
+    if (stampsFilled_(row, headers) === 3) return false;
+    processUnstampedRow_(sh, headers, rowNumber, row);
+    SpreadsheetApp.flush();
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** How many of the three submit stamps - Status, Priority, Next action by -
+ *  the row holds. 3 is a handled row; 1 or 2 is a half-written one. */
+function stampsFilled_(row, headers) {
+  return [HEADER.status, HEADER.priority, HEADER.due].filter(function (needle) {
+    return String(row[col_(headers, needle)] || '').trim() !== '';
+  }).length;
+}
+
+function processUnstampedRow_(sh, headers, rowNumber, row) {
+
+  var cStatus = col_(headers, HEADER.status);
+  var cPriority = col_(headers, HEADER.priority);
+  var cDue = col_(headers, HEADER.due);
+  var cEmail = col_(headers, HEADER.email);
+  var cName = col_(headers, HEADER.name);
+  var cType = col_(headers, HEADER.type);
+  var cStand = col_(headers, HEADER.standing);
+  var cOther = col_(headers, HEADER.other);
+
+  var name = String(row[cName] || '').trim();
+  var email = String(row[cEmail] || '').trim();
+  var type = String(row[cType] || '').trim() || 'Other / Khac';
+
+  // `ticked` is whatever Forms joined together from the checkbox question.
+  // Nothing parses it, because every choice on that question is already an
+  // always-needed item (section 7.5.2).
+  var ticked = String(row[cStand] || '').trim();
+  var other = String(row[cOther] || '').trim();
+
+  // The fast lane. Only the five items and nothing written in the free-text
+  // box means the answer is a yes in principle, so it jumps the queue - but a
+  // volunteer still confirms it and arranges the handover.
+  var fastLane = ticked !== '' && other === '';
+
+  if (!String(row[cStatus]).trim()) {
+    sh.getRange(rowNumber, cStatus + 1).setValue(CONFIG.STATUS_ON_SUBMIT);
+  }
+  if (!String(row[cPriority]).trim()) {
+    sh.getRange(rowNumber, cPriority + 1).setValue(fastLane ? 'High' : 'Normal');
+  }
+  if (!String(row[cDue]).trim()) {
+    var due = new Date();
+    due.setDate(due.getDate() + CONFIG.TARGET_DAYS);
+    sh.getRange(rowNumber, cDue + 1).setValue(due);
+  }
+
+  var terms = ticked ? termsBlockOrEmpty_() : '';
+
+  var acked = send_(email,
+    'Vietnam Hearts: we have your offer / da nhan de xuat cua ban',
+    ackHtml_(name, ticked, terms, fastLane, type));
+  if (email && !acked) {
+    reportError_('onIntakeFormSubmit', new Error('Row ' + rowNumber +
+      ': the acknowledgement was not sent (email quota nearly exhausted).'));
+  }
+
+  notifyTeam_(
+    (fastLane ? 'FAST LANE: ' : '') +
+    'New request (' + type + ') from ' + (name || 'someone'),
+    (fastLane
+      ? '<p><b>Always-needed items only (' + escape_(ticked) + ').</b> ' +
+        'Flagged Priority=High. The answer is a yes in principle, but it still ' +
+        'needs a volunteer to confirm it and agree a handover - nobody has been ' +
+        'given a time or a place.</p>'
+      : '<p><b>' + escape_(type) + '</b> from ' + escape_(name || 'unknown') + '</p>') +
+    (ticked && other
+      ? '<p><b>Mixed.</b> Always-needed items (' + escape_(ticked) + ') plus ' +
+        'something else they typed in. Deal with both in one reply.</p>'
+      : '') +
+    (ticked === '' && other === '' && type.indexOf('Donate supplies') !== -1
+      ? '<p>Supplies request with nothing listed. Ask them what they have.</p>'
+      : '') +
+    '<p>Row ' + rowNumber + ': <a href="' + rowLink_(rowNumber) +
+    '">open it in the sheet</a></p>' +
+    '<p>Put one line in <b>Decision note</b> first - that line is what the ' +
+    'person receives - then set <b>Decision</b> to Approved or Declined. ' +
+    'Changing <b>Status</b> emails nobody.</p>');
 }
 
 /** Repair rows the form wrote while the installed triggers were not running.
@@ -428,42 +456,48 @@ function processSubmissionRow_(sh, headers, rowNumber) {
  *
  *  Returns the number of rows it repaired. */
 function sweepUnstamped() {
+  var sh = sheet_();
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var headers = headerRow_();
+  var cStamp = timestampCol_(headers);
+  if (cStamp === -1) {
+    reportError_('sweepUnstamped', new Error('No column is headed ' +
+      TIMESTAMP_HEADERS.join(' or ') + ', so no missed submission could be ' +
+      'identified and none was repaired.'));
+    return 0;
+  }
+
   var repaired = 0;
-  try {
-    var sh = sheet_();
-    var lastRow = sh.getLastRow();
-    if (lastRow < 2) return 0;
+  var values = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    if (!row || !row.length) continue;
+    if (String(row[cStamp] || '').trim() === '') continue;
+    if (stampsFilled_(row, headers) !== 0) continue;
 
-    var headers = headerRow_();
-    var cStatus = col_(headers, HEADER.status);
-    var cPriority = col_(headers, HEADER.priority);
-    var cDue = col_(headers, HEADER.due);
-    var cStamp = col_(headers, HEADER.timestamp);
-
-    var values = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-    for (var i = 0; i < values.length; i++) {
-      var row = values[i];
-      if (!row || !row.length) continue;
-      if (String(row[cStamp] || '').trim() === '') continue;
-      if (String(row[cStatus] || '').trim() !== '') continue;
-      if (String(row[cPriority] || '').trim() !== '') continue;
-      if (String(row[cDue] || '').trim() !== '') continue;
-
-      var rowNumber = i + 2;
-      try {
-        processSubmissionRow_(sh, headers, rowNumber);
-        repaired++;
-      } catch (err) {
-        reportError_('sweepUnstamped row ' + rowNumber, err);
-      }
+    var rowNumber = i + 2;
+    try {
+      if (processSubmissionRow_(sh, headers, rowNumber)) repaired++;
+    } catch (err) {
+      reportError_('sweepUnstamped row ' + rowNumber, err);
     }
-    if (repaired) {
-      Logger.log('sweepUnstamped repaired %s row(s).', repaired);
-    }
-  } catch (err) {
-    reportError_('sweepUnstamped', err);
+  }
+  if (repaired) {
+    Logger.log('sweepUnstamped repaired %s row(s).', repaired);
   }
   return repaired;
+}
+
+/** 0-based index of the Timestamp column in any spelling Forms uses, or -1. */
+function timestampCol_(headers) {
+  for (var i = 0; i < TIMESTAMP_HEADERS.length; i++) {
+    try {
+      return col_(headers, TIMESTAMP_HEADERS[i]);
+    } catch (ignored) { /* not this locale's spelling; try the next */ }
+  }
+  return -1;
 }
 
 /* ------------------------------------------ on a change in the DECISION cell */

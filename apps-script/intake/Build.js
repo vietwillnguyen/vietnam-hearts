@@ -187,7 +187,7 @@ function buildIntake() {
   // buildIntake() is what re-authorizing looks like. Live pass 3 lost a real
   // submission that way, so the run that fixes the cause also repairs the
   // rows it cost. Never fatal - a build that dies here would take the
-  // instructions email down with it.
+  // instructions email down with it - so a failed sweep becomes a note.
   try {
     var repaired = sweepUnstamped();
     if (repaired) {
