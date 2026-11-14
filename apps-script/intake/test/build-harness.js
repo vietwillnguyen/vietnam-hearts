@@ -1216,16 +1216,16 @@ check('a hand-edited query is rebuilt to read the response tab',
   allWork4.getRange('A2').getFormula());
 
 console.log('\n=== All work over a response tab without the offer question');
-const w7 = makeWorld();
-w7.ss._addResponseSheet('Form Responses 1',
+const wNoOffer = makeWorld();
+wNoOffer.ss._addResponseSheet('Form Responses 1',
   ['Status', 'Priority', 'Next action by', 'Owner', 'Decision', 'Decision note',
     'Reply sent', 'Timestamp', 'Your name', 'Phone']);
-const notes7 = [];
-w7.sandbox.buildAllWorkTab_(w7.ss, notes7);
+const notesNoOffer = [];
+wNoOffer.sandbox.buildAllWorkTab_(wNoOffer.ss, notesNoOffer);
 check('it shows the Decision note as What rather than whatever sits in column J',
-  allWorkWhatHeader(w7) === 'Decision note', String(allWorkWhatHeader(w7)));
+  allWorkWhatHeader(wNoOffer) === 'Decision note', String(allWorkWhatHeader(wNoOffer)));
 check('the build notes say All work fell back to the Decision note',
-  notes7.some((n) => /shows each request's Decision note/.test(n)), JSON.stringify(notes7));
+  notesNoOffer.some((n) => /shows each request's Decision note/.test(n)), JSON.stringify(notesNoOffer));
 
 /* The fake must rewrite formulas the way Sheets does, or the checks above
    pass on text that real Sheets would have changed under them. */
