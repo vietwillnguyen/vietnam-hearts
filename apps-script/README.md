@@ -52,7 +52,7 @@ Everything the script does runs as whoever owns the Apps Script project: the ema
 
 ```bash
 cd apps-script
-npm run verify                   # node --check plus both stub harnesses
+npm run verify                   # node --check, both stub harnesses, the reminder test, then the reminder
 cd intake && npx clasp push      # this IS the deploy
 ```
 
@@ -63,7 +63,9 @@ That is worth knowing in both directions - it is why there is no release step, a
 ### If you changed `appsscript.json`, you are not done after the push
 
 **A change to `intake/appsscript.json` that adds an OAuth scope, including enabling an advanced service, stops every installed trigger from firing until the owner opens the editor and re-authorizes the project.**
-The push reports success. The script is deployed. The form keeps accepting submissions, and each one lands in the sheet with a Timestamp and **nothing else**: no `Status`, no acknowledgement to the person who submitted it, no notice to the team, and nothing anywhere saying it happened.
+The push reports success.
+The script is deployed.
+The form keeps accepting submissions, and each one lands in the sheet with a Timestamp and **nothing else**: no `Status`, no acknowledgement to the person who submitted it, no notice to the team, and nothing anywhere saying it happened.
 This is not hypothetical: it cost a real submission on the live pass that added the Drive advanced service, and the row sat unnoticed because a half-processed row looks exactly like a new one nobody has got to yet.
 
 So whenever that file changes, immediately after `clasp push`, signed in as the shared team Gmail:
@@ -88,7 +90,7 @@ cd apps-script/intake && npx clasp pull && git -C ../.. diff --exit-code
 |---|---|
 | `intake/Code.js` | The two trigger handlers, run on every submission and every edit |
 | `intake/Build.js` | `buildIntake()`, the one-shot builder that creates the form, the sheet tabs and the triggers |
-| `intake/test/harness.js` | Stub harness for the handlers: cases A to S against a fake `SpreadsheetApp` / `MailApp`, plus every `HEADER` needle against the real bilingual column titles |
+| `intake/test/harness.js` | Stub harness for the handlers: cases A to S against a fake `SpreadsheetApp` / `MailApp`, the missed-row sweep and its race with the trigger (T to V), plus every `HEADER` needle against the real bilingual column titles |
 | `intake/test/forbidden-shapes.js` | The address, opening-hours and reply-date shapes both harnesses assert never appear |
 | `intake/test/build-harness.js` | Stub harness for the builder, including a second run, a degraded Google account, a lost form, a default tab that is not empty, a form somebody unpublished, a file upload question somebody added, and rows that arrived while the triggers were dead |
 | `tools/scope-change-reminder.js` | The verify-time warning that a manifest change needs a re-authorization, with its own test under `tools/test/` |
@@ -198,6 +200,7 @@ node --check apps-script/intake/Code.js
 node --check apps-script/intake/Build.js
 node apps-script/intake/test/harness.js apps-script/intake/Code.js
 node apps-script/intake/test/build-harness.js apps-script/intake/Code.js apps-script/intake/Build.js
+node apps-script/tools/test/scope-change-reminder.test.js
 ```
 
 Each harness runs the real file in a `vm` context against fake Google services.
