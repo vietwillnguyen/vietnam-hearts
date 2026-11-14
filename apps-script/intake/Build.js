@@ -117,6 +117,14 @@ var CONDITION_PHOTO_HELP =
   'kèm ảnh ở đây. Sau khi gửi biểu mẫu, bạn hãy trả lời email xác nhận của chúng ' +
   'tôi kèm theo ảnh, hoặc gửi ảnh qua Zalo bằng đường dẫn ở cuối email đó.';
 
+/** The photo line in each half of the Standing needs B2 block, each under that
+ *  half's number line. The build seeds B2 with them and the delete-file-upload
+ *  step quotes them for a B2 that predates them. */
+var TERMS_PHOTO_LINE_EN =
+  'Photos of what you are giving are welcome on that number - please do not attach them to the form.';
+var TERMS_PHOTO_LINE_VI =
+  'Rất hoan nghênh bạn gửi ảnh đồ tặng qua số đó - xin đừng đính kèm ảnh vào biểu mẫu.';
+
 /* ------------------------------------------------------------------ build */
 
 function buildIntake() {
@@ -453,9 +461,10 @@ function warnOnFileUploadItems_(form, manual) {
     'earlier version of this builder asks for them nowhere else, so also paste ' +
     'this into the help text of the supplies section\'s **Condition** question: "' +
     CONDITION_PHOTO_HELP + '" And if \'Standing needs\'!B2 has no line about ' +
-    'photos, add one under the Zalo or WhatsApp number there, for example: "' +
-    'Photos of what you are giving are welcome on that number - please do not ' +
-    'attach them to the form."');
+    'photos, add both of these lines there. Put "' + TERMS_PHOTO_LINE_EN +
+    '" under the English Zalo or WhatsApp number line, and put "' +
+    TERMS_PHOTO_LINE_VI + '" under the Vietnamese one, below the --- line, ' +
+    'not at the end of the block.');
 }
 
 function addFormItems_(form, manual) {
@@ -870,7 +879,7 @@ function buildStandingNeedsTab_(ss, notes) {
     'Our area: Thạnh Mỹ Tây, Ho Chi Minh City.\n' +
     'A volunteer will message you to agree a time and place - please wait for that before bringing anything.\n' +
     'You can also message us on Zalo or WhatsApp: <number>.\n' +
-    'Photos of what you are giving are welcome on that number - please do not attach them to the form.\n\n' +
+    TERMS_PHOTO_LINE_EN + '\n\n' +
     'Food please: sealed, in its original packaging, at least 3 months before the expiry date.\n' +
     'Milk cartons: at least 2 weeks before expiry.\n' +
     'We cannot take home-made or repackaged food, opened items, or dented, rusty or unlabelled containers.\n' +
@@ -880,7 +889,7 @@ function buildStandingNeedsTab_(ss, notes) {
     'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.\n' +
     'Một tình nguyện viên sẽ nhắn bạn để hẹn giờ và địa điểm - xin đừng mang đến trước khi hẹn xong.\n' +
     'Bạn cũng có thể nhắn Zalo hoặc WhatsApp: <số>.\n' +
-    'Rất hoan nghênh bạn gửi ảnh đồ tặng qua số đó - xin đừng đính kèm ảnh vào biểu mẫu.\n\n' +
+    TERMS_PHOTO_LINE_VI + '\n\n' +
     'Thực phẩm xin: còn nguyên seal, nguyên bao bì gốc, còn hạn ít nhất 3 tháng.\n' +
     'Sữa hộp: còn hạn ít nhất 2 tuần.\n' +
     'Chúng tôi không nhận đồ ăn tự làm hoặc chia lại, đồ đã mở, hộp/lon bị móp, rỉ hoặc mất nhãn.\n' +

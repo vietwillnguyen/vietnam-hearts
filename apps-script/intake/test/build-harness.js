@@ -1245,6 +1245,22 @@ check('the step says the acknowledgement asks for photos on any form',
     .test(step12), step12.slice(0, 300));
 check('the step asks for the B2 photo line when the cell predates it',
   /Standing needs'!B2/.test(step12) && /photo/i.test(step12), step12.slice(0, 400));
+const b2Lines12 = String(w12.ss.getSheetByName('Standing needs').getRange('B2')
+  .getValue()).split('\n');
+const sep12 = b2Lines12.indexOf('---');
+const enAt12 = b2Lines12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_EN);
+const viAt12 = b2Lines12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_VI);
+check('the B2 the build writes holds each photo line under its own number line',
+  enAt12 > 0 && enAt12 < sep12 && /WhatsApp/.test(b2Lines12[enAt12 - 1]) &&
+  viAt12 > sep12 && /WhatsApp/.test(b2Lines12[viAt12 - 1]),
+  `en=${enAt12} vi=${viAt12} sep=${sep12}`);
+check('the step quotes both of those B2 photo lines, English then Vietnamese',
+  step12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_EN) !== -1 &&
+  step12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_VI) >
+    step12.indexOf(w12.sandbox.TERMS_PHOTO_LINE_EN),
+  step12.slice(0, 600));
+check('the step places the Vietnamese line under the Vietnamese number, below ---',
+  /under the Vietnamese one, below the --- line/.test(step12), step12.slice(0, 600));
 check('the step promises no number in the email',
   !/number is in|số điện thoại nằm/i.test(step12), step12.slice(0, 300));
 checkRendersAsHtml('file upload present', mail12);
