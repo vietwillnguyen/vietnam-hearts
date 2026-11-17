@@ -706,6 +706,20 @@ check('each of the seven items names the English word first',
 const consent = items.filter((i) => /I agree that Vietnam Hearts may store/.test(i.getTitle()))[0];
 check('the consent question exists', !!consent);
 check('consent is required', consent && consent.isRequired() === true);
+
+// The supplies page asks for only what a volunteer cannot act without: how
+// much, where it is and who delivers. The item questions stay optional because
+// either one alone is a complete offer, and condition and date are often not
+// known yet.
+const requiredOnSupplies = [/Roughly how much of each/, /Where are the items now/, /Who delivers/];
+for (const re of requiredOnSupplies) {
+  const it = items.filter((i) => re.test(i.getTitle()))[0];
+  check('supplies question is required: ' + re.source, !!it && it.isRequired() === true);
+}
+for (const re of [/We always need these/, /Other items not on the list/, /^Condition/, /When could you hand them over/]) {
+  const it = items.filter((i) => re.test(i.getTitle()))[0];
+  check('supplies question stays optional: ' + re.source, !!it && it.isRequired() === false);
+}
 check('consent links the Cloud Run privacy page',
   /run\.app\/privacy/.test(consent.getHelpText()), consent && consent.getHelpText());
 check('consent does NOT link an invented vietnamhearts.org/privacy',
