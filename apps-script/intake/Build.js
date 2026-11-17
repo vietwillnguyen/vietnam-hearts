@@ -87,7 +87,7 @@ var TABS = {
   progressChart: 'Progress chart'
 };
 
-/** The always-needed list. This is the ONLY place the five items are written
+/** The always-needed list. This is the ONLY place the items are written
  *  down, and they are written into the form's checkbox choices, never into a
  *  constant the handlers read. Code.js asks "did they tick anything", so the
  *  list can change by editing the form and nothing else. */
@@ -96,7 +96,9 @@ var STANDING_ITEMS = [
   'Sugar / Đường',
   'Small milk cartons / Sữa hộp nhỏ',
   'Fish sauce / Nước mắm',
-  'Seasoning powder, MSG / Bột nêm, bột ngọt'
+  'Seasoning powder, MSG / Bột nêm, bột ngọt',
+  'Soy sauce / Nước tương',
+  'Printing paper (A4) / Giấy in A4'
 ];
 
 /** Asked at the end of every branch, in exactly these words on purpose.

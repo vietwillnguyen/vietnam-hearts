@@ -24,7 +24,7 @@
  * every needle against the real bilingual column titles.
  *
  * Nothing in this file approves anything. Every submission waits for a human,
- * including an offer of the five always-needed items: those are only flagged
+ * including an offer of only always-needed items: those are only flagged
  * Priority=High so they are answered first. Drop-offs are arranged one at a
  * time with a volunteer, so no automated mail ever states the school's street
  * address or hours. The only place any of them names is the public area,
@@ -98,7 +98,7 @@ var HEADER = {
   // The always-needed checkbox question. Its CHOICES are the list; this is
   // only how we find the column. Keep "Other" switched off on this question.
   standing: 'always need',
-  // The free-text escape hatch. Anything here means more than the five items.
+  // The free-text escape hatch. Anything here means more than the listed items.
   other: 'Other items'
 };
 
@@ -395,7 +395,7 @@ function processUnstampedRow_(sh, headers, rowNumber, row) {
   var ticked = String(row[cStand] || '').trim();
   var other = String(row[cOther] || '').trim();
 
-  // The fast lane. Only the five items and nothing written in the free-text
+  // The fast lane. Only listed items and nothing written in the free-text
   // box means the answer is a yes in principle, so it jumps the queue - but a
   // volunteer still confirms it and arranges the handover.
   var fastLane = ticked !== '' && other === '';

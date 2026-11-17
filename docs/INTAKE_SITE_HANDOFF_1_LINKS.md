@@ -34,9 +34,9 @@ Do not add a street address, opening hours, or a phone number: all three are del
 >
 > **1b. In that same block, please add this short list above the button**, so people can see what is always useful without filling anything in:
 >
-> > **We always need / Chúng tôi luôn cần:** cooking oil (dầu ăn), sugar (đường), small milk cartons (sữa hộp nhỏ), fish sauce (nước mắm), seasoning powder / MSG (bột nêm, bột ngọt).
+> > **We always need / Chúng tôi luôn cần:** cooking oil (dầu ăn), sugar (đường), small milk cartons (sữa hộp nhỏ), fish sauce (nước mắm), seasoning powder / MSG (bột nêm, bột ngọt), soy sauce (nước tương), A4 printing paper (giấy in A4).
 > >
-> > Sealed, in the original packaging, at least 3 months before the expiry date; milk cartons at least 2 weeks. More than roughly 20 kg or 20 L, please message us first.
+> > Food: sealed, in the original packaging, at least 3 months before the expiry date; milk cartons at least 2 weeks. More than roughly 20 kg or 20 L, please message us first.
 > >
 > > **Please message us before bringing anything** - we arrange each handover with a volunteer. Our area is Thạnh Mỹ Tây, Ho Chi Minh City. / **Xin nhắn cho chúng tôi trước khi mang đến** - chúng tôi hẹn giờ và nơi nhận với bạn. Khu vực: Thạnh Mỹ Tây, TP.HCM.
 > >
