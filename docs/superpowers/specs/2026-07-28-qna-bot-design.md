@@ -4,6 +4,7 @@
 - **Date:** 2026-07-28
 - **Supersedes:** the disabled bot and messenger routers that were commented out in `app/main.py` when this spec was written.
   Phase 0 has since deleted the messenger router and wired its replacement, `app/routers/webhooks.py`; the bot routers in `app/routers/bot.py` are still commented out pending the phase 1 restructure.
+- **Amended:** 2026-09-29, see the Amendment section at the end. D6 is superseded for the inbound transport by `docs/superpowers/specs/2026-09-29-email-channel-design.md`.
 
 ## Context
 
@@ -479,6 +480,38 @@ Proposed copy, pending sign-off:
 
 The Vietnamese is a fresh rendering rather than a literal translation, so both read naturally.
 A native Vietnamese speaker on the team should confirm the register before phase 1 ships, since `mình` is deliberately warm and informal and may not suit every audience.
+
+## Amendment 2026-09-29
+
+Recorded after the captain's decisions of 2026-09-29 on the email channel.
+The original text above is left as written; this section says what now overrides it.
+The full design is `docs/superpowers/specs/2026-09-29-email-channel-design.md` and its plan is `docs/superpowers/plans/2026-09-29-email-channel-implementation.md`.
+
+**D6 is superseded for the inbound transport.**
+Inbound email uses the Gmail API with a one-time owner OAuth consent: scope `gmail.modify`, consent screen External, published to production without verification.
+The reason D6 gave for rejecting this, copied from mailhub ADR-0002, fused two separate things.
+Google ties the 7-day refresh-token expiry to the Testing publishing status, not to verification, and exempts an app used only by its owner from verification and from the CASA assessment.
+A consumer account therefore needs no Workspace domain and no paid review for this.
+The mailbox facts in D6 still hold, and D6 remains the documented fallback: if the consent is refused at setup time, IMAP with the app password is used behind the same transport seam and nothing above it changes.
+
+**Polling is twice a day, not every ~5 minutes.**
+One run in the morning and one at the end of the day, Vietnam time, on the existing Cloud Scheduler plus admin-endpoint pattern.
+The "Cron: IMAP poll, every ~5 min" branch of the Architecture diagram and the Rollout table's phase 2 description read accordingly.
+Push notifications are out of scope.
+
+**Other decisions recorded the same day, none of which rewrites a numbered decision above:**
+
+- Triage (D7 preserved as the shadow and fallback): Jev decides in draft mode, with the D7 LiteLLM structured-output classifier (Gemini Flash-Lite by default, Claude Haiku 4.5 as the config swap) running in shadow behind one `TriageClassifier` protocol. Jev keeps the deciding role only after 100 percent executive recall on the bilingual golden set.
+- Knowledge base: one curated Google Doc owned by the captain, editable by coordinators, re-synced daily.
+- Escalation (D12 preserved): every escalation forwards to the captain, plus Discord; safeguarding is flagged urgent in Discord.
+- Automatic sending: after the evaluation gate, sign-up and FAQ replies go automatic together.
+- Sign-up reply: a fixed template written by the captain, in English and Vietnamese, pointing only to the Google Form, with class days, times and the form link rendered from settings. The Vietnamese version needs native-speaker sign-off before it is sent automatically.
+
+**Rollout consequence.**
+Phase 1 has not landed, so the email channel's first build phase carries the shared engine (conversation store, deduplication, triage classifier, notifier, three-tier handoff), and the evaluation harness of phase 4 lands as the email plan's second phase.
+Messenger then plugs into the engine.
+
+**Still open.** The holding-message copy in the section above is unchanged and still awaiting sign-off.
 
 ## References
 

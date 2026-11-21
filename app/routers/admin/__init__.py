@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 from app.dependencies.auth import get_current_admin_user
 from app.routers.admin import (
     cron,
+    email_bot,
     emails,
     health,
     logs,
@@ -34,3 +35,4 @@ admin_router.include_router(cron.router)
 admin_router.include_router(users.router)
 admin_router.include_router(health.router)
 admin_router.include_router(logs.router)
+admin_router.include_router(email_bot.router)

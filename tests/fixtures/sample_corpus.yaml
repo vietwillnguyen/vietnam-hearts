@@ -1,0 +1,317 @@
+# Anonymised sample corpus for the live end-to-end protocol.
+#
+# Sent to a THROWAWAY inbox by scripts/seed_test_inbox.py. Never to
+# vietnam.hearts.volunteering@gmail.com - the script refuses that address
+# outright.
+#
+# Every case here is written for the fixture. No real volunteer's name, address,
+# or words appear, and nothing is derived from the signup responses sheet. The
+# shape follows the corpus the investigation asked the captain for (about ten
+# sign-up requests with at least three in Vietnamese, five other FAQ questions,
+# two each of sponsorship, donation, partnership and press, three from existing
+# volunteers about logistics, three automated messages with full headers, one
+# multi-topic mail), so the captain's real anonymised corpus can replace it
+# case for case.
+cases:
+  # ---------------------------------------------------------------- sign-up
+  - id: signup-en-1
+    language: en
+    expected_category: signup
+    subject: Volunteering with Vietnam Hearts
+    text: |
+      Hello,
+
+      I am moving to Ho Chi Minh City next month and would love to help with
+      your English classes. How do I sign up?
+
+      Thanks a lot!
+
+  - id: signup-en-2
+    language: en
+    expected_category: signup
+    subject: Can I help teach?
+    text: |
+      Hi, I saw your page and I would like to volunteer as a teacher. What is
+      the process?
+
+  - id: signup-en-3
+    language: en
+    expected_category: signup
+    subject: Teaching assistant
+    text: |
+      Good afternoon. I am a university student here for a year and I would like
+      to be a teaching assistant if you need one.
+
+  - id: signup-en-4
+    language: en
+    expected_category: signup
+    subject: Volunteer application
+    text: |
+      Hello team, how can I apply to volunteer with you? I am free on weekday
+      mornings.
+
+  - id: signup-en-5
+    language: en
+    expected_category: signup
+    subject: Joining as a volunteer
+    text: |
+      Hi! A friend volunteers with you and recommended I get in touch. What do I
+      need to do to join?
+
+  - id: signup-en-6
+    language: en
+    expected_category: signup
+    subject: Interested in helping out
+    text: |
+      Hi there, I have some free time and would like to help with the classes.
+      Where do I start?
+
+  - id: signup-en-7
+    language: en
+    expected_category: signup
+    subject: Would love to volunteer
+    text: |
+      Hello, I am a retired English teacher living in District 2 and I would be
+      happy to help however is most useful.
+
+  - id: signup-vi-1
+    language: vi
+    expected_category: signup
+    subject: Đăng ký làm tình nguyện viên
+    text: |
+      Xin chào,
+
+      Mình muốn tham gia làm tình nguyện viên dạy tiếng Anh cùng các bạn. Mình
+      cần làm gì để đăng ký ạ?
+
+      Cảm ơn nhiều!
+
+  - id: signup-vi-2
+    language: vi
+    expected_category: signup
+    subject: Mình muốn làm trợ giảng
+    text: |
+      Chào các bạn, mình đang ở TP.HCM và muốn làm trợ giảng cho lớp học. Mình
+      nên liên hệ như thế nào ạ?
+
+  - id: signup-vi-3
+    language: vi
+    expected_category: signup
+    subject: Tham gia tình nguyện
+    text: |
+      Xin chào, mình là sinh viên và muốn tham gia hoạt động tình nguyện của các
+      bạn. Mình có thể đăng ký ở đâu?
+
+  # -------------------------------------------------------------------- FAQ
+  - id: faq-en-1
+    language: en
+    expected_category: faq
+    subject: Question about the classes
+    text: |
+      Hi there, do volunteers need a teaching certificate, and roughly how many
+      children are in a class?
+
+  - id: faq-en-2
+    language: en
+    expected_category: faq
+    subject: Where are the classes held?
+    text: |
+      Hello, whereabouts in the city do the classes take place?
+
+  - id: faq-en-3
+    language: en
+    expected_category: faq
+    subject: What ages do you teach?
+    text: |
+      Good morning, how old are the children in your classes?
+
+  - id: faq-vi-1
+    language: vi
+    expected_category: faq
+    subject: Lớp học diễn ra khi nào?
+    text: |
+      Chào các bạn, cho mình hỏi lớp học diễn ra vào những ngày nào trong tuần ạ?
+
+  - id: faq-vi-2
+    language: vi
+    expected_category: faq
+    subject: Có cần kinh nghiệm không?
+    text: |
+      Mình chưa từng dạy học, vậy mình có thể tham gia được không ạ?
+
+  # ------------------------------------------------------------- sponsorship
+  - id: sponsorship-en-1
+    language: en
+    expected_category: sponsorship
+    subject: Corporate sponsorship proposal
+    text: |
+      Dear Vietnam Hearts, our company would like to sponsor your programme and
+      can commit a budget for the coming year. Who should we speak to about a
+      contract?
+
+  - id: sponsorship-vi-1
+    language: vi
+    expected_category: sponsorship
+    subject: Đề xuất tài trợ
+    text: |
+      Chào các bạn, công ty mình muốn tài trợ cho chương trình của các bạn trong
+      năm tới. Mình nên liên hệ với ai để trao đổi về hợp đồng ạ?
+
+  # ---------------------------------------------------------------- donation
+  - id: donation-en-1
+    language: en
+    expected_category: donation
+    subject: Donating books and supplies
+    text: |
+      Hello, I have a large box of children's English books and some stationery.
+      Can I donate them, and would money be more useful?
+
+  - id: donation-vi-1
+    language: vi
+    expected_category: donation
+    subject: Quyên góp
+    text: |
+      Mình muốn quyên góp một khoản tiền nhỏ cho các lớp học. Mình chuyển khoản
+      như thế nào ạ?
+
+  # ------------------------------------------------------------- partnership
+  - id: partnership-en-1
+    language: en
+    expected_category: partnership
+    subject: Partnership with our language school
+    text: |
+      Hi, we run a language school and would like to explore working together,
+      perhaps sharing space and teachers. Could we set up a call?
+
+  - id: partnership-vi-1
+    language: vi
+    expected_category: partnership
+    subject: Hợp tác
+    text: |
+      Chào các bạn, trung tâm của mình muốn hợp tác với Vietnam Hearts. Mình có
+      thể hẹn một buổi nói chuyện không ạ?
+
+  # ------------------------------------------------------------------- press
+  - id: press-en-1
+    language: en
+    expected_category: press
+    subject: Interview request for an article
+    text: |
+      Hello, I am a freelance journalist writing about education charities in
+      Vietnam. Would someone be available for an interview this month?
+
+  - id: press-vi-1
+    language: vi
+    expected_category: press
+    subject: Xin phỏng vấn
+    text: |
+      Chào các bạn, mình là phóng viên và muốn viết một bài về hoạt động của
+      Vietnam Hearts. Mình có thể phỏng vấn ai ạ?
+
+  # ---------------------------------------------------------- volunteer ops
+  - id: volunteer-ops-en-1
+    language: en
+    expected_category: volunteer_ops
+    subject: Cannot make Thursday
+    text: |
+      Hi, I am signed up for Thursday this week but something has come up. Can
+      someone swap with me?
+
+  - id: volunteer-ops-en-2
+    language: en
+    expected_category: volunteer_ops
+    subject: Materials for next week
+    text: |
+      Morning, do I need to bring printed worksheets next week or are they
+      provided?
+
+  - id: volunteer-ops-vi-1
+    language: vi
+    expected_category: volunteer_ops
+    subject: Đổi buổi dạy
+    text: |
+      Chào các bạn, tuần này mình không đi được buổi thứ Ba. Mình có thể đổi
+      sang thứ Năm không ạ?
+
+  # ------------------------------------------------------- safeguarding, legal
+  - id: safeguarding-vi-1
+    language: vi
+    expected_category: safeguarding_legal
+    subject: Lo ngại về một lớp học
+    text: |
+      Chào các bạn, mình là phụ huynh và mình có một lo ngại về sự an toàn của
+      các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.
+
+  - id: safeguarding-en-1
+    language: en
+    expected_category: safeguarding_legal
+    subject: Complaint about a volunteer
+    text: |
+      Hello, I need to raise a serious concern about how one of your volunteers
+      spoke to a child. Please could a manager contact me.
+
+  # -------------------------------------------------------------- acceptance
+  - id: acceptance-en-1
+    language: en
+    expected_category: acceptance
+    subject: Has my application been accepted?
+    text: |
+      Hi, I filled in the volunteer form two weeks ago. Has my application been
+      approved yet?
+
+  - id: acceptance-vi-1
+    language: vi
+    expected_category: acceptance
+    subject: Đơn của mình đã được duyệt chưa?
+    text: |
+      Chào các bạn, mình đã điền đơn tình nguyện tuần trước. Đơn của mình đã
+      được duyệt chưa ạ?
+
+  # ------------------------------------------------------------- multi-topic
+  - id: multi-topic-en-1
+    language: en
+    expected_category: donation
+    subject: Class times, and a donation
+    text: |
+      Hello, what time do the classes start? Also, my company would like to
+      donate some money to support the programme.
+
+  # --------------------------------------------------------------- automated
+  # Full headers, because these are the deterministic-guard cases and the
+  # headers are the whole test.
+  - id: automated-newsletter
+    language: en
+    expected_category: automated
+    subject: Your weekly digest is here
+    headers:
+      Precedence: bulk
+      List-Id: <digest.newsletter.example.com>
+      List-Unsubscribe: <https://newsletter.example.com/u/1>
+    text: |
+      This week in nonprofit news. Unsubscribe at any time.
+
+  - id: automated-vacation
+    language: en
+    expected_category: automated
+    subject: "Automatic reply: Volunteering with Vietnam Hearts"
+    headers:
+      Auto-Submitted: auto-replied
+      X-Auto-Response-Suppress: All
+    text: |
+      I am out of the office until next Monday.
+
+  - id: automated-receipt
+    language: en
+    expected_category: automated
+    subject: Your order has shipped
+    headers:
+      Auto-Submitted: auto-generated
+      Precedence: bulk
+    text: |
+      Your order is on its way. This mailbox is not monitored.
+
+# Rough monthly volume, for sizing the caps and the poll cadence. The captain's
+# own figure replaces this once he has counted; it is recorded here rather than
+# in a comment in the code so the assumption is visible to whoever tunes
+# EMAIL_BOT_PER_RUN_CAP.
+assumed_monthly_volume: 40

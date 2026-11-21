@@ -1,0 +1,37 @@
+{
+  "model": "jev-1-2026-09",
+  "usage": {
+    "input_tokens": 214,
+    "output_tokens": 18
+  },
+  "answers": {
+    "category": {
+      "type": "choice",
+      "choice": "signup",
+      "confidence": 0.89,
+      "probabilities": {
+        "signup": 0.89,
+        "faq": 0.07,
+        "human_other": 0.04
+      }
+    },
+    "language": {
+      "type": "choice",
+      "choice": "vi",
+      "confidence": 0.97,
+      "probabilities": {
+        "en": 0.0,
+        "vi": 0.97,
+        "other": 0.0
+      }
+    },
+    "asks_for_human": {
+      "type": "noul",
+      "noul": 0.05
+    },
+    "mentions_money_or_commitment": {
+      "type": "noul",
+      "noul": 0.01
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "id": "18f2a1b4c5d6e878",
+  "threadId": "18f2a1b4c5d6e878",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Chào các bạn,\n\nMình là phụ huynh và mình có một lo ngại về sự an toàn của các bé",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Lo ngại về một lớp học"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 264,
+      "data": "Q2jDoG8gY8OhYyBi4bqhbiwKCk3DrG5oIGzDoCBwaOG7pSBodXluaCB2w6AgbcOsbmggY8OzIG3hu5l0IGxvIG5n4bqhaSB24buBIHPhu7EgYW4gdG_DoG4gY-G7p2EgY8OhYyBiw6kgdHJvbmcgbOG7m3AgaMO0bSBxdWEuIE3DrG5oIG114buRbiBuw7NpIGNodXnhu4duIHbhu5tpIG5nxrDhu51pIHBo4bulIHRyw6FjaC4KClhpbiBj4bqjbSDGoW4u"
+    }
+  }
+}

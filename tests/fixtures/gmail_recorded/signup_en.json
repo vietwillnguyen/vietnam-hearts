@@ -1,0 +1,55 @@
+{
+  "id": "18f2a1b4c5d6e7f0",
+  "threadId": "18f2a1b4c5d6e7f0",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Hello,\n\nI am moving to Ho Chi Minh City next month and would love to help out wi",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Volunteering with Vietnam Hearts"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 184,
+      "data": "SGVsbG8sCgpJIGFtIG1vdmluZyB0byBIbyBDaGkgTWluaCBDaXR5IG5leHQgbW9udGggYW5kIHdvdWxkIGxvdmUgdG8gaGVscCBvdXQgd2l0aCB5b3VyIEVuZ2xpc2ggY2xhc3Nlcy4gSG93IGRvIEkgc2lnbiB1cD8KClRoYW5rcyBhIGxvdCE="
+    }
+  }
+}

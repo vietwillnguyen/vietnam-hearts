@@ -1,0 +1,55 @@
+{
+  "id": "18f2a1b4c5d6e812",
+  "threadId": "18f2a1b4c5d6e812",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many child",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Question about the classes"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 152,
+      "data": "SGkgdGhlcmUsCgpEbyB2b2x1bnRlZXJzIG5lZWQgYSB0ZWFjaGluZyBjZXJ0aWZpY2F0ZSwgYW5kIHJvdWdobHkgaG93IG1hbnkgY2hpbGRyZW4gYXJlIGluIGEgY2xhc3M_CgpCZXN0IHdpc2hlcw=="
+    }
+  }
+}

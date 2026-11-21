@@ -74,6 +74,7 @@ async def admin_dashboard(
         ]
 
         from app.config import APPLICATION_VERSION
+        from app.services.email_bot.gates import ACCEPTANCE_GATES
 
         return templates.TemplateResponse(
             request,
@@ -85,6 +86,7 @@ async def admin_dashboard(
                 "emails": email_data,
                 "settings": settings,
                 "version": APPLICATION_VERSION,
+                "acceptance_gates": dict(ACCEPTANCE_GATES),
                 # The Bot Management tab talks only to app/routers/bot.py, so
                 # it is rendered only while those routers are mounted.
                 "bot_enabled": bot_routes_mounted(request.app),

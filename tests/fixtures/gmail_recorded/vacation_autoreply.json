@@ -1,0 +1,63 @@
+{
+  "id": "18f2a1b4c5d6e856",
+  "threadId": "18f2a1b4c5d6e856",
+  "labelIds": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "I am out of the office until next Monday.",
+  "internalDate": "1759000000000",
+  "sizeEstimate": 2048,
+  "historyId": "990099",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "From",
+        "value": "sender@example.com"
+      },
+      {
+        "name": "To",
+        "value": "vh-bot-test-inbox@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Automatic reply: Volunteering with Vietnam Hearts"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 29 Sep 2026 09:12:03 +0700"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<abc123@mail.example.com>"
+      },
+      {
+        "name": "Auto-Submitted",
+        "value": "auto-replied"
+      },
+      {
+        "name": "X-Auto-Response-Suppress",
+        "value": "All"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 56,
+      "data": "SSBhbSBvdXQgb2YgdGhlIG9mZmljZSB1bnRpbCBuZXh0IE1vbmRheS4="
+    }
+  }
+}

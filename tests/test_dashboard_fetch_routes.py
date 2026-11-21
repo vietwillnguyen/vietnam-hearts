@@ -29,6 +29,7 @@ from starlette.routing import Match
 
 from app.main import app
 from app.routers.admin.helpers import bot_routes_mounted, route_match
+from app.services.email_bot.gates import ACCEPTANCE_GATES
 
 TEMPLATE = "admin/dashboard.html"
 
@@ -41,6 +42,9 @@ BASE_CONTEXT = {
     "emails": [],
     "settings": [],
     "version": "test",
+    # The Inbox Bot card states the acceptance gates in prose; the handler
+    # passes the real table, so the render does too.
+    "acceptance_gates": dict(ACCEPTANCE_GATES),
 }
 
 # Fetches whose first argument is a variable rather than a literal. Each is
@@ -193,7 +197,20 @@ class TestBotTabFollowsTheMountedRouters:
         assert 'id="bot-tab"' not in html
         assert 'id="bot"' not in html
         assert "/admin/bot/" not in html
-        assert "knowledge" not in html.lower()
+        # The Inbox Bot card has its own knowledge-base section, served by the
+        # mounted /admin/email-bot/* routes, so "knowledge" alone is no longer
+        # a marker of the Messenger tab. Every knowledge control that tab
+        # carries is named instead, and the card's own fetches are checked
+        # against the router by the tests above.
+        for marker in (
+            "checkKnowledgeStatus",
+            "testKnowledgeBaseSearch",
+            "inspectKnowledgeBaseChunks",
+            "knowledge-sync",
+            "knowledge_service_available",
+            "Check Knowledge Status",
+        ):
+            assert marker not in html, marker
 
     def test_the_tab_comes_back_with_the_routers(self):
         html = render(bot_enabled=True)

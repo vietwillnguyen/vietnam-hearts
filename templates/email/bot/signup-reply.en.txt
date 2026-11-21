@@ -1,0 +1,7 @@
+Thank you very much for your message and interest in volunteering with Vietnam Hearts 💚
+
+We teach in HCM {{ teaching_days }} from {{ class_time }} and are always looking for volunteers to come in to support our teachers as TA or to teach.
+
+If you in the area and interested, you can fill out the form below! we will email you all our onboarding and send you a link to our groupchat when its approved.
+
+{{ signup_form_link }}

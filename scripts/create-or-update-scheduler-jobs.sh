@@ -63,11 +63,16 @@ FAILED_JOBS=()
 # too would mean every credential rotation silently stamped these hardcoded
 # values back over whatever an admin had configured - putting the dashboard
 # back to lying about cadence, which is the failure this repair exists to end.
+# The optional fifth argument overrides SCHEDULER_ATTEMPT_DEADLINE for one job
+# (e.g. "600s"). Like the default it IS sent on the update path: it is a
+# property of how long the endpoint takes to run, which is ours to know, not a
+# cadence an admin tunes on the dashboard.
 create_or_update_job() {
     local job_name=$1
     local schedule=$2
     local endpoint=$3
     local description=$4
+    local attempt_deadline=${5:-$ATTEMPT_DEADLINE}
 
     echo -e "${YELLOW}Setting up job: ${job_name}${NC}"
 
@@ -78,7 +83,7 @@ create_or_update_job() {
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
             --update-headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
-            --attempt-deadline="$ATTEMPT_DEADLINE" \
+            --attempt-deadline="$attempt_deadline" \
             --location="$REGION" \
             --description="$description"; then
             echo -e "${GREEN}✓ Updated job: ${job_name}${NC}"
@@ -93,7 +98,7 @@ create_or_update_job() {
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
             --headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
-            --attempt-deadline="$ATTEMPT_DEADLINE" \
+            --attempt-deadline="$attempt_deadline" \
             --time-zone="$TIMEZONE" \
             --location="$REGION" \
             --description="$description"; then
@@ -149,6 +154,38 @@ create_or_update_job \
     "0 * * * *" \
     "/admin/rotate-schedule" \
     "Reconcile schedule sheets to the current week (hourly)"
+
+# The volunteer inbox bot. Twice a day rather than every few minutes: the bot
+# only ever replies to mail already waiting, so latency costs nothing, and a
+# rarer poll keeps both the model spend and the blast radius of a bad run small.
+# This schedule is only the bootstrap default - the live cadence is owned by the
+# CRON_POLL_INBOX setting and applied by POST /admin/sync-cron-schedules.
+#
+# The attempt deadline has to exceed the worst case of one run at
+# EMAIL_BOT_PER_RUN_CAP messages, each of which can make a classifier call and a
+# retrieval plus generation round trip. The endpoint is idempotent, so a retry
+# after a genuine timeout is harmless; a deadline that fires mid-run is not,
+# because it produces exactly the concurrent-retry case the run lock exists for.
+create_or_update_job \
+    "poll-volunteer-inbox" \
+    "0 8,18 * * *" \
+    "/admin/email-bot/poll" \
+    "Triage the volunteer inbox: label every new mail, draft answers, forward escalations (twice daily)" \
+    "600s"
+
+# Re-read the curated knowledge-base doc once a day, before the morning poll,
+# so an edit a coordinator makes today is answerable tomorrow without anyone
+# deploying or clicking anything. Bootstrap cadence only: the live value is the
+# CRON_SYNC_KNOWLEDGE_BASE setting, applied by POST /admin/sync-cron-schedules.
+#
+# A shorter deadline than the poll because the work is bounded and known: one
+# document fetch, a chunk pass and an embed pass.
+create_or_update_job \
+    "sync-knowledge-base" \
+    "0 5 * * *" \
+    "/admin/email-bot/sync-knowledge-base" \
+    "Re-read the curated knowledge-base doc the inbox bot answers FAQ questions from (daily)" \
+    "300s"
 
 # system_logs keeps LOG_RETENTION_DAYS (default 30) of history. Deleting is
 # idempotent, so a missed day is simply caught up by the next run.

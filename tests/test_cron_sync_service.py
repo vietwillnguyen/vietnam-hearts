@@ -51,6 +51,64 @@ def make_client(current_schedules, patch_side_effect=None):
     return client, jobs
 
 
+def run_scheduler_script(tmp_path, *, jobs_exist: bool) -> dict[str, dict[str, str]]:
+    """Run the deploy script against a stub ``gcloud`` and return what it asked for.
+
+    Keyed by job id, each value is the ``--flag=value`` arguments of the
+    create or update call the script made for that job.
+    """
+    import shutil
+    import subprocess
+
+    from app.config import PROJECT_ROOT
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(
+        PROJECT_ROOT / "scripts" / "create-or-update-scheduler-jobs.sh", scripts
+    )
+    (scripts / "deploy.config").write_text(
+        'SCHEDULER_REGION="test-region"\n'
+        'SCHEDULER_TIMEZONE="Asia/Ho_Chi_Minh"\n'
+        'BASE_URL="https://service.example.test"\n'
+    )
+    (tmp_path / ".env").write_text("SUPABASE_SECRET_KEY=test-key\n")
+
+    log = tmp_path / "gcloud.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gcloud = bin_dir / "gcloud"
+    gcloud.write_text(
+        "#!/bin/bash\n"
+        'if [ "$3" = describe ]; then exit "$GCLOUD_DESCRIBE_EXIT"; fi\n'
+        'printf "%s\\x1f" "$@" >> "$GCLOUD_LOG"\n'
+        'printf "\\n" >> "$GCLOUD_LOG"\n'
+    )
+    gcloud.chmod(0o755)
+
+    subprocess.run(
+        ["bash", str(scripts / "create-or-update-scheduler-jobs.sh")],
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "GCLOUD_LOG": str(log),
+            "GCLOUD_DESCRIBE_EXIT": "0" if jobs_exist else "1",
+        },
+        check=True,
+        capture_output=True,
+    )
+
+    verb = "update" if jobs_exist else "create"
+    calls: dict[str, dict[str, str]] = {}
+    for line in log.read_text().splitlines():
+        args = [arg for arg in line.split("\x1f") if arg]
+        if args[:4] != ["scheduler", "jobs", verb, "http"]:
+            continue
+        calls[args[4]] = dict(
+            arg[2:].split("=", 1) for arg in args[5:] if arg.startswith("--")
+        )
+    return calls
+
+
 @pytest.fixture
 def settings_db():
     """A db whose get_setting returns values from a plain dict."""
@@ -58,6 +116,8 @@ def settings_db():
         "CRON_SYNC_VOLUNTEERS": "0 */2 * * *",
         "CRON_SEND_WEEKLY_REMINDERS": "0 12 * * 0",
         "CRON_ROTATE_SCHEDULE": "0 * * * *",
+        "CRON_POLL_INBOX": "0 8,18 * * *",
+        "CRON_SYNC_KNOWLEDGE_BASE": "0 5 * * *",
         "SCHEDULE_TIMEZONE": "Asia/Ho_Chi_Minh",
     }
 
@@ -106,6 +166,8 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",  # stale weekly value
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -127,6 +189,8 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 * * * *",
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -154,6 +218,8 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -184,6 +250,8 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 */2 * * *",
                 "send-weekly-reminders": "0 12 * * 0",
                 "rotate-schedule": "0 17 * * 5",  # stale, and about to stay stale
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -203,6 +271,8 @@ class TestSyncCronSchedules:
                 "sync-volunteers": "0 0 1 1 *",
                 "send-weekly-reminders": "0 0 1 1 *",
                 "rotate-schedule": "0 17 * * 5",
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
             }
         )
 
@@ -222,6 +292,8 @@ class TestSyncCronSchedules:
             {
                 "sync-volunteers": "0 0 1 1 *",
                 "send-weekly-reminders": "0 0 1 1 *",
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 5 * * *",
                 # rotate-schedule absent entirely -> get() raises
             }
         )
@@ -314,3 +386,105 @@ class TestSyncCronSchedules:
             assert "httpTarget" not in call.kwargs["body"]
             assert "headers" not in call.kwargs["body"]
             assert "headers" not in call.kwargs["updateMask"]
+
+
+class TestPollInboxJobMapping:
+    """``CRON_POLL_INBOX`` drives the ``poll-volunteer-inbox`` job.
+
+    The mapping is what makes the dashboard field authoritative. Without it the
+    field is decoration again: stored, rendered, and read by nothing - which is
+    exactly the failure the cron sync service was built to end.
+    """
+
+    def test_the_setting_maps_to_the_job(self):
+        assert CRON_SETTING_TO_JOB["CRON_POLL_INBOX"] == "poll-volunteer-inbox"
+
+    def test_the_deploy_script_creates_the_job_against_the_poll_endpoint(
+        self, tmp_path
+    ):
+        # The script owns job existence; this module owns cadence. A name that
+        # disagrees means the sync silently updates nothing.
+        created = run_scheduler_script(tmp_path, jobs_exist=False)
+        assert created["poll-volunteer-inbox"]["uri"] == (
+            "https://service.example.test/admin/email-bot/poll"
+        )
+
+    def test_every_mapped_job_is_created_by_the_deploy_script(self, tmp_path):
+        created = run_scheduler_script(tmp_path, jobs_exist=False)
+        for job_id in CRON_SETTING_TO_JOB.values():
+            assert job_id in created, f"{job_id} is mapped but never created"
+
+    def test_a_drifted_poll_cadence_is_patched(self, settings_db):
+        db, _ = settings_db
+        client, jobs = make_client(
+            {
+                "sync-volunteers": "0 */2 * * *",
+                "send-weekly-reminders": "0 12 * * 0",
+                "rotate-schedule": "0 * * * *",
+                "poll-volunteer-inbox": "*/5 * * * *",  # a far too frequent poll
+                "sync-knowledge-base": "0 5 * * *",
+            }
+        )
+
+        result = sync_cron_schedules(db, client=client)
+
+        assert [job["job"] for job in result["synced"]] == ["poll-volunteer-inbox"]
+        kwargs = jobs.patch.call_args.kwargs
+        assert kwargs["body"]["schedule"] == "0 8,18 * * *"
+        assert kwargs["name"].endswith("jobs/poll-volunteer-inbox")
+
+    def test_the_default_cadence_is_accepted_as_a_cron_expression(self):
+        # Two runs a day is expressed as a list in the hour field, which the
+        # structural validator has to accept.
+        assert is_valid_cron("0 8,18 * * *")
+
+    @pytest.mark.parametrize("jobs_exist", [False, True])
+    def test_the_attempt_deadline_is_set_on_the_poll_job(self, tmp_path, jobs_exist):
+        # It has to exceed the worst case of one run at EMAIL_BOT_PER_RUN_CAP.
+        # A deadline that fires mid-run produces exactly the concurrent-retry
+        # case the run lock exists for.
+        calls = run_scheduler_script(tmp_path, jobs_exist=jobs_exist)
+        assert calls["poll-volunteer-inbox"]["attempt-deadline"] == "600s"
+
+
+class TestKnowledgeBaseSyncJobMapping:
+    def test_the_setting_maps_to_the_job(self):
+        assert CRON_SETTING_TO_JOB["CRON_SYNC_KNOWLEDGE_BASE"] == "sync-knowledge-base"
+
+    def test_the_job_targets_the_sync_endpoint(self, tmp_path):
+        created = run_scheduler_script(tmp_path, jobs_exist=False)
+        assert created["sync-knowledge-base"]["uri"] == (
+            "https://service.example.test/admin/email-bot/sync-knowledge-base"
+        )
+
+    def test_it_runs_before_the_morning_poll(self, test_db):
+        # The point of the job: an edit made today is answerable tomorrow
+        # morning, which needs the sync to land before the 08:00 poll.
+        from app.services.settings_service import (
+            get_setting,
+            initialize_default_settings,
+        )
+
+        initialize_default_settings(test_db)
+        sync = get_setting(test_db, "CRON_SYNC_KNOWLEDGE_BASE")
+        poll = get_setting(test_db, "CRON_POLL_INBOX")
+        sync_hour = int(sync.split()[1])
+        first_poll_hour = min(int(hour) for hour in poll.split()[1].split(","))
+        assert sync_hour < first_poll_hour
+
+    def test_a_drifted_sync_cadence_is_patched(self, settings_db):
+        db, _ = settings_db
+        client, jobs = make_client(
+            {
+                "sync-volunteers": "0 */2 * * *",
+                "send-weekly-reminders": "0 12 * * 0",
+                "rotate-schedule": "0 * * * *",
+                "poll-volunteer-inbox": "0 8,18 * * *",
+                "sync-knowledge-base": "0 0 1 1 *",  # yearly, which is useless
+            }
+        )
+
+        result = sync_cron_schedules(db, client=client)
+
+        assert [job["job"] for job in result["synced"]] == ["sync-knowledge-base"]
+        assert jobs.patch.call_args.kwargs["body"]["schedule"] == "0 5 * * *"

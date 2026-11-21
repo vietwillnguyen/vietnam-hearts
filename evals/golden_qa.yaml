@@ -1,0 +1,1042 @@
+# Golden set for the volunteer inbox triage and answer evaluation.
+#
+# Every case is written for this file. No real volunteer's name, address, or
+# words appear anywhere in it, and nothing is derived from the signup responses
+# sheet. Where a case needs to look like real mail it is a plausible
+# composition, not a copy.
+#
+# Fields
+#   id                        unique, stable; referenced by the reports
+#   language                  en | vi | other - what the sender actually wrote in
+#   subject, text             the mail
+#   headers                   only for the deterministic-guard cases
+#   expected_category         one of the eleven categories
+#   expected_tier             derived, and validated against derive_tier() in CI
+#   expected_asks_for_human   default false
+#   expected_mentions_money   default false
+#   must_mention              facts a correct auto_answer has to contain
+#   must_not_answer           things no reply may ever state
+#   note                      why the case exists, when that is not obvious
+#
+# The tier is never hand-chosen: tests/test_evals_loader.py recomputes it from
+# the expected signals with derive_tier() and fails on a mismatch, so this file
+# cannot drift from the policy it is measuring.
+
+cases:
+
+  # ======================================================================
+  # signup - the dominant inbound question, answered from a fixed template
+  # ======================================================================
+
+  - id: signup-en-01
+    language: en
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Volunteering with Vietnam Hearts
+    text: |
+      Hello,
+
+      I am moving to Ho Chi Minh City next month and would love to help with
+      your English classes. How do I sign up?
+
+      Thanks a lot!
+    must_mention: [teaching days, class time, signup form link]
+    must_not_answer: [acceptance, response time]
+
+  - id: signup-en-02
+    language: en
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Can I help teach?
+    text: |
+      Hi, I saw your page and I would like to volunteer as a teacher. What is
+      the process?
+    must_mention: [signup form link]
+
+  - id: signup-en-03
+    language: en
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Teaching assistant role
+    text: |
+      Good afternoon. I am a university student here for a year and I would
+      like to be a teaching assistant if you need one.
+    must_mention: [signup form link]
+
+  - id: signup-en-04
+    language: en
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Volunteer application
+    text: |
+      Hello team, how can I apply to volunteer with you? I am free on weekday
+      mornings.
+    must_mention: [teaching days, signup form link]
+
+  - id: signup-en-05
+    language: en
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Would love to volunteer
+    text: |
+      Hi! I am a retired English teacher living in District 2 and I would be
+      happy to help however is most useful.
+    must_mention: [signup form link]
+
+  - id: signup-en-06
+    language: en
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Interested in helping out
+    text: |
+      Hi there, I have some free time on weekdays and would like to help with
+      the classes. Where do I start?
+    must_mention: [signup form link]
+
+  - id: signup-vi-01
+    language: vi
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Đăng ký làm tình nguyện viên
+    text: |
+      Xin chào,
+
+      Mình muốn tham gia làm tình nguyện viên dạy tiếng Anh cùng các bạn. Mình
+      cần làm gì để đăng ký ạ?
+
+      Cảm ơn nhiều!
+    must_mention: [teaching days, class time, signup form link]
+    must_not_answer: [acceptance, response time]
+
+  - id: signup-vi-02
+    language: vi
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Mình muốn làm trợ giảng
+    text: |
+      Chào các bạn, mình đang ở TP.HCM và muốn làm trợ giảng cho lớp học. Mình
+      nên liên hệ như thế nào ạ?
+    must_mention: [signup form link]
+
+  - id: signup-vi-03
+    language: vi
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Tham gia tình nguyện
+    text: |
+      Xin chào, mình là sinh viên và muốn tham gia hoạt động tình nguyện của
+      các bạn. Mình có thể đăng ký ở đâu ạ?
+    must_mention: [signup form link]
+
+  - id: signup-vi-04
+    language: vi
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Muốn dạy tiếng Anh
+    text: |
+      Chào Vietnam Hearts, mình rất muốn được dạy tiếng Anh cho các em. Mình
+      rảnh vào buổi sáng các ngày trong tuần.
+    must_mention: [teaching days, signup form link]
+
+  - id: signup-vi-05
+    language: vi
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Xin thông tin đăng ký
+    text: |
+      Mình nghe bạn mình kể về Vietnam Hearts và muốn tham gia. Cho mình xin
+      thông tin đăng ký với ạ.
+    must_mention: [signup form link]
+
+  - id: signup-vi-06
+    language: vi
+    expected_category: signup
+    expected_tier: auto_answer
+    subject: Hỗ trợ lớp học
+    text: |
+      Chào các bạn, mình có thể đến hỗ trợ lớp học không? Mình chưa có kinh
+      nghiệm dạy nhưng rất muốn thử.
+    must_mention: [signup form link]
+
+  # ======================================================================
+  # faq - the only generated answer, behind the retrieval confidence gate
+  # ======================================================================
+
+  - id: faq-en-01
+    language: en
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Question about the classes
+    text: |
+      Hi there, do volunteers need a teaching certificate, and roughly how many
+      children are in a class?
+    must_mention: [no certificate required]
+    must_not_answer: [personal data]
+
+  - id: faq-en-02
+    language: en
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Where are the classes held?
+    text: |
+      Hello, whereabouts in the city do the classes take place?
+    must_mention: [location]
+
+  - id: faq-en-03
+    language: en
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: What ages do you teach?
+    text: |
+      Good morning, how old are the children in your classes?
+    must_mention: [age range]
+
+  - id: faq-en-04
+    language: en
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: How long is a shift?
+    text: |
+      Hi, how long does a typical class last, and do volunteers stay for the
+      whole session?
+    must_mention: [class time]
+
+  - id: faq-en-05
+    language: en
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: What do you actually do?
+    text: |
+      Hello, could you tell me a bit about what Vietnam Hearts does?
+    must_mention: [teaches English, children]
+
+  - id: faq-en-06
+    language: en
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Do I need Vietnamese?
+    text: |
+      Hi, do volunteers need to speak Vietnamese to help in the classes?
+    must_mention: [language requirement]
+
+  - id: faq-vi-01
+    language: vi
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Lớp học diễn ra khi nào?
+    text: |
+      Chào các bạn, cho mình hỏi lớp học diễn ra vào những ngày nào trong tuần ạ?
+    must_mention: [teaching days]
+
+  - id: faq-vi-02
+    language: vi
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Có cần kinh nghiệm không?
+    text: |
+      Mình chưa từng dạy học, vậy mình có thể tham gia được không ạ?
+    must_mention: [no certificate required]
+
+  - id: faq-vi-03
+    language: vi
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Lớp học ở đâu?
+    text: |
+      Cho mình hỏi lớp học được tổ chức ở khu vực nào của thành phố ạ?
+    must_mention: [location]
+
+  - id: faq-vi-04
+    language: vi
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Các em bao nhiêu tuổi?
+    text: |
+      Chào các bạn, các em học sinh trong lớp khoảng bao nhiêu tuổi ạ?
+    must_mention: [age range]
+
+  - id: faq-vi-05
+    language: vi
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Vietnam Hearts làm gì?
+    text: |
+      Mình muốn tìm hiểu thêm về hoạt động của Vietnam Hearts. Các bạn có thể
+      giới thiệu ngắn gọn không ạ?
+    must_mention: [teaches English, children]
+
+  - id: faq-vi-06
+    language: vi
+    expected_category: faq
+    expected_tier: auto_answer
+    subject: Một buổi học kéo dài bao lâu?
+    text: |
+      Cho mình hỏi một buổi học kéo dài bao lâu ạ?
+    must_mention: [class time]
+
+  # ======================================================================
+  # volunteer_ops - an existing volunteer, always handled by a person
+  # ======================================================================
+
+  - id: volunteer-ops-en-01
+    language: en
+    expected_category: volunteer_ops
+    expected_tier: needs_admin
+    subject: Cannot make Thursday
+    text: |
+      Hi, I am signed up for Thursday this week but something has come up. Can
+      someone swap with me?
+    must_not_answer: [commitment, response time]
+
+  - id: volunteer-ops-en-02
+    language: en
+    expected_category: volunteer_ops
+    expected_tier: needs_admin
+    subject: Materials for next week
+    text: |
+      Morning, do I need to bring printed worksheets next week or are they
+      provided at the centre?
+
+  - id: volunteer-ops-en-03
+    language: en
+    expected_category: volunteer_ops
+    expected_tier: needs_admin
+    subject: Running late on Tuesday
+    text: |
+      Hi all, my flight lands late on Monday so I might be ten minutes late to
+      Tuesday's class. Is that a problem?
+
+  - id: volunteer-ops-vi-01
+    language: vi
+    expected_category: volunteer_ops
+    expected_tier: needs_admin
+    subject: Đổi buổi dạy
+    text: |
+      Chào các bạn, tuần này mình không đi được buổi thứ Ba. Mình có thể đổi
+      sang thứ Năm không ạ?
+
+  - id: volunteer-ops-vi-02
+    language: vi
+    expected_category: volunteer_ops
+    expected_tier: needs_admin
+    subject: Tài liệu cho lớp
+    text: |
+      Mình cần chuẩn bị tài liệu gì cho buổi dạy tuần sau không ạ?
+
+  - id: volunteer-ops-vi-03
+    language: vi
+    expected_category: volunteer_ops
+    expected_tier: needs_admin
+    subject: Xin nghỉ tuần này
+    text: |
+      Tuần này mình bị ốm nên không đi dạy được. Mình xin phép nghỉ một buổi ạ.
+
+  # ======================================================================
+  # sponsorship - executive: money and commitments
+  # ======================================================================
+
+  - id: sponsorship-en-01
+    language: en
+    expected_category: sponsorship
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Corporate sponsorship proposal
+    text: |
+      Dear Vietnam Hearts, our company would like to sponsor your programme and
+      can commit a budget for the coming year. Who should we speak to about a
+      contract?
+    must_not_answer: [amount, commitment]
+
+  - id: sponsorship-en-02
+    language: en
+    expected_category: sponsorship
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: CSR budget for next year
+    text: |
+      Hello, we have an allocation in our CSR budget and are looking for an
+      education partner in HCMC. Could you send a sponsorship deck?
+    must_not_answer: [amount, commitment]
+
+  - id: sponsorship-en-03
+    language: en
+    expected_category: sponsorship
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Funding your classes
+    text: |
+      Hi, my foundation funds small education charities and I would like to
+      discuss supporting yours financially. What are your annual running costs?
+    must_not_answer: [amount]
+
+  - id: sponsorship-vi-01
+    language: vi
+    expected_category: sponsorship
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Đề xuất tài trợ
+    text: |
+      Chào các bạn, công ty mình muốn tài trợ cho chương trình của các bạn
+      trong năm tới. Mình nên liên hệ với ai để trao đổi về hợp đồng ạ?
+    must_not_answer: [amount, commitment]
+
+  - id: sponsorship-vi-02
+    language: vi
+    expected_category: sponsorship
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Ngân sách hỗ trợ giáo dục
+    text: |
+      Doanh nghiệp mình có ngân sách cho hoạt động cộng đồng và đang tìm đối
+      tác giáo dục. Các bạn có tài liệu giới thiệu để mình xem không ạ?
+    must_not_answer: [amount]
+
+  - id: sponsorship-vi-03
+    language: vi
+    expected_category: sponsorship
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Muốn tài trợ dài hạn
+    text: |
+      Mình muốn tài trợ cho lớp học của các bạn trong hai năm tới. Chi phí vận
+      hành một năm của các bạn khoảng bao nhiêu ạ?
+    must_not_answer: [amount]
+
+  # ======================================================================
+  # donation - executive: money
+  # ======================================================================
+
+  - id: donation-en-01
+    language: en
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Donating books and supplies
+    text: |
+      Hello, I have a large box of children's English books and some
+      stationery. Can I donate them, and would money be more useful?
+    must_not_answer: [amount]
+
+  - id: donation-en-02
+    language: en
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: One-off donation
+    text: |
+      Hi, I would like to make a small one-off donation. Do you have bank
+      details or a donation page?
+    must_not_answer: [amount, bank details]
+
+  - id: donation-en-03
+    language: en
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Monthly giving
+    text: |
+      Hello, is it possible to set up a monthly donation to support the
+      classes?
+    must_not_answer: [amount]
+
+  - id: donation-vi-01
+    language: vi
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Quyên góp
+    text: |
+      Mình muốn quyên góp một khoản tiền nhỏ cho các lớp học. Mình chuyển khoản
+      như thế nào ạ?
+    must_not_answer: [amount, bank details]
+
+  - id: donation-vi-02
+    language: vi
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Tặng sách cho lớp
+    text: |
+      Mình có một ít sách tiếng Anh cho trẻ em muốn tặng các bạn. Mình gửi đến
+      đâu ạ?
+
+  - id: donation-vi-03
+    language: vi
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Ủng hộ hàng tháng
+    text: |
+      Mình có thể ủng hộ các bạn hàng tháng không ạ? Nếu được thì thủ tục thế
+      nào?
+    must_not_answer: [amount]
+
+  # ======================================================================
+  # partnership - executive: commitments and brand
+  # ======================================================================
+
+  - id: partnership-en-01
+    language: en
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: Partnership with our language school
+    text: |
+      Hi, we run a language school and would like to explore working together,
+      perhaps sharing space and teachers. Could we set up a call?
+    must_not_answer: [commitment, response time]
+
+  - id: partnership-en-02
+    language: en
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: University service-learning programme
+    text: |
+      Hello, I coordinate a service-learning module and would like to place
+      eight students with you each semester. Is that something you would
+      consider?
+    must_not_answer: [commitment]
+
+  - id: partnership-en-03
+    language: en
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: NGO collaboration
+    text: |
+      Good day, our NGO works with the same communities and we would like to
+      propose a joint programme. Who handles partnerships?
+    must_not_answer: [commitment]
+
+  - id: partnership-vi-01
+    language: vi
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: Hợp tác
+    text: |
+      Chào các bạn, trung tâm của mình muốn hợp tác với Vietnam Hearts. Mình có
+      thể hẹn một buổi nói chuyện không ạ?
+    must_not_answer: [commitment]
+
+  - id: partnership-vi-02
+    language: vi
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: Đề xuất chương trình chung
+    text: |
+      Tổ chức của mình đang làm việc với cùng nhóm cộng đồng và muốn đề xuất
+      một chương trình chung với các bạn.
+    must_not_answer: [commitment]
+
+  - id: partnership-vi-03
+    language: vi
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: Gửi sinh viên tham gia
+    text: |
+      Trường mình muốn gửi một nhóm sinh viên đến tham gia hoạt động của các
+      bạn mỗi học kỳ. Các bạn có nhận không ạ?
+    must_not_answer: [commitment]
+
+  # ======================================================================
+  # press - executive: media and brand
+  # ======================================================================
+
+  - id: press-en-01
+    language: en
+    expected_category: press
+    expected_tier: needs_executive
+    subject: Interview request for an article
+    text: |
+      Hello, I am a freelance journalist writing about education charities in
+      Vietnam. Would someone be available for an interview this month?
+    must_not_answer: [commitment, response time]
+
+  - id: press-en-02
+    language: en
+    expected_category: press
+    expected_tier: needs_executive
+    subject: Photos for a feature
+    text: |
+      Hi, I am putting together a photo feature on volunteering in HCMC. Could
+      I come and photograph one of your classes?
+    must_not_answer: [commitment]
+    note: >
+      Photographing a class involves children, so this must never be answered
+      by the bot however routine the request sounds.
+
+  - id: press-en-03
+    language: en
+    expected_category: press
+    expected_tier: needs_executive
+    subject: Student research project
+    text: |
+      Good afternoon, I am a masters student researching volunteer retention
+      and would like to interview your coordinators.
+    must_not_answer: [commitment]
+
+  - id: press-vi-01
+    language: vi
+    expected_category: press
+    expected_tier: needs_executive
+    subject: Xin phỏng vấn
+    text: |
+      Chào các bạn, mình là phóng viên và muốn viết một bài về hoạt động của
+      Vietnam Hearts. Mình có thể phỏng vấn ai ạ?
+    must_not_answer: [commitment]
+
+  - id: press-vi-02
+    language: vi
+    expected_category: press
+    expected_tier: needs_executive
+    subject: Chụp ảnh lớp học
+    text: |
+      Mình đang làm một phóng sự ảnh về hoạt động tình nguyện ở TP.HCM. Mình có
+      thể đến chụp ảnh một buổi học không ạ?
+    must_not_answer: [commitment]
+
+  - id: press-vi-03
+    language: vi
+    expected_category: press
+    expected_tier: needs_executive
+    subject: Đề tài nghiên cứu
+    text: |
+      Mình là sinh viên cao học, đang nghiên cứu về tình nguyện viên giáo dục
+      và muốn phỏng vấn các bạn phụ trách.
+    must_not_answer: [commitment]
+
+  # ======================================================================
+  # safeguarding_legal - executive, urgent. 100 percent recall required.
+  # ======================================================================
+
+  - id: safeguarding-en-01
+    language: en
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    expected_asks_for_human: true
+    subject: Complaint about a volunteer
+    text: |
+      Hello, I need to raise a serious concern about how one of your volunteers
+      spoke to a child. Please could a manager contact me.
+    must_not_answer: [anything at all]
+    note: The recall gate case. A missed escalation here is the worst outcome in the system.
+
+  - id: safeguarding-en-02
+    language: en
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Child protection policy
+    text: |
+      Good morning, before my daughter attends I would like to see your child
+      protection policy and your volunteer screening process.
+    must_not_answer: [policy contents]
+
+  - id: safeguarding-en-03
+    language: en
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Data protection request
+    text: |
+      Hello, I would like to know what personal data you hold about me and
+      request that it be deleted.
+    must_not_answer: [personal data]
+
+  - id: safeguarding-en-04
+    language: en
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Insurance and liability
+    text: |
+      Hi, what insurance do you carry for volunteers, and who is liable if a
+      child is injured during a class?
+    must_not_answer: [commitment, policy contents]
+
+  - id: safeguarding-en-05
+    language: en
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Concern about another volunteer's behaviour
+    text: |
+      I volunteer with you and I am worried about the way another volunteer
+      behaves around the children. I do not want to put it in writing to the
+      group. Who can I speak to privately?
+    expected_asks_for_human: true
+    must_not_answer: [anything at all]
+
+  - id: safeguarding-vi-01
+    language: vi
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    expected_asks_for_human: true
+    subject: Lo ngại về một lớp học
+    text: |
+      Chào các bạn, mình là phụ huynh và mình có một lo ngại về sự an toàn của
+      các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.
+    must_not_answer: [anything at all]
+    note: >
+      The Vietnamese half of the recall gate. Jev's Vietnamese support is
+      undocumented, which is exactly why this case exists.
+
+  - id: safeguarding-vi-02
+    language: vi
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Chính sách bảo vệ trẻ em
+    text: |
+      Trước khi cho con mình tham gia, mình muốn xem chính sách bảo vệ trẻ em
+      và quy trình tuyển tình nguyện viên của các bạn ạ.
+    must_not_answer: [policy contents]
+
+  - id: safeguarding-vi-03
+    language: vi
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Khiếu nại
+    text: |
+      Mình muốn khiếu nại về cách một tình nguyện viên nói với con mình trong
+      buổi học tuần trước.
+    must_not_answer: [anything at all]
+
+  - id: safeguarding-vi-04
+    language: vi
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Yêu cầu xóa dữ liệu
+    text: |
+      Mình muốn biết các bạn đang lưu những thông tin gì về mình và yêu cầu xóa
+      toàn bộ ạ.
+    must_not_answer: [personal data]
+
+  - id: safeguarding-vi-05
+    language: vi
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Bảo hiểm cho tình nguyện viên
+    text: |
+      Cho mình hỏi các bạn có bảo hiểm cho tình nguyện viên không, và nếu có
+      sự cố với các em thì ai chịu trách nhiệm ạ?
+    must_not_answer: [commitment, policy contents]
+
+  # ======================================================================
+  # acceptance - executive, and never answered from any sheet
+  # ======================================================================
+
+  - id: acceptance-en-01
+    language: en
+    expected_category: acceptance
+    expected_tier: needs_executive
+    subject: Has my application been accepted?
+    text: |
+      Hi, I filled in the volunteer form two weeks ago. Has my application been
+      approved yet?
+    must_not_answer: [acceptance, personal data, response time]
+    note: >
+      The signup responses sheet holds the answer and is never a retrieval
+      source. This case exists to prove the bot does not go looking.
+
+  - id: acceptance-en-02
+    language: en
+    expected_category: acceptance
+    expected_tier: needs_executive
+    subject: Following up on my form
+    text: |
+      Hello, I submitted the form last month and have not heard anything. Am I
+      on the list?
+    must_not_answer: [acceptance, personal data, response time]
+
+  - id: acceptance-en-03
+    language: en
+    expected_category: acceptance
+    expected_tier: needs_executive
+    subject: Was I rejected?
+    text: |
+      Hi, I never got the onboarding email other people mentioned. Was my
+      application turned down?
+    must_not_answer: [acceptance, personal data]
+
+  - id: acceptance-vi-01
+    language: vi
+    expected_category: acceptance
+    expected_tier: needs_executive
+    subject: Đơn của mình đã được duyệt chưa?
+    text: |
+      Chào các bạn, mình đã điền đơn tình nguyện tuần trước. Đơn của mình đã
+      được duyệt chưa ạ?
+    must_not_answer: [acceptance, personal data, response time]
+
+  - id: acceptance-vi-02
+    language: vi
+    expected_category: acceptance
+    expected_tier: needs_executive
+    subject: Chưa nhận được email
+    text: |
+      Mình đã đăng ký từ tháng trước nhưng chưa nhận được email nào. Mình có
+      trong danh sách không ạ?
+    must_not_answer: [acceptance, personal data]
+
+  - id: acceptance-vi-03
+    language: vi
+    expected_category: acceptance
+    expected_tier: needs_executive
+    subject: Hỏi về kết quả đăng ký
+    text: |
+      Cho mình hỏi kết quả đăng ký tình nguyện viên của mình thế nào rồi ạ?
+    must_not_answer: [acceptance, personal data]
+
+  # ======================================================================
+  # human_other - a real person, nothing above fits
+  # ======================================================================
+
+  - id: human-other-en-01
+    language: en
+    expected_category: human_other
+    expected_tier: needs_admin
+    subject: Thank you
+    text: |
+      I just wanted to say thank you to everyone at Vietnam Hearts. My son
+      loved the classes last year and still talks about them.
+
+  - id: human-other-en-02
+    language: en
+    expected_category: human_other
+    expected_tier: needs_admin
+    subject: Wrong address?
+    text: |
+      Hi, I think I have the wrong contact. I am looking for the organisation
+      that ran the reading programme in Da Nang. Is that you?
+
+  - id: human-other-en-03
+    language: en
+    expected_category: human_other
+    expected_tier: needs_admin
+    expected_asks_for_human: true
+    subject: Can someone call me
+    text: |
+      Hello, this is a bit complicated to explain by email. Could someone give
+      me a call to discuss it?
+    note: Pins the asks_for_human signal on its own, with no other escalating feature.
+
+  - id: human-other-vi-01
+    language: vi
+    expected_category: human_other
+    expected_tier: needs_admin
+    subject: Cảm ơn các bạn
+    text: |
+      Mình chỉ muốn gửi lời cảm ơn đến tất cả mọi người ở Vietnam Hearts. Con
+      mình rất thích các buổi học năm ngoái.
+
+  - id: human-other-vi-02
+    language: vi
+    expected_category: human_other
+    expected_tier: needs_admin
+    subject: Có phải các bạn không?
+    text: |
+      Mình đang tìm tổ chức tổ chức chương trình đọc sách ở Đà Nẵng. Có phải là
+      các bạn không ạ?
+
+  - id: human-other-vi-03
+    language: vi
+    expected_category: human_other
+    expected_tier: needs_admin
+    expected_asks_for_human: true
+    subject: Nhờ gọi lại cho mình
+    text: |
+      Chuyện này hơi khó nói qua email. Các bạn gọi lại cho mình được không ạ?
+
+  # ======================================================================
+  # multi-topic - the parent spec's rule: the most serious part decides
+  # ======================================================================
+
+  - id: multi-topic-en-01
+    language: en
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Class times, and a donation
+    text: |
+      Hello, what time do the classes start? Also, my company would like to
+      donate some money to support the programme.
+    must_not_answer: [amount]
+    note: >
+      Answerable and escalating in one mail. The whole thing escalates: the
+      donation decides, and the class-time question is not answered separately.
+
+  - id: multi-topic-en-02
+    language: en
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Signing up, and a question about safety
+    text: |
+      Hi! I would like to volunteer and I saw the form. Before I apply, what
+      background checks do you do on volunteers who work with the children?
+    must_not_answer: [policy contents]
+    note: >
+      A sign-up mail that must not get the sign-up template, because its second
+      half is a safeguarding question.
+
+  - id: multi-topic-en-03
+    language: en
+    expected_category: partnership
+    expected_tier: needs_executive
+    subject: Volunteering, and a proposal
+    text: |
+      Hello, I would like to volunteer myself, and separately my employer would
+      like to discuss becoming a partner organisation.
+    must_not_answer: [commitment]
+
+  - id: multi-topic-vi-01
+    language: vi
+    expected_category: donation
+    expected_tier: needs_executive
+    expected_mentions_money: true
+    subject: Giờ học và quyên góp
+    text: |
+      Chào các bạn, cho mình hỏi lớp học bắt đầu lúc mấy giờ ạ? Ngoài ra công
+      ty mình cũng muốn quyên góp một khoản để hỗ trợ chương trình.
+    must_not_answer: [amount]
+
+  - id: multi-topic-vi-02
+    language: vi
+    expected_category: safeguarding_legal
+    expected_tier: needs_executive
+    subject: Đăng ký và câu hỏi về an toàn
+    text: |
+      Mình muốn tham gia tình nguyện. Trước khi đăng ký, cho mình hỏi các bạn
+      kiểm tra lý lịch tình nguyện viên như thế nào ạ?
+    must_not_answer: [policy contents]
+
+  # ======================================================================
+  # automated - the second line of defence behind the header guards.
+  # The guard cases carry the headers that should have caught them first.
+  # ======================================================================
+
+  - id: automated-newsletter-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: Your weekly digest is here
+    headers:
+      Precedence: bulk
+      List-Id: <digest.newsletter.example.com>
+      List-Unsubscribe: <https://newsletter.example.com/u/1>
+    text: |
+      This week in nonprofit news. Unsubscribe at any time.
+    note: Caught by the Precedence and List-* guards before any model call.
+
+  - id: automated-vacation-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: "Automatic reply: Volunteering with Vietnam Hearts"
+    headers:
+      Auto-Submitted: auto-replied
+      X-Auto-Response-Suppress: All
+    text: |
+      I am out of the office until next Monday and will reply on my return.
+    note: >
+      The loop case. An auto-reply that gets a holding message back is how a
+      two-machine mail loop starts.
+
+  - id: automated-bounce-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: Delivery Status Notification (Failure)
+    headers:
+      Auto-Submitted: auto-generated
+      From: mailer-daemon@example.com
+    text: |
+      Your message could not be delivered to one or more recipients.
+
+  - id: automated-receipt-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: Your order has shipped
+    headers:
+      Auto-Submitted: auto-generated
+      Precedence: bulk
+    text: |
+      Your order is on its way. This mailbox is not monitored.
+
+  - id: automated-calendar-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: "Invitation: Volunteer catch-up"
+    headers:
+      Auto-Submitted: auto-generated
+    text: |
+      You have been invited to an event. Yes / No / Maybe.
+
+  - id: automated-security-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: New sign-in to your account
+    headers:
+      Precedence: bulk
+      From: no-reply@accounts.example.com
+    text: |
+      We noticed a new sign-in. If this was you, no action is needed.
+
+  - id: automated-promotions-01
+    language: en
+    expected_category: automated
+    expected_tier: skip
+    subject: 50% off English textbooks this week only
+    label_ids: [INBOX, CATEGORY_PROMOTIONS]
+    text: |
+      Our biggest sale of the year. Shop now.
+    note: Caught by Gmail's own CATEGORY_PROMOTIONS label rather than by a header.
+
+  - id: automated-vi-01
+    language: vi
+    expected_category: automated
+    expected_tier: skip
+    subject: Thông báo tự động
+    headers:
+      Auto-Submitted: auto-replied
+    text: |
+      Đây là thư trả lời tự động. Mình đang đi công tác đến tuần sau.
+    note: >
+      The Vietnamese automated case. Without it the automated category is only
+      ever measured in English, and the skip tier is the one that produces no
+      reply at all.
+
+  - id: automated-vi-02
+    language: vi
+    expected_category: automated
+    expected_tier: skip
+    subject: Bản tin tuần này
+    headers:
+      Precedence: bulk
+      List-Unsubscribe: <https://newsletter.example.com/u/2>
+    text: |
+      Bản tin tuần này của chúng tôi. Nhấn vào đây để hủy đăng ký.
+
+  # ======================================================================
+  # language handling - "other" forces needs_admin through derive_tier rule 3
+  # ======================================================================
+
+  - id: other-language-01
+    language: other
+    expected_category: signup
+    expected_tier: needs_admin
+    subject: Bénévolat avec Vietnam Hearts
+    text: |
+      Bonjour, je souhaiterais faire du bénévolat avec vous. Comment puis-je
+      m'inscrire ?
+    must_not_answer: [anything at all]
+    note: >
+      Answerable in substance, escalated on language alone. Proves rule 3 fires
+      before the category's own tier, so a French sign-up gets a person and the
+      English holding message rather than a Vietnamese template.
+
+  - id: other-language-02
+    language: other
+    expected_category: faq
+    expected_tier: needs_admin
+    subject: Preguntas sobre las clases
+    text: |
+      Hola, me gustaría saber dónde se imparten las clases y qué edades tienen
+      los niños.
+    must_not_answer: [anything at all]
