@@ -370,7 +370,7 @@ class GmailTransport:
                 or {}
             )
         except HttpError as exc:
-            if getattr(exc, "status_code", None) == 404 or "404" in str(exc):
+            if _status_of(exc) == 404:
                 return None
             raise
         message = draft.get("message")
@@ -392,7 +392,7 @@ class GmailTransport:
                 self._service.users().drafts().delete(userId="me", id=draft_id)
             )
         except HttpError as exc:
-            if getattr(exc, "status_code", None) == 404 or "404" in str(exc):
+            if _status_of(exc) == 404:
                 return
             raise
 
@@ -436,7 +436,7 @@ class GmailTransport:
         try:
             return self._get_message(message_id)
         except HttpError as exc:
-            if getattr(exc, "status_code", None) == 404 or "404" in str(exc):
+            if _status_of(exc) == 404:
                 return None
             raise
 
@@ -479,10 +479,24 @@ class GmailTransport:
                 or {}
             )
         except HttpError as exc:
-            if getattr(exc, "status_code", None) == 409 or "409" in str(exc):
+            if _status_of(exc) == 409:
                 return None
             raise
         return created.get("id")
+
+
+def _status_of(exc) -> int | None:
+    """The HTTP status of a Gmail API error, read from the response alone.
+
+    Never from the error's text: ``str(HttpError)`` carries the request URL,
+    and Gmail ids are opaque, so a 500 about an id containing "404" would read
+    as "gone" and a draft the captain never touched would count as handled.
+    """
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    try:
+        return int(status)
+    except (TypeError, ValueError):
+        return None
 
 
 def _b64url(mime: bytes) -> str:
