@@ -695,17 +695,31 @@ check('the closing question is worded identically everywhere',
 
 const standing = items.filter((i) => /We always need these/.test(i.getTitle()))[0];
 check('the always-needed question exists', !!standing);
-check('it lists exactly five items', standing._choices.length === 5,
+check('it lists exactly seven items', standing._choices.length === 7,
   String(standing._choices.length));
 check('its Other option is explicitly OFF', standing._otherOption === false,
   String(standing._otherOption));
-check('each of the five items names the English word first',
+check('each of the seven items names the English word first',
   standing._choices.every((c) => /^[A-Za-z]/.test(c.value)),
   standing._choices.map((c) => c.value).join(' || '));
 
 const consent = items.filter((i) => /I agree that Vietnam Hearts may store/.test(i.getTitle()))[0];
 check('the consent question exists', !!consent);
 check('consent is required', consent && consent.isRequired() === true);
+
+// The supplies page asks for only what a volunteer cannot act without: how
+// much, where it is and who delivers. The item questions stay optional because
+// either one alone is a complete offer, and condition and date are often not
+// known yet.
+const requiredOnSupplies = [/Roughly how much of each/, /Where are the items now/, /Who delivers/];
+for (const re of requiredOnSupplies) {
+  const it = items.filter((i) => re.test(i.getTitle()))[0];
+  check('supplies question is required: ' + re.source, !!it && it.isRequired() === true);
+}
+for (const re of [/We always need these/, /Other items not on the list/, /^Condition/, /When could you hand them over/]) {
+  const it = items.filter((i) => re.test(i.getTitle()))[0];
+  check('supplies question stays optional: ' + re.source, !!it && it.isRequired() === false);
+}
 check('consent links the Cloud Run privacy page',
   /run\.app\/privacy/.test(consent.getHelpText()), consent && consent.getHelpText());
 check('consent does NOT link an invented vietnamhearts.org/privacy',
@@ -950,7 +964,7 @@ check('the tab warns against putting the address in that cell',
   /DO NOT put the school address/.test(String(standingTab.getRange('A4').getValue())));
 check('the tab says the item list lives in the form, not here',
   /lives in the form/.test(String(standingTab.getRange('A5').getValue())));
-check('the acknowledgement tab does not restate the five items',
+check('the acknowledgement tab does not restate the items',
   !/Cooking oil/.test(String(standingTab.getRange('A5').getValue())));
 
 /* An inline array literal, ={"a","b";"c","d"}: "," separates columns and ";"

@@ -87,7 +87,7 @@ var TABS = {
   progressChart: 'Progress chart'
 };
 
-/** The always-needed list. This is the ONLY place the five items are written
+/** The always-needed list. This is the ONLY place the items are written
  *  down, and they are written into the form's checkbox choices, never into a
  *  constant the handlers read. Code.js asks "did they tick anything", so the
  *  list can change by editing the form and nothing else. */
@@ -96,7 +96,9 @@ var STANDING_ITEMS = [
   'Sugar / Đường',
   'Small milk cartons / Sữa hộp nhỏ',
   'Fish sauce / Nước mắm',
-  'Seasoning powder, MSG / Bột nêm, bột ngọt'
+  'Seasoning powder, MSG / Bột nêm, bột ngọt',
+  'Soy sauce / Nước tương',
+  'Printing paper (A4) / Giấy in A4'
 ];
 
 /** Asked at the end of every branch, in exactly these words on purpose.
@@ -588,7 +590,8 @@ function addSuppliesQuestions_(form, pb, manual) {
     .setTitle('Roughly how much of each? / Số lượng khoảng bao nhiêu?')
     .setHelpText('e.g. 5 L oil, 2 kg sugar. Above roughly 20 kg or 20 L, please message ' +
       'us first. / ví dụ: 5 lít dầu ăn, 2 kg đường. Nhiều hơn khoảng 20 kg hoặc 20 lít ' +
-      'thì xin nhắn tin trước.'),
+      'thì xin nhắn tin trước.')
+    .setRequired(true),
     n++);
 
   // Photos are asked for here, in words, rather than with a file upload
@@ -612,7 +615,8 @@ function addSuppliesQuestions_(form, pb, manual) {
     n++);
 
   appendTo_(form, pb, form.addTextItem()
-    .setTitle('Where are the items now? (district, city) / Đồ hiện đang ở đâu? (quận, thành phố)'),
+    .setTitle('Where are the items now? (district, city) / Đồ hiện đang ở đâu? (quận, thành phố)')
+    .setRequired(true),
     n++);
 
   // The help text here answers "where do I bring it" without giving an
@@ -621,6 +625,7 @@ function addSuppliesQuestions_(form, pb, manual) {
   // district.
   var deliverer = form.addMultipleChoiceItem()
     .setTitle('Who delivers? / Ai sẽ giao?')
+    .setRequired(true)
     .setHelpText('We arrange each handover with a volunteer. Our area: Thạnh Mỹ Tây, ' +
       'Ho Chi Minh City. / Chúng tôi hẹn từng lần nhận đồ cùng một tình nguyện viên. ' +
       'Khu vực của chúng tôi: Thạnh Mỹ Tây, TP.HCM.');

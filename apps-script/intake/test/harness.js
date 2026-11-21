@@ -256,7 +256,7 @@ function editRange(w, row, column, numRows, numColumns) {
 
 let w;
 
-// A: five-items-only submission
+// A: always-needed-items-only submission
 w = submit(makeWorld({ ticked: 'Dau an, Duong' }));
 show('A. always-needed only  -> TODO, Priority High, FAST LANE, no Decision', w);
 check('A status is TODO', w.grid[1][H['Status']] === 'TODO');
