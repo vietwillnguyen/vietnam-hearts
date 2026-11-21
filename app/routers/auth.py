@@ -67,7 +67,7 @@ async def sign_in_with_google(request: SignInRequest) -> dict[str, Any]:
 @router.get("/callback")
 async def auth_callback(
     request: Request,
-    code: str,
+    code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     error_description: str | None = None,
@@ -89,6 +89,21 @@ async def auth_callback(
                     "request": request,
                     "error": error,
                     "error_description": error_description,
+                },
+                status_code=400,
+            )
+
+        # A provider that fails sends the browser back with `error` and no
+        # `code`, so `code` is optional in the signature: a required one makes
+        # FastAPI answer 422 JSON before the error page above can render.
+        if not code:
+            logger.warning("OAuth callback arrived with neither a code nor an error")
+            return templates.TemplateResponse(
+                request,
+                "auth/auth_failed.html",
+                {
+                    "request": request,
+                    "error_message": "The sign-in did not complete. Please try again.",
                 },
                 status_code=400,
             )
