@@ -161,3 +161,32 @@ def forbid_real_smtp():
 
     with patch("app.services.email_service.smtplib.SMTP", ForbiddenSMTP):
         yield
+
+
+def _rate_limiter():
+    """The app's live RateLimitMiddleware, or None before the stack is built."""
+    from app.main import app
+    from app.middleware import RateLimitMiddleware
+
+    node = app.middleware_stack
+    while node is not None:
+        if isinstance(node, RateLimitMiddleware):
+            return node
+        node = getattr(node, "app", None)
+    return None
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limit_budget():
+    """Give every test its own rate-limit budget.
+
+    The limiter counts in memory on one middleware instance for the whole
+    session, and every TestClient is the same client to it. The "auth" category
+    allows 10 requests an hour, so the suite shared one budget of 10 across all
+    files: adding an eleventh request to /auth/* anywhere made an unrelated
+    test answer 429.
+    """
+    limiter = _rate_limiter()
+    if limiter is not None:
+        limiter.request_counts.clear()
+    yield
