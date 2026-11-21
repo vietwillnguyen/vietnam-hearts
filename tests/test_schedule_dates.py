@@ -279,6 +279,30 @@ class TestTeachingDays:
         assert is_teaching_day("Week 3 session") is True
         assert is_teaching_day("") is True
 
+    def test_bare_day_month_label_is_dated_against_its_week(self):
+        week = datetime(2026, 10, 19)
+        assert is_teaching_day("19/10", week_monday=week) is False  # Monday
+        assert is_teaching_day("22/10", week_monday=week) is True  # Thursday
+        # Without a week the label names no weekday and still fails open.
+        assert is_teaching_day("19/10") is True
+
+    def test_bare_label_takes_the_year_that_puts_it_in_the_week(self):
+        # The week of Monday 29/12/2025 holds Thursday 1 January 2026.
+        week = datetime(2025, 12, 29)
+        assert is_teaching_day("1/1", week_monday=week) is True
+        assert is_teaching_day("2/1", week_monday=week) is False  # Friday
+
+    def test_bare_label_outside_its_week_fails_open(self):
+        week = datetime(2026, 10, 19)
+        assert is_teaching_day("26/10", week_monday=week) is True
+        assert is_teaching_day("31/2", week_monday=week) is True
+        assert is_teaching_day("Week 3 session", week_monday=week) is True
+        assert is_teaching_day("", week_monday=week) is True
+
+    def test_weekday_led_label_ignores_the_week(self):
+        week = datetime(2026, 10, 19)
+        assert is_teaching_day("Monday 22/10", week_monday=week) is False
+
     def test_seeded_setting_value_parses_to_the_code_default(self):
         assert parse_teaching_days(
             DEFAULT_TEACHING_DAYS_SETTING

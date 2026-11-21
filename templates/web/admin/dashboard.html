@@ -37,6 +37,10 @@
             background-color: #dc3545;
             color: white;
         }
+        .status-dry_run {
+            background-color: #6c757d;
+            color: white;
+        }
         .table {
             font-size: 0.9em;
         }
@@ -86,6 +90,7 @@
             border-color: #dc3545;
             box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
         }
+        {% if bot_enabled %}
         .bot-test-section {
             background-color: #f8f9fa;
             border-radius: 8px;
@@ -99,6 +104,7 @@
             margin: 15px 0;
             border-radius: 4px;
         }
+        {% endif %}
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -154,11 +160,13 @@
                     Schedule Management
                 </a>
             </li>
+            {% if bot_enabled %}
             <li class="nav-item">
                 <a class="nav-link" id="bot-tab" data-bs-toggle="tab" href="#bot" role="tab">
                     Bot Management
                 </a>
             </li>
+            {% endif %}
             <li class="nav-item">
                 <a class="nav-link" id="logs-tab" data-bs-toggle="tab" href="#logs" role="tab">
                     System Logs
@@ -322,6 +330,7 @@
                                 <th>Email</th>
                                 <th>Status</th>
                                 <th>Weekly Reminders</th>
+                                <th>Last Signed Up</th>
                                 <th>All Emails</th>
                                 <th>Confirmation Sent</th>
                                 <th>Last Confirmation</th>
@@ -348,6 +357,19 @@
                                     <span class="status-badge status-sent">Subscribed</span>
                                     {% else %}
                                     <span class="status-badge status-failed">Unsubscribed</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {# Flagged for review, never acted on: the sheet records
+                                       typed names, so a volunteer the matcher cannot place
+                                       reads as lapsed while still turning up every week. #}
+                                    {% if volunteer.last_active_at %}
+                                    {{ volunteer.last_active_at.strftime('%d/%m/%Y') }}
+                                    {% else %}
+                                    <span class="text-muted">Never matched</span>
+                                    {% endif %}
+                                    {% if volunteer.lapsed %}
+                                    <span class="status-badge status-pending" title="Aged out of the weekly reminder (REMINDER_ACTIVE_WEEKS). Review - nothing has been changed automatically.">Lapsed</span>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -462,6 +484,9 @@
                                     <span class="status-badge status-{{ email.status }}">
                                         {{ email.status }}
                                     </span>
+                                    {% if email.dry_run and email.status != "dry_run" %}
+                                    <span class="status-badge status-dry_run">dry run</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ email.sent_at }}</td>
                             </tr>
@@ -753,6 +778,9 @@
                 </div>
             </div>
 
+            {# Bot Management Tab - every control here calls app/routers/bot.py,
+               so the whole tab is rendered only while those routers are mounted. #}
+            {% if bot_enabled %}
             <!-- Bot Management Tab -->
             <div class="tab-pane fade" id="bot" role="tabpanel">
                 <div class="table-container">
@@ -969,6 +997,7 @@
                      </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- System Logs Tab -->
             <div class="tab-pane fade" id="logs" role="tabpanel">
@@ -1072,15 +1101,19 @@
             // Load schedule data when schedule tab is shown
             document.getElementById('schedule-tab').addEventListener('shown.bs.tab', loadScheduleData);
             
+            {% if bot_enabled %}
             // Load bot data when bot tab is shown
             document.getElementById('bot-tab').addEventListener('shown.bs.tab', loadBotData);
+            {% endif %}
 
             // Load system logs when logs tab is shown; stop auto-refresh when leaving it
             document.getElementById('logs-tab').addEventListener('shown.bs.tab', () => loadSystemLogs(1));
             document.getElementById('logs-tab').addEventListener('hidden.bs.tab', stopLogsAutoRefresh);
             
+            {% if bot_enabled %}
             // Add event listener for folder ID input to save changes
             document.getElementById('syncFolderId').addEventListener('input', saveFolderId);
+            {% endif %}
         });
         
         async function checkAuthentication() {
@@ -1383,18 +1416,23 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    let message = `Success: ${result.message}\n\nStatus: ${result.status}`;
-                    if (result.emails_sent !== undefined) {
-                        message += `\nEmails sent: ${result.emails_sent}`;
-                    }
-                    if (result.volunteers_processed !== undefined) {
-                        message += `\nVolunteers processed: ${result.volunteers_processed}`;
-                    }
-                    if (result.emails_failed !== undefined && result.emails_failed > 0) {
-                        message += `\nEmails failed: ${result.emails_failed}`;
-                    }
-                    if (result.failed_emails && result.failed_emails.length > 0) {
-                        message += `\nFailed emails: ${result.failed_emails.join(', ')}`;
+                    // "success" is not the only 200 outcome: the run also
+                    // reports "skipped" (nothing needed filling) and "partial"
+                    // (some sends failed), and calling either one a success is
+                    // how a send that did not happen looked like one.
+                    const heading = {
+                        success: 'Success',
+                        partial: 'Partly sent',
+                        skipped: 'Skipped',
+                    }[result.status] || 'Status';
+                    let message = `${heading}: ${result.message}`;
+                    const details = result.details;
+                    if (details && details.sent !== undefined) {
+                        message += `\n\nEmails sent: ${details.sent}`;
+                        message += `\nEmails failed: ${details.failed}`;
+                        if (details.skipped_already_sent > 0) {
+                            message += `\nAlready sent earlier this week: ${details.skipped_already_sent}`;
+                        }
                     }
                     alert(message);
                     location.reload(); // Refresh to show updated status
@@ -1984,6 +2022,7 @@
                 'DRY_RUN_EMAIL_RECIPIENT': '',
                 'WEEKLY_REMINDERS_ENABLED': 'true',
                 'INVITE_LINK_ZALO': 'https://zalo.me/g/gcmgkowx6gvotsghvsji',
+                'INVITE_LINK_WHATSAPP': 'https://chat.whatsapp.com/KpfV7kCbR9N1sW8J6ujD1o',
                 'ONBOARDING_GUIDE_LINK': '',
                 'INSTAGRAM_LINK': '',
                 'FACEBOOK_PAGE_LINK': '',
@@ -2257,6 +2296,7 @@
             }
         }
 
+        {% if bot_enabled %}
                 // Bot Management Functions
         async function loadBotData() {
             try {
@@ -3013,6 +3053,7 @@
             document.getElementById('debugResults').style.display = 'none';
             document.getElementById('debugContent').innerHTML = '';
         }
+        {% endif %}
 
         // ===== System Logs tab =====
         let logsCurrentPage = 1;

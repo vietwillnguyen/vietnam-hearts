@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,24 @@ public_router = APIRouter(prefix="", tags=["public"])
 # Initialize templates
 templates = Jinja2Templates(directory="templates/web")
 
+# The address the privacy policy tells people to write to, and the one the
+# volunteer inbox itself lives at.
+CONTACT_EMAIL = "vietnam.hearts.volunteering@gmail.com"
+
+# Google requires this sentence to appear on the privacy policy behind an OAuth
+# consent screen that requests a restricted scope, worded exactly as its API
+# Services User Data Policy sets it out. It lives here rather than inline in the
+# template so a test can pin the wording; do not paraphrase it.
+LIMITED_USE_DISCLOSURE = (
+    "Vietnam Hearts' use and transfer of information received from Google APIs "
+    "will adhere to the Google API Services User Data Policy, including the "
+    "Limited Use requirements."
+)
+
+# The date this policy text last changed. Bump it whenever the text below it
+# does; the page states it, and people rely on it to tell versions apart.
+PRIVACY_POLICY_LAST_UPDATED = "September 30, 2026"
+
 
 @public_router.get("/", response_class=HTMLResponse)
 async def home_page(request: Request):
@@ -37,7 +55,30 @@ async def home_page(request: Request):
     from app.config import APPLICATION_VERSION
 
     return templates.TemplateResponse(
-        "home.html", {"request": request, "version": APPLICATION_VERSION}
+        request, "home.html", {"request": request, "version": APPLICATION_VERSION}
+    )
+
+
+@public_router.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy_page(request: Request):
+    """Serve the privacy policy.
+
+    Deliberately unauthenticated: this URL is on the Google OAuth consent
+    screen for the volunteer inbox, so Google's reviewer and the public both
+    have to be able to fetch it without an account.
+    """
+    from app.config import APPLICATION_VERSION
+
+    return templates.TemplateResponse(
+        request,
+        "privacy.html",
+        {
+            "request": request,
+            "version": APPLICATION_VERSION,
+            "contact_email": CONTACT_EMAIL,
+            "limited_use_disclosure": LIMITED_USE_DISCLOSURE,
+            "last_updated": PRIVACY_POLICY_LAST_UPDATED,
+        },
     )
 
 
@@ -59,7 +100,7 @@ def unsubscribe_volunteer_page(
         )
 
         if not volunteer:
-            logger.warning(f"Invalid unsubscribe token attempted: {token}")
+            logger.warning(f"Invalid unsubscribe token attempted (length={len(token)})")
             return templates.TemplateResponse(
                 request,
                 "unsubscribe/error.html",
@@ -102,6 +143,67 @@ def unsubscribe_volunteer_page(
         )
 
 
+@public_router.post("/unsubscribe/one-click")
+def one_click_unsubscribe(token: str, db: Session = Depends(get_db)):
+    """RFC 8058 one-click unsubscribe from the weekly reminder.
+
+    The mail provider POSTs this URL from the List-Unsubscribe header when a
+    volunteer uses the provider's own "Unsubscribe" control. Nobody sees a
+    page, so there is no confirmation step and no form: a single POST must do
+    the whole thing, which is the entire point of the RFC.
+
+    Registered for POST only. Mail clients and security scanners prefetch
+    links, so an unsubscribe reachable by GET unsubscribes volunteers who never
+    clicked anything - a GET here gets a 405.
+
+    It stops the weekly reminder and nothing else. The control appears in a
+    weekly reminder, so that is the mail being declined; the volunteer keeps
+    announcements and keeps their account, and can still turn everything off
+    from the preferences page.
+
+    Repeat POSTs succeed. Providers retry, and a retry is not an error.
+    """
+    volunteer = (
+        db.query(VolunteerModel)
+        .filter(VolunteerModel.email_unsubscribe_token == token)
+        .first()
+    )
+
+    if not volunteer:
+        logger.warning("Invalid one-click unsubscribe token attempted")
+        return JSONResponse(
+            {"status": "error", "message": "Invalid or expired unsubscribe link."},
+            status_code=400,
+        )
+
+    already_unsubscribed = not volunteer.weekly_reminders_subscribed
+    if not already_unsubscribed:
+        volunteer.weekly_reminders_subscribed = False
+        db.add(
+            EmailCommunicationModel(
+                volunteer_id=volunteer.id,
+                recipient_email=volunteer.email,
+                email_type="preference_update_one_click",
+                subject="Email Preference Update - One-Click Unsubscribe",
+                template_name=None,
+                status="sent",
+                sent_at=datetime.now(),
+            )
+        )
+        db.commit()
+        logger.info(
+            f"Volunteer id={volunteer.id} unsubscribed from weekly reminders "
+            "via one-click"
+        )
+
+    return JSONResponse(
+        {
+            "status": "success",
+            "message": "You have been unsubscribed from weekly reminders.",
+        }
+    )
+
+
 @public_router.post("/unsubscribe", response_class=HTMLResponse)
 def update_email_preferences(
     request: Request,
@@ -118,7 +220,7 @@ def update_email_preferences(
         )
 
         if not volunteer:
-            logger.warning(f"Invalid unsubscribe token attempted: {token}")
+            logger.warning(f"Invalid unsubscribe token attempted (length={len(token)})")
             return templates.TemplateResponse(
                 request,
                 "unsubscribe/error.html",
@@ -187,7 +289,7 @@ def update_email_preferences(
         db.commit()
 
         logger.info(
-            f"Volunteer {volunteer.email} updated preferences to {unsubscribe_type}"
+            f"Volunteer id={volunteer.id} updated preferences to {unsubscribe_type}"
         )
 
         # Determine display status after update

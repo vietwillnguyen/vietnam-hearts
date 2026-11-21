@@ -14,3 +14,6 @@ logs/
 *.sqlite
 *.sqlite3
 file::memory:
+
+# Apps Script lives in Google; it is pushed with clasp, never built here.
+apps-script/

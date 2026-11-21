@@ -6,6 +6,7 @@ is safe to call in every environment (local dev, CI, production, tests).
 """
 
 import os
+from typing import Any
 
 import sentry_sdk
 
@@ -15,9 +16,31 @@ from app.config import (
     SENTRY_DSN,
     SENTRY_TRACES_SAMPLE_RATE,
 )
-from app.utils.logging_config import get_logger
+from app.utils.logging_config import get_logger, redact_credentials
 
 logger = get_logger("sentry")
+
+
+def _redact(value: Any) -> Any:
+    """Apply the log redaction to every string in a Sentry payload."""
+    if isinstance(value, str):
+        return redact_credentials(value)
+    if isinstance(value, dict):
+        return {k: _redact(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_redact(v) for v in value]
+    return value
+
+
+def scrub_event(event: dict, hint: dict | None = None) -> dict:
+    """before_send: mask personal data and credentials before an event leaves.
+
+    Covers exception messages, the log message, breadcrumbs (Sentry records
+    log lines as breadcrumbs before any logging filter has run), request data,
+    extras and captured frame variables - the whole event, since a volunteer
+    address can surface in any of them.
+    """
+    return _redact(event)
 
 
 def init_sentry() -> None:
@@ -35,9 +58,9 @@ def init_sentry() -> None:
         environment=ENVIRONMENT,
         release=APPLICATION_VERSION,
         traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
-        # Attaches request IP, headers, and any explicitly-set user info to
-        # every event. Deliberate choice for easier "which request/user hit
-        # this" debugging - means that data is sent to Sentry on every error.
-        send_default_pii=True,
+        # No request IP, cookies or user info on events; scrub_event masks
+        # whatever personal data still rides in messages and breadcrumbs.
+        send_default_pii=False,
+        before_send=scrub_event,
     )
     logger.info(f"Sentry error tracking initialized for environment={ENVIRONMENT}")

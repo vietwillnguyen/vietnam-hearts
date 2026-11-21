@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -65,6 +67,237 @@ MAX_BYTES = get_env_int(
 )  # 10MB default
 BACKUP_COUNT = get_env_int("LOG_BACKUP_COUNT", 5, 1, 20)
 
+# One vocabulary for "this name carries a credential", shared with the request
+# logging middleware so the two cannot drift apart. Matched as a substring of
+# the lowercased name: over-redacting a harmless name costs nothing in a log,
+# under-redacting a credential is a leak.
+SENSITIVE_PARAM_MARKERS = (
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "signature",
+    "api_key",
+    "apikey",
+    "key",
+    "credential",
+    "auth",
+)
+
+REDACTED = "***"
+
+# scheme://user:password@host -> the password only. Like SQLAlchemy's URL
+# parser, the password runs to the "@", so an unencoded / ? # [ or ] inside it
+# is still covered. A URL with no password (scheme://user@host) has no colon
+# before the "@" and is left alone.
+_URL_CREDENTIALS_RE = re.compile(
+    r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.\-]*://[^:/?#\[\]@\s]+:)[^@\s]+(?=@)"
+)
+
+# ?access_token=..., &hub.verify_token=... - the value of any query parameter
+# whose name looks like a credential.
+_SENSITIVE_QUERY_RE = re.compile(
+    r"(?P<prefix>[?&][^?&=\s]*(?:"
+    + "|".join(SENSITIVE_PARAM_MARKERS)
+    + r")[^?&=\s]*=)[^?&\s]+",
+    re.IGNORECASE,
+)
+
+_BEARER_RE = re.compile(r"(?P<prefix>\bBearer\s+)[^\s'\",]+", re.IGNORECASE)
+
+# 'authorization': '...' or "Authorization": "..." in a dict repr or JSON.
+_QUOTED_AUTHORIZATION_RE = re.compile(
+    r"(?P<prefix>(?P<kq>['\"])authorization(?P=kq)\s*:\s*(?P<vq>['\"])).*?(?=(?P=vq))",
+    re.IGNORECASE,
+)
+
+# Authorization: ... as a raw header line, to the end of the line.
+_HEADER_AUTHORIZATION_RE = re.compile(
+    r"(?P<prefix>\bauthorization:[ \t]*)[^\r\n]+", re.IGNORECASE
+)
+
+# api_key=..., "refresh_token": "...", password: ... - the value after any
+# credential-shaped name in free text, a dict repr or JSON.
+_SENSITIVE_PAIR_RE = re.compile(
+    r"(?P<prefix>\b[\w.-]*(?:token|secret|password|passwd|api_?key|apikey)[\w.-]*"
+    r"['\"]?\s*[:=]\s*['\"]?)(?!\*\*\*)[^\s'\",&}\]]+",
+    re.IGNORECASE,
+)
+
+# Credentials recognizable by shape alone, wherever they appear.
+_TOKEN_SHAPE_RE = re.compile(
+    r"(?P<prefix>)(?:"
+    r"\beyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,}"  # JWT (Supabase access tokens)
+    r"|\bAIza[\w-]{30,}"  # Google API key
+    r"|\bsb_(?:secret|publishable)_[\w-]{10,}"  # Supabase API key
+    r")"
+)
+
+# nguyen.van.an@example.com -> n***@example.com: the first letter and the
+# domain are enough to tell two addresses apart while debugging.
+_EMAIL_RE = re.compile(
+    r"(?P<prefix>[A-Za-z0-9])[A-Za-z0-9._%+-]*"
+    r"(?=@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})"
+)
+
+# Phone numbers in the shapes volunteers actually type: international (+84 ...),
+# Vietnamese local (a leading 0, 10-11 digits) and North American 3-3-4. A bare
+# digit run without a leading 0 or + is deliberately left alone - sheet ids,
+# row counts and epoch-like numbers look exactly like that.
+_PHONE_RE = re.compile(
+    r"(?P<prefix>)(?:"
+    r"(?<![\w+])\+\d{1,3}(?:[\s.-]?\(?\d{1,4}\)?){2,5}(?!\w)"
+    r"|(?<![\w.:/-])0\d{2,3}[\s.-]?\d{3}[\s.-]?\d{3,4}(?![\w.:/-])"
+    r"|(?<![\w.:/-])\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?![\w.:/-])"
+    r")"
+)
+
+_REDACTIONS = (
+    _URL_CREDENTIALS_RE,
+    _SENSITIVE_QUERY_RE,
+    _BEARER_RE,
+    _QUOTED_AUTHORIZATION_RE,
+    _HEADER_AUTHORIZATION_RE,
+    _SENSITIVE_PAIR_RE,
+    _TOKEN_SHAPE_RE,
+    _EMAIL_RE,
+    _PHONE_RE,
+)
+
+
+def redact_credentials(text: str) -> str:
+    """Strip credentials and personal data out of a string bound for a log sink.
+
+    Covers a password embedded in a connection URL, a credential passed as a
+    query parameter or a name=value pair, a Bearer token, an Authorization
+    header value, JWT and Google/Supabase API keys, email addresses (kept as
+    first letter plus domain) and phone numbers.
+    Idempotent, so it is safe to apply at a call site and again in the
+    logging filter.
+    """
+    for pattern in _REDACTIONS:
+        text = pattern.sub(lambda m: f"{m.group('prefix')}{REDACTED}", text)
+    return text
+
+
+def mask_email(address: str | None) -> str:
+    """n***@domain for a log line that has to say which address it means."""
+    if not address:
+        return "unknown"
+    return _EMAIL_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}", address)
+
+
+def _redact_args(args):
+    """Redact the str values of a record's args, keeping their shape."""
+    if isinstance(args, Mapping):
+        return {
+            k: redact_credentials(v) if isinstance(v, str) else v
+            for k, v in args.items()
+        }
+    if isinstance(args, tuple | list):
+        return tuple(redact_credentials(a) if isinstance(a, str) else a for a in args)
+    return args
+
+
+def _is_clean(record: logging.LogRecord) -> bool:
+    try:
+        message = record.getMessage()
+    except Exception:  # noqa: BLE001 - a msg/args mismatch is not clean
+        return False
+    return redact_credentials(message) == message
+
+
+class CredentialRedactingFilter(logging.Filter):
+    """Redact credentials from a record before a sink formats it.
+
+    Rewrites the record in place and never drops it, so it changes what a sink
+    writes but never which sinks a record reaches. Redacts msg and each str
+    arg separately so a formatter that reads record.args itself - uvicorn's
+    AccessFormatter unpacks five of them - still gets the shape it expects.
+    Only when a credential survives that (it sits in a non-str arg, or spans
+    msg and an arg) is the record collapsed to its redacted message with no
+    args, as a last resort. Mirrors the db_log_handler rule that logging must
+    never raise into application code.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            _redact_exception_text(record)
+            if _is_clean(record):
+                return True
+            redacted = redact_credentials(record.getMessage())
+            if isinstance(record.msg, str):
+                record.msg = redact_credentials(record.msg)
+            record.args = _redact_args(record.args)
+            if not _is_clean(record):
+                record.msg = redacted
+                record.args = None
+        except Exception:  # noqa: BLE001 - logging must never raise
+            pass
+        return True
+
+
+def _redact_exception_text(record: logging.LogRecord) -> None:
+    """Render the traceback once, redacted, where every formatter will reuse it.
+
+    A traceback is formatted by each sink after the filters have run, from
+    record.exc_info, so an exception message carrying an address would
+    otherwise bypass msg/args redaction entirely. logging.Formatter reuses
+    record.exc_text when it is already set, and so does CloudRunJSONFormatter.
+    """
+    if record.exc_info and not record.exc_text:
+        record.exc_text = logging.Formatter().formatException(record.exc_info)
+    if record.exc_text:
+        record.exc_text = redact_credentials(record.exc_text)
+    if record.stack_info:
+        record.stack_info = redact_credentials(record.stack_info)
+
+
+# Stateless, so one instance is shared by every logger and handler it guards.
+_credential_redacting_filter = CredentialRedactingFilter()
+
+
+def install_credential_redaction() -> None:
+    """Guard every log sink in the process, not just the factory's loggers.
+
+    Modules that use a bare logging.getLogger(__name__) propagate to a root
+    logger with no handlers in production, so their records are written to
+    stderr - and from there to Cloud Logging - by logging.lastResort. The
+    filter therefore goes on lastResort, on the root logger, on the handlers
+    already attached to the root or any other logger (uvicorn configures its
+    uvicorn.error and uvicorn.access handlers before it imports the app), and,
+    through a one-time wrap of Logger.addHandler, on every handler attached
+    later. Handler filters run per sink even for propagated records, which
+    logger filters do not. Idempotent: addFilter skips an instance already
+    present and the wrap is installed at most once.
+    """
+    if logging.lastResort is not None:
+        logging.lastResort.addFilter(_credential_redacting_filter)
+    logging.root.addFilter(_credential_redacting_filter)
+    loggers = [logging.root] + [
+        logger
+        for logger in list(logging.Logger.manager.loggerDict.values())
+        if isinstance(logger, logging.Logger)
+    ]
+    for logger in loggers:
+        for handler in logger.handlers:
+            handler.addFilter(_credential_redacting_filter)
+
+    if getattr(logging.Logger.addHandler, "_redacts_credentials", False):
+        return
+    original_add_handler = logging.Logger.addHandler
+
+    def add_handler(self: logging.Logger, hdlr: logging.Handler) -> None:
+        hdlr.addFilter(_credential_redacting_filter)
+        original_add_handler(self, hdlr)
+
+    add_handler._redacts_credentials = True  # type: ignore[attr-defined]
+    logging.Logger.addHandler = add_handler  # type: ignore[method-assign]
+
+
+install_credential_redaction()
+
+
 # Shared formatter
 formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
@@ -78,8 +311,11 @@ class CloudRunJSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         message = record.getMessage()
-        if record.exc_info:
-            message = f"{message}\n{self.formatException(record.exc_info)}"
+        if record.exc_info or record.exc_text:
+            # exc_text is the redacted rendering CredentialRedactingFilter
+            # leaves on the record; fall back for a record no filter saw.
+            exc_text = record.exc_text or self.formatException(record.exc_info)
+            message = f"{message}\n{exc_text}"
         return json.dumps(
             {
                 "severity": record.levelname,
@@ -134,6 +370,10 @@ def setup_logger(
 
     logger.setLevel(level)
     logger.propagate = False  # Prevent duplicate logs from parent loggers
+
+    # Guard every sink: a credential-bearing URL logged anywhere from here on
+    # is redacted before it is formatted or shipped.
+    logger.addFilter(_credential_redacting_filter)
 
     # Add rotating file handler only if logs directory exists and log file is specified
     if LOGS_DIR and log_file:

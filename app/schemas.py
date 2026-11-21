@@ -43,6 +43,9 @@ class Volunteer(VolunteerBase):
     created_at: datetime
     email_unsubscribe_token: str | None = None
     last_email_sent_at: datetime | None = None
+    # Monday of the most recent schedule week this volunteer signed up on,
+    # or None when the name matcher has never placed them.
+    last_active_at: datetime | None = None
 
     # Granular unsubscribe options
     weekly_reminders_subscribed: bool = True

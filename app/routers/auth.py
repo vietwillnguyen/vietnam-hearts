@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.dependencies.auth import get_current_admin_user, get_current_user
 from app.services.auth_service import auth_service
-from app.utils.logging_config import get_logger
+from app.utils.logging_config import get_logger, mask_email
 
 logger = get_logger("auth_router")
 
@@ -83,6 +83,7 @@ async def auth_callback(
         if error:
             logger.error(f"OAuth error: {error} - {error_description}")
             return templates.TemplateResponse(
+                request,
                 "auth/oauth_error.html",
                 {
                     "request": request,
@@ -97,38 +98,41 @@ async def auth_callback(
 
         # Check if user is an admin using the existing get_current_admin_user logic
         user_email = result["user"]["email"]
-        logger.info(f"Checking admin access for user: {user_email}")
+        logger.info(f"Checking admin access for user: {mask_email(user_email)}")
 
         try:
             # Use the existing is_admin method from auth_service
             is_admin = await auth_service._is_admin_cached(user_email)
 
             if not is_admin:
-                logger.warning(f"Access denied for non-admin user: {user_email}")
+                logger.warning(
+                    f"Access denied for non-admin user: {mask_email(user_email)}"
+                )
                 error_message = f"Access denied. The email {user_email} is not authorized to access the admin system."
                 return templates.TemplateResponse(
+                    request,
                     "auth/access_denied.html",
                     {"request": request, "error_message": error_message},
                     status_code=403,
                 )
 
-            logger.info(f"Admin access granted for user: {user_email}")
+            logger.info(f"Admin access granted for user: {mask_email(user_email)}")
 
         except Exception as admin_check_error:
             logger.error(
-                f"Failed to check admin status for {user_email}: {admin_check_error}"
+                f"Failed to check admin status for {mask_email(user_email)}: {admin_check_error}"
             )
             # If admin check fails, deny access for security
             error_message = f"Unable to verify admin access for {user_email}. Please contact the system administrator."
             return templates.TemplateResponse(
+                request,
                 "auth/access_verification_failed.html",
                 {"request": request, "error_message": error_message},
                 status_code=500,
             )
 
         # User is admin, show success page
-        logger.info(f"Rendering success page for {user_email}")
-        logger.info(f"Session data: {result.get('session', {})}")
+        logger.info(f"Rendering success page for {mask_email(user_email)}")
         logger.info(
             f"Access token present: {'access_token' in result.get('session', {})}"
         )
@@ -137,6 +141,7 @@ async def auth_callback(
         )
 
         return templates.TemplateResponse(
+            request,
             "auth/signin_success.html",
             {
                 "request": request,
@@ -150,6 +155,7 @@ async def auth_callback(
     except Exception as e:
         logger.error(f"Failed to handle auth callback: {str(e)}")
         return templates.TemplateResponse(
+            request,
             "auth/auth_failed.html",
             {"request": request, "error_message": str(e)},
             status_code=400,
@@ -182,7 +188,7 @@ async def sign_out(
     """
     try:
         result = await auth_service.sign_out(current_user.get("access_token", ""))
-        logger.info(f"User {current_user['email']} signed out successfully")
+        logger.info(f"User id={current_user.get('id')} signed out successfully")
         return result
     except Exception as e:
         logger.error(f"Failed to sign out user: {str(e)}")
@@ -238,7 +244,7 @@ async def list_users(
                 }
             )
 
-        logger.info(f"Admin {current_admin['email']} retrieved user list")
+        logger.info(f"Admin id={current_admin.get('id')} retrieved user list")
         return {
             "users": users,
             "total": len(users),

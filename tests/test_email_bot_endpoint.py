@@ -419,12 +419,16 @@ class TestAuthentication:
 
     @pytest.mark.parametrize("method,path", ENDPOINTS)
     def test_every_endpoint_carries_the_admin_dependency(self, method, path):
+        from fastapi.routing import iter_route_contexts
+
         from app.dependencies.auth import get_current_admin_user
         from app.main import app
 
+        # FastAPI 0.159 keeps each included router as one opaque entry in
+        # app.routes, so walk the effective routes the way OpenAPI does.
         matching = [
             route
-            for route in app.routes
+            for route in iter_route_contexts(app.routes)
             if getattr(route, "path", None) == path
             and method.upper() in getattr(route, "methods", set())
         ]
@@ -586,12 +590,14 @@ class TestMetricsEndpoint:
         assert "a reply" not in body
 
     def test_the_endpoint_carries_the_admin_dependency(self):
+        from fastapi.routing import iter_route_contexts
+
         from app.dependencies.auth import get_current_admin_user
         from app.main import app
 
         route = next(
             r
-            for r in app.routes
+            for r in iter_route_contexts(app.routes)
             if getattr(r, "path", None) == "/admin/email-bot/metrics"
         )
         assert get_current_admin_user in {

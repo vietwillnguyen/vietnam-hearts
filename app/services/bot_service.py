@@ -257,10 +257,11 @@ class BotService:
         allowed to say and in what language.
 
         Deliberately logs no part of the message. This runs twice a day against
-        a real inbox, application logs persist to the database, and Sentry runs
-        with send_default_pii=True, so a line carrying the first hundred
-        characters of a stranger's mail is a durable copy of it in two places
-        that should never have one.
+        a real inbox, application logs persist to the database, and log records
+        reach Sentry, so a line carrying the first hundred characters of a
+        stranger's mail is a durable copy of it in two places that should never
+        have one. The redaction filters catch addresses and phone numbers, not
+        prose, so they are no substitute.
         """
         relevant_chunks = await self.knowledge_service.similarity_search(
             message, limit=3
@@ -292,8 +293,7 @@ class BotService:
             # context at all, so the sentinel can never be rendered to a
             # sender as though it were an answer.
             raise NoRelevantContext(
-                "The generator reported that the context does not answer the "
-                "question"
+                "The generator reported that the context does not answer the question"
             )
 
         top_similarity = max(
@@ -322,7 +322,7 @@ class BotService:
             for i, chunk in enumerate(chunks):
                 content = chunk.get("content", "").strip()
                 if content:
-                    context_parts.append(f"Context {i+1}:\n{content}\n")
+                    context_parts.append(f"Context {i + 1}:\n{content}\n")
 
             return "\n".join(context_parts)
 

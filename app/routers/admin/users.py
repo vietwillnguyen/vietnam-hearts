@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.dependencies.auth import get_current_admin_user
-from app.utils.logging_config import get_api_logger
+from app.utils.logging_config import get_api_logger, mask_email
 from app.utils.timeout import timeout_handler
 
 logger = get_api_logger()
@@ -116,7 +116,7 @@ async def create_admin(
         )
         if success:
             logger.info(
-                f"Super admin {current_admin['email']} added admin {request.email}"
+                f"Super admin id={current_admin.get('id')} added admin {mask_email(request.email)}"
             )
             return {
                 "status": "success",
@@ -163,7 +163,7 @@ async def update_admin_role(
         )
         if success:
             logger.info(
-                f"Super admin {current_admin['email']} changed {email} role to {request.role}"
+                f"Super admin id={current_admin.get('id')} changed {mask_email(email)} role to {request.role}"
             )
             return {
                 "status": "success",
@@ -203,7 +203,9 @@ async def remove_admin(
             email=email, removed_by_email=current_admin["email"]
         )
         if success:
-            logger.info(f"Super admin {current_admin['email']} removed admin {email}")
+            logger.info(
+                f"Super admin id={current_admin.get('id')} removed admin {mask_email(email)}"
+            )
             return {
                 "status": "success",
                 "message": f"Admin {email} has been deactivated",
@@ -243,7 +245,7 @@ async def delete_admin_permanently(
         )
         if success:
             logger.info(
-                f"Super admin {current_admin['email']} permanently deleted admin {email}"
+                f"Super admin id={current_admin.get('id')} permanently deleted admin {mask_email(email)}"
             )
             return {
                 "status": "success",

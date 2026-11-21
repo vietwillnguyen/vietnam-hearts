@@ -21,6 +21,11 @@
         <div style="font-size: 0.97em; color: #555; margin-top: 4px;">
           Need help? Just ask in Zalo and our team will support you!
         </div>
+        {% if INVITE_LINK_WHATSAPP and INVITE_LINK_WHATSAPP != '#' %}
+        <div style="font-size: 0.97em; color: #555; margin-top: 4px;">
+          Can't register with Zalo? Join our <a href="{{ INVITE_LINK_WHATSAPP }}" style="color: #0190f3; text-decoration: underline;" target="_blank">WhatsApp community</a> instead.
+        </div>
+        {% endif %}
       </li>
       <li style="margin-bottom: 16px;">
         <span style="font-weight: 500; color: #222;">Read our Onboarding Guide</span> before your first class.<br>
@@ -36,7 +41,7 @@
         </a>
       </li>
       <li style="margin-bottom: 16px;">
-        <span style="font-weight: 500; color: #222;">Introduce yourself in our <span style="color: #0190f3;">Zalo Group Chat</span></span> and let us know which day you'll be teaching!<br>
+        <span style="font-weight: 500; color: #222;">Introduce yourself in our <span style="color: #0190f3;">Zalo Group Chat</span>{% if INVITE_LINK_WHATSAPP and INVITE_LINK_WHATSAPP != '#' %} or <span style="color: #0190f3;">WhatsApp community</span>{% endif %}</span> and let us know which day you'll be teaching!<br>
         <span style="color: #555;">This helps us get to know you and prepare for your first day.</span>
       </li>
       <li>
@@ -57,7 +62,7 @@
         <span style="color: #e63946; font-weight: 500;">
           For safety reasons, we keep the school's exact location private until you have signed up for a slot on the schedule.
         </span><br>
-        Once you've completed onboarding, just <strong>ask in our <a href="{{ INVITE_LINK_ZALO }}" style="color: #0190f3; text-decoration: underline;" target="_blank">Zalo Group Chat</a></strong> for the location and the day you will come in.
+        Once you've completed onboarding, just <strong>ask in our <a href="{{ INVITE_LINK_ZALO }}" style="color: #0190f3; text-decoration: underline;" target="_blank">Zalo Group Chat</a></strong>{% if INVITE_LINK_WHATSAPP and INVITE_LINK_WHATSAPP != '#' %} or <a href="{{ INVITE_LINK_WHATSAPP }}" style="color: #0190f3; text-decoration: underline;" target="_blank">WhatsApp community</a>{% endif %} for the location and the day you will come in.
       </p>
     </div>
 
@@ -67,7 +72,7 @@
       </p>
       <p style="margin: 0; color: #444;">
         We're a small group of volunteers, and there's no official onboarding or orientation.<br>
-        Drop us a message in our <strong>Zalo Group Chat</strong>—<br>
+        Drop us a message in our <strong>Zalo Group Chat</strong>{% if INVITE_LINK_WHATSAPP and INVITE_LINK_WHATSAPP != '#' %} or <strong>WhatsApp community</strong>{% endif %}—<br>
         we'd love to answer your questions or just chat!
       </p>
     </div>

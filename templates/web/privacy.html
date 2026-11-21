@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy - Vietnam Hearts{% endblock %}
+
+{% block extra_css %}
+<style>
+    .policy-card {
+        background: var(--light-cream);
+        border-radius: 20px;
+        padding: 48px;
+        margin: 40px auto 60px;
+        max-width: 820px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(122, 140, 107, 0.2);
+    }
+
+    .policy-card h1 {
+        color: var(--deep-green);
+        font-weight: 600;
+        font-size: 2.2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .policy-updated {
+        color: var(--earth-brown);
+        font-size: 0.95rem;
+        margin-bottom: 2rem;
+    }
+
+    .policy-card h2 {
+        color: var(--deep-green);
+        font-weight: 600;
+        font-size: 1.35rem;
+        margin-top: 2.5rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .policy-card p,
+    .policy-card li {
+        color: var(--rich-brown);
+        line-height: 1.7;
+    }
+
+    .policy-card ul {
+        padding-left: 1.3rem;
+    }
+
+    .policy-card li {
+        margin-bottom: 0.6rem;
+    }
+
+    .policy-card a {
+        color: var(--deep-green);
+        /* Long policy URLs must not push the card wider than the viewport. */
+        overflow-wrap: anywhere;
+    }
+
+    .limited-use {
+        background: rgba(122, 140, 107, 0.12);
+        border-left: 4px solid var(--sage-green);
+        border-radius: 8px;
+        padding: 18px 22px;
+        margin: 1.2rem 0;
+    }
+
+    .limited-use p:last-child {
+        margin-bottom: 0;
+    }
+
+    @media (max-width: 768px) {
+        .policy-card {
+            padding: 28px 22px;
+            margin: 24px 0 40px;
+            border-radius: 16px;
+        }
+
+        .policy-card h1 {
+            font-size: 1.75rem;
+        }
+
+        .policy-card h2 {
+            font-size: 1.2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <article class="policy-card">
+        <h1>Privacy Policy: Vietnam Hearts Volunteer Management</h1>
+        <p class="policy-updated">Last updated: {{ last_updated }}</p>
+
+        <p>
+            Vietnam Hearts Volunteer Management (the "Portal") is the administrative tool
+            Vietnam Hearts uses to manage volunteer activities. Its dashboard is restricted
+            to authorised administrators. A few pages are public - this policy, the sign-in
+            page, and the email-preferences page linked from the emails we send - and the
+            Portal also handles messages that members of the public send to our volunteer
+            inbox and to our Facebook Page.
+        </p>
+
+        <h2>Who this applies to</h2>
+        <p>
+            This policy covers the administrators who sign in to the Portal, the volunteers
+            whose information is stored in it, and anyone who writes to our volunteer inbox
+            or messages our Facebook Page.
+        </p>
+
+        <h2>Information we collect</h2>
+        <ul>
+            <li>
+                <strong>Administrator account information:</strong> the name and email address
+                of the Google account used to sign in. Sign-in is handled by Supabase Auth and
+                is limited to an allow-list of authorised addresses.
+            </li>
+            <li>
+                <strong>Volunteer information:</strong> details submitted through our volunteer
+                sign-up form or entered into the Portal - name, email address, phone number,
+                date of birth, passport ID number and passport expiry date, links to the
+                passport scan and headshot photo you upload, links to your Facebook or LinkedIn
+                profile, location, availability, start date and intended commitment, teaching
+                experience and certificates, Vietnamese proficiency, the roles and support
+                offered, your answers to our safeguarding questions, your quiz score, and a
+                record of the emails we have sent you.
+            </li>
+            <li>
+                <strong>Correspondence:</strong> the messages you send to our volunteer inbox
+                or to our Facebook Page, including their content.
+            </li>
+            <li>
+                <strong>Technical data:</strong> server logs generated automatically when the
+                Portal is used - the request method and path, the client IP address, the
+                browser type and other request headers, and timestamps. Authorization headers
+                and cookies are stripped before anything is written to a log.
+            </li>
+        </ul>
+
+        <h2>How we use information</h2>
+        <p>We use this information only to:</p>
+        <ul>
+            <li>Operate and secure the Portal</li>
+            <li>Coordinate and communicate with volunteers</li>
+            <li>Manage volunteer scheduling and records for Vietnam Hearts</li>
+            <li>Screen volunteer applications, as described below</li>
+            <li>Triage, answer and follow up on messages sent to our volunteer inbox</li>
+            <li>Answer messages sent to our Facebook Page, as described below</li>
+        </ul>
+
+        <h2>Automated screening of volunteer applications</h2>
+        <p>
+            When you apply to volunteer, the Portal sends parts of your application to
+            <strong>Google Gemini</strong> for an initial assessment: your name, the links to
+            your passport scan and headshot upload, your social media profile link, the
+            position you are interested in, your teaching experience and its details, your
+            motivation and what you hope to gain, your experience with children, the other
+            support you offered, and how you heard about us. Gemini returns a short summary, a
+            rating, and an accepted or rejected recommendation, and that recommendation is
+            recorded as your application's status.
+        </p>
+        <p>
+            You can ask for a person to review the outcome of your application, or ask us to
+            correct information in it, by writing to
+            <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.
+        </p>
+
+        <h2>Facebook Page messages</h2>
+        <p>
+            When you send a text message to our Facebook Page, the Portal sends its content to
+            <strong>Google Gemini</strong>, which writes a reply that is sent back to you
+            automatically through Messenger.
+        </p>
+
+        <h2>Volunteer inbox assistant</h2>
+        <p>
+            The Portal connects to the Vietnam Hearts volunteer inbox
+            (<a href="mailto:{{ contact_email }}">{{ contact_email }}</a>) using Google's
+            Gmail API with the <code>gmail.modify</code> permission. With that access the
+            Portal:
+        </p>
+        <ul>
+            <li>applies labels to incoming mail so each message's status is visible in the inbox;</li>
+            <li>saves a suggested reply as a Gmail draft for a person to review;</li>
+            <li>forwards mail that needs a person to a Vietnam Hearts organiser; and</li>
+            <li>
+                posts a short notice to an internal Vietnam Hearts Discord channel so an
+                organiser sees it quickly. That notice carries the message's category, how
+                urgent it is, and a link to the thread in Gmail. It does not carry the
+                sender's address or the body of the message; where a one-sentence summary is
+                included, it is generated with the explicit instruction to leave out names and
+                contact details.
+            </li>
+        </ul>
+        <p>
+            To categorise a message and to draft a reply, the Portal sends the message's
+            content to the AI services it uses for that purpose: <strong>Jev</strong>
+            (TypeSafe AI), which classifies the message, and <strong>Google Gemini</strong>,
+            which drafts replies and summaries. A second classification runs in parallel for
+            comparison through <strong>LiteLLM</strong>, which routes to Google Gemini by
+            default and can be configured to use Anthropic Claude instead. Message content is
+            sent to these services only to triage messages and draft replies. It is not used
+            for advertising, it is not sold, and we do not use it to train AI models.
+        </p>
+
+        <h2>Google API Services User Data Policy</h2>
+        <div class="limited-use">
+            <p>{{ limited_use_disclosure }}</p>
+        </div>
+        <p>
+            You can read that policy at
+            <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                target="_blank"
+                rel="noopener"
+                >developers.google.com/terms/api-services-user-data-policy</a
+            >.
+        </p>
+
+        <h2>Sharing of information</h2>
+        <p>
+            We do not sell or rent personal information. Data is not shared with third parties
+            except:
+        </p>
+        <ul>
+            <li>
+                <strong>Service providers that host or support the Portal:</strong> Google
+                Cloud, which hosts the Portal on Cloud Run; Google Workspace, where our
+                volunteer sign-up responses and class schedule are held in Google Sheets;
+                Supabase, which hosts the Portal's database and provides sign-in; Gmail, which
+                sends the Portal's email; Google Gemini, which screens volunteer applications,
+                answers Facebook Page messages, and drafts replies and summaries for the
+                volunteer inbox, as described above; Jev (TypeSafe AI) and LiteLLM, which
+                classify volunteer inbox messages as described above; Discord, which receives the short internal notices described
+                above; Meta, which delivers messages sent to our Facebook Page; and Sentry,
+                which receives error reports and, when an error occurs, the IP address and
+                headers of the request that caused it.
+            </li>
+            <li>Where required by law</li>
+        </ul>
+
+        <h2>Data storage and security</h2>
+        <p>
+            The Portal runs on Google Cloud Run. Its database is PostgreSQL hosted by
+            Supabase, and volunteer sign-up responses and the class schedule are held in
+            Google Sheets. We use reasonable safeguards, including restricted, authenticated
+            access limited to an allow-list of administrator accounts, to protect it. No
+            system is completely secure, so we cannot guarantee absolute security.
+        </p>
+
+        <h2>Data retention</h2>
+        <p>
+            Information is kept only as long as needed for volunteer management. It is deleted
+            on request or when no longer needed.
+        </p>
+
+        <h2>Your rights</h2>
+        <p>
+            You may ask us to access, correct, or delete your personal information at any time
+            by contacting us below.
+        </p>
+
+        <h2>Children</h2>
+        <p>
+            The Portal is not intended for use by children under 13, and we do not knowingly
+            collect their information through it.
+        </p>
+
+        <h2>Changes to this policy</h2>
+        <p>
+            We may update this policy from time to time. The "Last updated" date above shows
+            the latest version.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+            Questions or requests:
+            <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+        </p>
+    </article>
+</div>
+{% endblock %}

@@ -77,7 +77,10 @@ class TestVerifySignature:
         assert verify_signature(APP_SECRET, BODY, _sign("wrong_secret", BODY)) is False
 
     def test_rejects_a_correct_signature_over_different_bytes(self):
-        assert verify_signature(APP_SECRET, b'{"object":"page"}', _sign(APP_SECRET, BODY)) is False
+        assert (
+            verify_signature(APP_SECRET, b'{"object":"page"}', _sign(APP_SECRET, BODY))
+            is False
+        )
 
     def test_rejects_a_missing_header(self):
         assert verify_signature(APP_SECRET, BODY, None) is False
@@ -141,7 +144,9 @@ import hmac
 SIGNATURE_PREFIX = "sha256="
 
 
-def verify_signature(app_secret: str | None, raw_body: bytes, header: str | None) -> bool:
+def verify_signature(
+    app_secret: str | None, raw_body: bytes, header: str | None
+) -> bool:
     """Check an X-Hub-Signature-256 header against the raw request body.
 
     The digest must be computed over the exact bytes received. Re-serializing
@@ -274,7 +279,11 @@ def page_postback(
                 "sender": {"id": sender_id},
                 "recipient": {"id": PAGE_ID},
                 "timestamp": 1764547200000,
-                "postback": {"mid": "m_postback1", "title": "Get Started", "payload": payload},
+                "postback": {
+                    "mid": "m_postback1",
+                    "title": "Get Started",
+                    "payload": payload,
+                },
             }
         ]
     )
@@ -399,7 +408,9 @@ class TestBuildSupabaseClient:
 
     def test_returns_none_when_client_construction_raises(self):
         with (
-            patch("app.dependencies.services.SUPABASE_URL", "https://example.supabase.co"),
+            patch(
+                "app.dependencies.services.SUPABASE_URL", "https://example.supabase.co"
+            ),
             patch("app.dependencies.services.SUPABASE_SECRET_KEY", "secret"),
             patch(
                 "supabase.create_client",
@@ -575,39 +586,41 @@ Delete the entire `_create_fallback_embeddings` method (lines 199-216).
 Replace the body of `create_embeddings` with:
 
 ```python
-    async def create_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """Create 768-dimensional embeddings, or raise if that is impossible."""
-        if not self.embedding_model or self.embedding_model == "chat_model":
-            raise EmbeddingsUnavailable(
-                "Gemini embedding model is not available; refusing to answer"
+async def create_embeddings(self, texts: list[str]) -> list[list[float]]:
+    """Create 768-dimensional embeddings, or raise if that is impossible."""
+    if not self.embedding_model or self.embedding_model == "chat_model":
+        raise EmbeddingsUnavailable(
+            "Gemini embedding model is not available; refusing to answer"
+        )
+    if not texts:
+        return []
+
+    logger.info(f"Creating embeddings for {len(texts)} text chunks using Gemini")
+    embeddings: list[list[float]] = []
+    for index, text in enumerate(texts):
+        try:
+            result = self.gemini_client.models.embed_content(
+                model=self.embedding_model,
+                contents=text,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=EMBEDDING_DIMENSIONS,
+                ),
             )
-        if not texts:
-            return []
+        except Exception as exc:
+            raise EmbeddingsUnavailable(
+                f"Embedding call failed for chunk {index + 1}: {exc}"
+            ) from exc
 
-        logger.info(f"Creating embeddings for {len(texts)} text chunks using Gemini")
-        embeddings: list[list[float]] = []
-        for index, text in enumerate(texts):
-            try:
-                result = self.gemini_client.models.embed_content(
-                    model=self.embedding_model,
-                    contents=text,
-                    config=types.EmbedContentConfig(
-                        task_type="RETRIEVAL_DOCUMENT",
-                        output_dimensionality=EMBEDDING_DIMENSIONS,
-                    ),
-                )
-            except Exception as exc:
-                raise EmbeddingsUnavailable(
-                    f"Embedding call failed for chunk {index + 1}: {exc}"
-                ) from exc
+        vector = result.embeddings[0].values if result.embeddings else None
+        if not vector:
+            raise EmbeddingsUnavailable(
+                f"Empty embedding returned for chunk {index + 1}"
+            )
+        embeddings.append(_l2_normalize(vector))
 
-            vector = result.embeddings[0].values if result.embeddings else None
-            if not vector:
-                raise EmbeddingsUnavailable(f"Empty embedding returned for chunk {index + 1}")
-            embeddings.append(_l2_normalize(vector))
-
-        logger.info(f"Successfully created {len(embeddings)} embeddings")
-        return embeddings
+    logger.info(f"Successfully created {len(embeddings)} embeddings")
+    return embeddings
 ```
 
 Replace the body of `similarity_search` with:
@@ -725,7 +738,10 @@ VERIFY_TOKEN = "test_verify_token"
 def _signed(payload: dict) -> tuple[bytes, dict[str, str]]:
     body = json.dumps(payload).encode()
     digest = hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    return body, {"X-Hub-Signature-256": f"sha256={digest}", "Content-Type": "application/json"}
+    return body, {
+        "X-Hub-Signature-256": f"sha256={digest}",
+        "Content-Type": "application/json",
+    }
 
 
 @pytest.fixture
@@ -748,13 +764,17 @@ def sender():
 @pytest.fixture
 def bot():
     mock = MagicMock()
-    mock.chat = AsyncMock(return_value={"response": "You can volunteer by signing up.", "confidence": 0.9})
+    mock.chat = AsyncMock(
+        return_value={"response": "You can volunteer by signing up.", "confidence": 0.9}
+    )
     with patch("app.routers.webhooks.get_bot_service", return_value=mock):
         yield mock
 
 
 class TestVerification:
-    def test_echoes_the_challenge_for_a_correct_token(self, client: TestClient, meta_config):
+    def test_echoes_the_challenge_for_a_correct_token(
+        self, client: TestClient, meta_config
+    ):
         response = client.get("/webhook/meta", params=VERIFY_QUERY)
         assert response.status_code == 200
         assert response.text == VERIFY_QUERY["hub.challenge"]
@@ -771,12 +791,16 @@ class TestVerification:
 
 
 class TestSignature:
-    def test_rejects_an_unsigned_post(self, client: TestClient, meta_config, sender, bot):
+    def test_rejects_an_unsigned_post(
+        self, client: TestClient, meta_config, sender, bot
+    ):
         response = client.post("/webhook/meta", json=page_text_message())
         assert response.status_code == 403
         sender.send_text_message.assert_not_called()
 
-    def test_rejects_a_tampered_body(self, client: TestClient, meta_config, sender, bot):
+    def test_rejects_a_tampered_body(
+        self, client: TestClient, meta_config, sender, bot
+    ):
         _, headers = _signed(page_text_message())
         response = client.post(
             "/webhook/meta",
@@ -810,14 +834,18 @@ class TestDispatch:
         assert response.status_code == 200
         bot.chat.assert_not_called()
 
-    def test_returns_200_for_an_unknown_object_type(self, client: TestClient, meta_config, sender, bot):
+    def test_returns_200_for_an_unknown_object_type(
+        self, client: TestClient, meta_config, sender, bot
+    ):
         body, headers = _signed({"object": "whatsapp_business_account", "entry": []})
         response = client.post("/webhook/meta", content=body, headers=headers)
         # Never 4xx: Meta disables webhooks after repeated failures.
         assert response.status_code == 200
         sender.send_text_message.assert_not_called()
 
-    def test_stays_silent_when_the_bot_raises(self, client: TestClient, meta_config, sender, bot):
+    def test_stays_silent_when_the_bot_raises(
+        self, client: TestClient, meta_config, sender, bot
+    ):
         from app.services.knowledge_service import EmbeddingsUnavailable
 
         bot.chat = AsyncMock(side_effect=EmbeddingsUnavailable("down"))

@@ -56,6 +56,25 @@ def _block(
 class TestBuildClassTable:
     """Test build_class_table rendering from a ClassBlock"""
 
+    def test_a_class_that_meets_at_two_times_names_both_in_its_heading(self):
+        """Grade 1A, added to the template on 2026-10-15, meets Tuesday
+        morning and Thursday afternoon; its title carries a line per day."""
+        block = _block(
+            name="Grade 1A",
+            time="TUESDAY 9:30 - 10:30 AM, THURSDAY 3:30 - 4:30 PM",
+            max_assistants=4,
+            days=["Thứ Ba 13/10", "Thứ Năm 15/10"],
+            teacher=["Need Volunteers", "Need Volunteers"],
+            assistants=["Need Volunteers", "Need Volunteers"],
+        )
+
+        html = EmailService().build_class_table(block)["table_html"]
+
+        assert (
+            "<h3>Grade 1A (TUESDAY 9:30 - 10:30 AM, THURSDAY 3:30 - 4:30 PM) "
+            "- Max 4 Assistants</h3>" in html
+        )
+
     def test_max_assistants_enforcement(self):
         block = _block(
             max_assistants=2,
@@ -461,9 +480,9 @@ class TestWeeklyReminderSubject:
             mock_volunteer,
             [self._visible_tab("Schedule 27/07/2026")],
         )
-        assert "(27/07 to 02/08)" in subject
+        assert "(27/07-02/08)" in subject
         assert subject == EmailService().get_reminder_subject(
-            datetime(2026, 7, 27), datetime(2026, 7, 27) + timedelta(days=6)
+            datetime(2026, 7, 27), datetime(2026, 7, 27) + timedelta(days=6), 0
         )
 
     def test_subject_falls_back_to_the_shared_anchor_with_no_visible_tab(
@@ -476,9 +495,9 @@ class TestWeeklyReminderSubject:
 
         assert expected_monday == datetime(2026, 8, 3)
         subject = self._subject(test_db, mock_volunteer)
-        assert "(03/08 to 09/08)" in subject
+        assert "(03/08-09/08)" in subject
         assert subject == EmailService().get_reminder_subject(
-            expected_monday, expected_monday + timedelta(days=6)
+            expected_monday, expected_monday + timedelta(days=6), 0
         )
 
     def test_fallback_week_is_evaluated_in_the_org_timezone(
@@ -487,7 +506,80 @@ class TestWeeklyReminderSubject:
         # Same instant, different configured zone: a container-clock subject
         # would read the same either way.
         self._set_timezone(test_db, "UTC")
-        assert "(27/07 to 02/08)" in self._subject(test_db, mock_volunteer)
+        assert "(27/07-02/08)" in self._subject(test_db, mock_volunteer)
 
         self._set_timezone(test_db, "Asia/Ho_Chi_Minh")
-        assert "(03/08 to 09/08)" in self._subject(test_db, mock_volunteer)
+        assert "(03/08-09/08)" in self._subject(test_db, mock_volunteer)
+
+
+class TestBareDayMonthLabels:
+    """A tab whose day headers are bare d/m labels ("19/10") still keeps the
+    days the organization does not teach on out of the reminder.
+
+    Those labels name no weekday, so on their own they fail open and every
+    blank Monday, Wednesday and Friday would read as an unfilled slot. The
+    reminder dates them against the week of the tab it read them from.
+    """
+
+    @staticmethod
+    def _rows(html):
+        """{day label: status} for every rendered table row."""
+        rows = {}
+        for row in html.split("<tr")[1:]:
+            cells = [c.split("</td>")[0] for c in row.split(">", 1)[1].split("<td")]
+            values = [c.split(">", 1)[1] for c in cells[1:]]
+            if values:
+                rows[values[0]] = values[-1]
+        return rows
+
+    def _render(self, test_db, volunteer, tab_title, days, teacher):
+        block = _block(
+            max_assistants=2,
+            days=days,
+            teacher=teacher,
+            assistants=["Yến"] * len(days),
+        )
+        tab = {"properties": {"sheetId": 1, "title": tab_title, "hidden": False}}
+        with (
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_blocks",
+                return_value=[block],
+            ),
+            patch(
+                "app.services.google_sheets.sheets_service.get_schedule_sheets",
+                return_value=[tab],
+            ),
+        ):
+            html, _ = EmailService().build_weekly_reminder_content(volunteer, test_db)
+        return self._rows(html)
+
+    def test_non_teaching_days_are_no_class_and_gaps_stay_missing(
+        self, test_db, mock_volunteer
+    ):
+        rows = self._render(
+            test_db,
+            mock_volunteer,
+            "Schedule 19/10/2026",
+            ["19/10", "20/10", "21/10", "22/10", "23/10"],
+            ["", "Trúc", "", "", ""],
+        )
+        assert rows["19/10"] == "No class"  # Monday
+        assert rows["21/10"] == "No class"  # Wednesday
+        assert rows["23/10"] == "No class"  # Friday
+        assert rows["22/10"] == "❌ Missing Teacher"  # Thursday, unfilled
+        assert rows["20/10"].startswith("✅")  # Tuesday, staffed
+
+    def test_label_in_a_week_straddling_new_year_takes_the_next_year(
+        self, test_db, mock_volunteer
+    ):
+        # 1/1 on the week of Monday 29/12/2025 is Thursday 2026, a teaching
+        # day; read as January 2025 it would be a Wednesday.
+        rows = self._render(
+            test_db,
+            mock_volunteer,
+            "Schedule 29/12/2025",
+            ["29/12", "30/12", "31/12", "1/1", "2/1"],
+            ["", "Trúc", "", "", ""],
+        )
+        assert rows["1/1"] == "❌ Missing Teacher"
+        assert rows["29/12"] == rows["31/12"] == rows["2/1"] == "No class"

@@ -7,6 +7,21 @@ This module provides functions to parse Google Sheets URLs and extract sheet IDs
 import re
 
 
+def a1_range(sheet_title: str, range_name: str) -> str:
+    """``range_name`` qualified to ``sheet_title``, quoted for A1 notation.
+
+    Qualification is not optional: the Sheets API resolves an unqualified
+    range against the *first* sheet in the spreadsheet, and rotation keeps
+    "Schedule Template" pinned there, so an unqualified read of the class
+    grid returns the template's placeholder rows instead of the week
+    volunteers actually signed up on.
+    """
+    if "!" in range_name:
+        return range_name
+    escaped = sheet_title.replace("'", "''")
+    return f"'{escaped}'!{range_name}"
+
+
 def extract_sheet_id_from_url(url: str) -> str | None:
     """
     Extract the sheet ID from a Google Sheets URL

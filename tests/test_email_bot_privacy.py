@@ -4,8 +4,9 @@ Three destinations, all of which persist further than they look:
 
 - **Log lines.** ``PERSIST_LOGS_TO_DB`` puts application logs in the database and
   the admin dashboard renders them, so a logged address is a durable copy of it.
-- **Exception messages.** Sentry runs with ``send_default_pii=True`` for request
-  debugging, so anything an exception carries leaves the building.
+- **Exception messages.** Anything an exception carries is sent to Sentry, and
+  ``sentry_config.scrub_event`` is a pattern-based safety net that cannot
+  recognise a subject or body, so it must not be relied on here.
 - **Database rows.** The design stores sender hashes and outbound bot text, and
   deliberately not inbound bodies.
 

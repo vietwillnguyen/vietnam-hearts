@@ -10,13 +10,13 @@ This file handles:
 
 from contextlib import contextmanager
 
+from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from alembic import command
-from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
-from alembic.script import ScriptDirectory
 from app.config import DATABASE_URL, PROJECT_ROOT
 
 from .services.settings_service import initialize_default_settings

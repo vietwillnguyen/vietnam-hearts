@@ -17,6 +17,7 @@ from app.models import (
 from app.routers.admin.helpers import get_volunteer_summary
 from app.schemas import Volunteer
 from app.services.email_service import email_service
+from app.services.volunteer_activity import select_lapsed_volunteers
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 
@@ -57,6 +58,32 @@ def list_active_volunteers(db: Session = Depends(get_db)):
     return db.query(VolunteerModel).filter(VolunteerModel.is_active.is_(True)).all()
 
 
+@router.get(
+    "/volunteers/lapsed",
+    summary="Volunteers the weekly reminder's recency window now excludes",
+)
+def list_lapsed_volunteers(db: Session = Depends(get_db)):
+    """Report subscribed volunteers who have aged out of the reminder.
+
+    Review only - this never changes a volunteer. Check
+    `ever_matched_on_schedule` first: False means the schedule-sheet name
+    matcher has never placed them, so the fix is usually their name record
+    rather than a conversation about whether they still volunteer.
+    """
+    try:
+        result = select_lapsed_volunteers(db)
+        return {
+            "status": "success",
+            "total_lapsed": len(result["volunteers"]),
+            **result,
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch lapsed volunteers: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch lapsed volunteers: {str(e)}"
+        ) from e
+
+
 @router.get("/volunteers/announcement-recipients")
 def get_announcement_recipients(db: Session = Depends(get_db)):
     """Get all active volunteers subscribed to announcements"""
@@ -76,6 +103,9 @@ def get_announcement_recipients(db: Session = Depends(get_db)):
                 "weekly_reminders_subscribed": v.weekly_reminders_subscribed,
                 "all_emails_subscribed": v.all_emails_subscribed,
                 "created_at": v.created_at.isoformat() if v.created_at else None,
+                "last_active_at": v.last_active_at.isoformat()
+                if v.last_active_at
+                else None,
             }
             for v in recipients
         ]
@@ -220,7 +250,7 @@ def resubscribe_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
             )
         )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} resubscribed to all emails by admin")
+        logger.info(f"Volunteer id={volunteer.id} resubscribed to all emails by admin")
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been resubscribed to all emails",
@@ -261,7 +291,7 @@ def resubscribe_volunteer_weekly(volunteer_id: int, db: Session = Depends(get_db
         )
         db.commit()
         logger.info(
-            f"Volunteer {volunteer.email} resubscribed to weekly reminders by admin"
+            f"Volunteer id={volunteer.id} resubscribed to weekly reminders by admin"
         )
         return {
             "status": "success",
@@ -310,7 +340,7 @@ def deactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
             )
         )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} deactivated by admin")
+        logger.info(f"Volunteer id={volunteer.id} deactivated by admin")
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been deactivated",
@@ -357,7 +387,7 @@ def reactivate_volunteer(volunteer_id: int, db: Session = Depends(get_db)):
             )
         )
         db.commit()
-        logger.info(f"Volunteer {volunteer.email} reactivated by admin")
+        logger.info(f"Volunteer id={volunteer.id} reactivated by admin")
         return {
             "status": "success",
             "message": f"Volunteer {volunteer.email} has been reactivated",
@@ -410,7 +440,7 @@ def send_weekly_reminder_to_volunteer(volunteer_id: int, db: Session = Depends(g
             email_type="weekly_reminder",
         )
         if success:
-            logger.info(f"Weekly reminder email sent to {volunteer.email}")
+            logger.info(f"Weekly reminder email sent to id={volunteer.id}")
             return {
                 "status": "success",
                 "message": f"Weekly reminder email sent to {volunteer.email}",

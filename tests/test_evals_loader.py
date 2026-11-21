@@ -341,9 +341,9 @@ class TestNoRealDataInTheGoldenSet:
         pattern = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
         for case in cases:
             for found in pattern.findall(f"{case.subject}\n{case.text}"):
-                assert found.endswith(
-                    ("example.com", "example.org", "example.net")
-                ), f"{case.id}: {found}"
+                assert found.endswith(("example.com", "example.org", "example.net")), (
+                    f"{case.id}: {found}"
+                )
 
     def test_the_real_volunteer_inbox_appears_nowhere(self, cases):
         text = "\n".join(f"{case.subject}{case.text}" for case in cases)

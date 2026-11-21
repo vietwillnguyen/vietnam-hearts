@@ -13,9 +13,9 @@ import os
 os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 
 import pytest
-
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+
 from app.config import PROJECT_ROOT
 from app.models import Setting
 

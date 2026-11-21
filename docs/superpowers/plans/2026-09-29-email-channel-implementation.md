@@ -62,18 +62,19 @@ Defined in E1, used unchanged by E2 to E4.
 # app/services/channels/base.py
 @dataclass(frozen=True)
 class IncomingMessage:
-    channel: str                      # "email"
-    thread_key: str                   # Gmail threadId
-    provider_message_id: str          # Gmail message id, the idempotence key
-    sender_key: str                   # sha256 of the lower-cased sender address
-    sender_address: str               # in memory only; never persisted, never logged
+    channel: str  # "email"
+    thread_key: str  # Gmail threadId
+    provider_message_id: str  # Gmail message id, the idempotence key
+    sender_key: str  # sha256 of the lower-cased sender address
+    sender_address: str  # in memory only; never persisted, never logged
     subject: str
     text: str
     rfc_message_id: str
     references: tuple[str, ...]
     received_at: datetime
-    headers: Mapping[str, str]        # lower-cased header names
+    headers: Mapping[str, str]  # lower-cased header names
     label_ids: tuple[str, ...]
+
 
 @dataclass(frozen=True)
 class OutboundReply:
@@ -83,36 +84,54 @@ class OutboundReply:
     in_reply_to: str
     references: tuple[str, ...]
     text: str
-    language: str                     # "en" | "vi"
-    kind: str                         # "signup" | "faq" | "holding"
+    language: str  # "en" | "vi"
+    kind: str  # "signup" | "faq" | "holding"
+
 
 # app/services/triage/protocol.py
-Category = Literal["signup", "faq", "volunteer_ops", "sponsorship", "donation",
-                   "partnership", "press", "safeguarding_legal", "acceptance",
-                   "human_other", "automated"]
+Category = Literal[
+    "signup",
+    "faq",
+    "volunteer_ops",
+    "sponsorship",
+    "donation",
+    "partnership",
+    "press",
+    "safeguarding_legal",
+    "acceptance",
+    "human_other",
+    "automated",
+]
 Tier = Literal["auto_answer", "needs_admin", "needs_executive", "skip"]
 Language = Literal["en", "vi", "other"]
+
 
 @dataclass(frozen=True)
 class TriageSignals:
     category: Category
     language: Language
-    confidence: float                 # 0.0 to 1.0
+    confidence: float  # 0.0 to 1.0
     asks_for_human: bool
     mentions_money_or_commitment: bool
-    classifier: str                   # "jev" | "litellm:<model>"
+    classifier: str  # "jev" | "litellm:<model>"
+
 
 @dataclass(frozen=True)
 class TriageDecision(TriageSignals):
     tier: Tier
 
+
 class TriageClassifier(Protocol):
     def classify(self, message: IncomingMessage) -> TriageSignals: ...
 
+
 # app/services/triage/policy.py
 EXECUTIVE_CATEGORIES: frozenset[Category]
+
+
 def derive_tier(signals: TriageSignals, confidence_threshold: float) -> Tier: ...
 def decide(signals: TriageSignals, confidence_threshold: float) -> TriageDecision: ...
+
 
 # app/services/channels/gmail_transport.py
 @dataclass(frozen=True)
@@ -120,39 +139,68 @@ class RawMail:
     id: str
     thread_id: str
     label_ids: tuple[str, ...]
-    payload: Mapping[str, Any]        # users.messages.get(format="full") resource
+    payload: Mapping[str, Any]  # users.messages.get(format="full") resource
 
-class GmailAuthRevoked(RuntimeError): ...   # raised on invalid_grant (E4 wires the handling)
+
+class GmailAuthRevoked(
+    RuntimeError
+): ...  # raised on invalid_grant (E4 wires the handling)
+
 
 class MailTransport(Protocol):
     inbox_address: str
-    def list_unprocessed(self, *, newer_than_days: int, exclude_label: str, limit: int) -> list[RawMail]: ...
+
+    def list_unprocessed(
+        self, *, newer_than_days: int, exclude_label: str, limit: int
+    ) -> list[RawMail]: ...
     def get_thread(self, thread_id: str) -> list[RawMail]: ...
-    def ensure_labels(self, names: Iterable[str]) -> dict[str, str]: ...   # name -> id
+    def ensure_labels(self, names: Iterable[str]) -> dict[str, str]: ...  # name -> id
     def add_labels(self, message_id: str, label_ids: Iterable[str]) -> None: ...
-    def create_draft(self, thread_id: str, mime: bytes) -> str: ...         # draft id
+    def create_draft(self, thread_id: str, mime: bytes) -> str: ...  # draft id
     def get_draft(self, draft_id: str) -> RawMail | None: ...
     def delete_draft(self, draft_id: str) -> None: ...
+
     # E3 adds, and only E3 may call:
     # def send_reply(self, thread_id: str, mime: bytes) -> str: ...          # sent message id
+
 
 # app/services/conversation_service.py
 class ConversationService:
     def __init__(self, db: Session) -> None: ...
     def is_duplicate(self, provider_message_id: str) -> bool: ...
-    def get_or_create(self, channel: str, thread_key: str, sender_key: str) -> Conversation: ...
-    def record_inbound(self, conversation: Conversation, message: IncomingMessage,
-                       decision: TriageDecision, shadow: TriageSignals | None) -> Message: ...
-    def record_outbound(self, conversation: Conversation, *, text: str, action: str,
-                        language: str, gmail_message_id_out: str | None = None,
-                        gmail_draft_id: str | None = None, confidence: float | None = None,
-                        sources: list[str] | None = None) -> Message: ...
-    def record_action(self, conversation: Conversation, message: IncomingMessage, action: str) -> Message: ...
-    def can_bot_reply(self, conversation: Conversation) -> bool: ...   # status == "bot" and bot_reply_count < 1
+    def get_or_create(
+        self, channel: str, thread_key: str, sender_key: str
+    ) -> Conversation: ...
+    def record_inbound(
+        self,
+        conversation: Conversation,
+        message: IncomingMessage,
+        decision: TriageDecision,
+        shadow: TriageSignals | None,
+    ) -> Message: ...
+    def record_outbound(
+        self,
+        conversation: Conversation,
+        *,
+        text: str,
+        action: str,
+        language: str,
+        gmail_message_id_out: str | None = None,
+        gmail_draft_id: str | None = None,
+        confidence: float | None = None,
+        sources: list[str] | None = None,
+    ) -> Message: ...
+    def record_action(
+        self, conversation: Conversation, message: IncomingMessage, action: str
+    ) -> Message: ...
+    def can_bot_reply(
+        self, conversation: Conversation
+    ) -> bool: ...  # status == "bot" and bot_reply_count < 1
     def pause(self, conversation: Conversation, tier: Tier, reason: str) -> None: ...
     def pause_manual(self, conversation: Conversation) -> None: ...
     def resume(self, conversation: Conversation) -> None: ...
     def outstanding_draft(self, conversation: Conversation) -> Message | None: ...
+
 
 # app/services/notifier.py
 @dataclass(frozen=True)
@@ -163,34 +211,50 @@ class EscalationEvent:
     summary: str | None
     gmail_thread_url: str
 
+
 class Notifier(Protocol):
     def notify(self, event: EscalationEvent) -> None: ...
 
+
 # app/services/email_bot/delivery.py
 class DeliveryMode(StrEnum):
-    OFF = "off"; DRAFT = "draft"; AUTO = "auto"
-def parse_mode(value: str | None) -> DeliveryMode: ...   # anything unknown -> OFF
+    OFF = "off"
+    DRAFT = "draft"
+    AUTO = "auto"
+
+
+def parse_mode(value: str | None) -> DeliveryMode: ...  # anything unknown -> OFF
+
 
 @dataclass(frozen=True)
 class DeliveryResult:
-    action: str                       # "drafted" | "sent"
+    action: str  # "drafted" | "sent"
     gmail_draft_id: str | None
     gmail_message_id_out: str | None
 
+
 class ReplySink(Protocol):
     def deliver(self, reply: OutboundReply) -> DeliveryResult: ...
+
 
 # app/services/email_bot/pipeline.py
 @dataclass
 class RunSummary:
     mode: DeliveryMode
-    listed: int; processed: int; drafted: int; sent: int
-    forwarded: int; skipped: int; errors: int
+    listed: int
+    processed: int
+    drafted: int
+    sent: int
+    forwarded: int
+    skipped: int
+    errors: int
     aborted_reason: str | None
 
+
 class EmailBotPipeline:
-    def run(self) -> RunSummary: ...   # sync, runs in the threadpool; reaches the async
-                                       # BotService.chat() via anyio.from_thread.run
+    def run(self) -> RunSummary:
+        ...  # sync, runs in the threadpool; reaches the async
+        # BotService.chat() via anyio.from_thread.run
 ```
 
 ---

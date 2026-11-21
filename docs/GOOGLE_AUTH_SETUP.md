@@ -24,6 +24,7 @@ This guide will walk you through setting up Google OAuth authentication for the 
    - **App name**: Vietnam Hearts
    - **User support email**: Your email address
    - **Developer contact information**: Your email address
+   - **Privacy policy link**: the deployed `/privacy` page (see [Privacy policy URL](../README.md#privacy-policy-url))
 4. Add the following scopes:
    - `openid`
    - `email`

@@ -238,9 +238,9 @@ class TestRevalidateUnderConcurrentPolls:
             for worker in workers:
                 worker.join(timeout=10)
 
-        assert (
-            len(probes) == 1
-        ), f"{len(probes)} of {thread_count} threads probed Gemini in one window"
+        assert len(probes) == 1, (
+            f"{len(probes)} of {thread_count} threads probed Gemini in one window"
+        )
 
     def test_an_in_flight_probe_does_not_block_other_threads(self):
         """
@@ -271,9 +271,9 @@ class TestRevalidateUnderConcurrentPolls:
                 assert probe_started.wait(timeout=5), "the probe never started"
 
                 threading.Thread(target=poll).start()
-                assert second_call_returned.wait(
-                    timeout=2
-                ), "revalidate blocked behind an in-flight Gemini call"
+                assert second_call_returned.wait(timeout=2), (
+                    "revalidate blocked behind an in-flight Gemini call"
+                )
             finally:
                 release_probe.set()
                 hanging.join(timeout=5)

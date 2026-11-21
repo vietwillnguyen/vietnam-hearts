@@ -431,8 +431,8 @@ class TestThreadsAndProfile:
     def test_the_inbox_address_is_read_once(self, service):
         transport = GmailTransport(service)
         calls = []
-        service.getProfile = lambda userId: calls.append(1) or _Executable(
-            {"emailAddress": payloads.TEST_INBOX}
+        service.getProfile = lambda userId: (
+            calls.append(1) or _Executable({"emailAddress": payloads.TEST_INBOX})
         )
         _ = transport.inbox_address
         _ = transport.inbox_address

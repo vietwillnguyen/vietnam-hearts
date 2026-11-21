@@ -21,7 +21,25 @@ APPLICATION_VERSION = os.getenv("APPLICATION_VERSION", "3.3.0")
 PROJECT_ROOT = Path(__file__).parent.parent
 
 # Database Configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
+
+
+def with_explicit_postgres_driver(url: str) -> str:
+    """Pin a driverless Postgres URL to psycopg2, the driver this app installs.
+
+    SQLAlchemy 2.1 changed the default driver for a bare ``postgresql://`` URL
+    from psycopg2 to psycopg 3, so the production DATABASE_URL started failing
+    at import with "No module named 'psycopg'" and the container never came up.
+    A URL that already names a driver is left alone.
+    """
+    for scheme in ("postgresql://", "postgres://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg2://" + url[len(scheme) :]
+    return url
+
+
+DATABASE_URL = with_explicit_postgres_driver(
+    os.getenv("DATABASE_URL", "sqlite:///./dev.db")
+)
 
 # Cloud Scheduler Configuration
 # Used to address the cron jobs whose cadence is owned by the CRON_* settings.

@@ -86,6 +86,7 @@ with open("templates/email/confirmation-email.html", "r") as f:
 ### Email-Specific Variables
 - `UserFullName`: Volunteer's full name
 - `INVITE_LINK_ZALO`: Zalo group chat invite link
+- `INVITE_LINK_WHATSAPP`: WhatsApp community invite link, offered beside Zalo; empty hides it
 - `SCHEDULE_SIGNUP_LINK`: Volunteer schedule link
 - `EMAIL_PREFERENCES_LINK`: Email preferences management link
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import SystemLog
+from app.services.log_retention import log_retention_days, prune_system_logs
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
@@ -19,6 +20,26 @@ logger = get_api_logger()
 router = APIRouter()
 
 MAX_PAGE_SIZE = 200
+
+
+@router.post("/prune-system-logs")
+def prune_old_system_logs(db: Session = Depends(get_db)):
+    """Delete system_logs rows older than LOG_RETENTION_DAYS (default 30).
+
+    Called daily by the prune-system-logs Cloud Scheduler job. Idempotent.
+    """
+    retention_days = log_retention_days()
+    try:
+        deleted = prune_system_logs(db, retention_days)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to prune system logs: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to prune system logs: {str(e)}"
+        ) from e
+    logger.info(f"Pruned {deleted} system_logs row(s) older than {retention_days} days")
+    return {"status": "success", "deleted": deleted, "retention_days": retention_days}
 
 
 @router.get("/logs")

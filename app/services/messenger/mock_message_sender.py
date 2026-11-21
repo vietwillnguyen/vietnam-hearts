@@ -38,7 +38,7 @@ class MockMessageSender:
         }
 
         self.sent_messages.append(message)
-        logger.info(f"[MOCK] Message sent to {recipient_id}: {text}")
+        logger.info(f"[MOCK] Message sent to {recipient_id} ({len(text)} chars)")
         logger.info(f"[MOCK] Total messages sent: {len(self.sent_messages)}")
 
         return True
@@ -57,7 +57,7 @@ class MockMessageSender:
 
         self.sent_messages.append(message)
         logger.info(
-            f"[MOCK] Quick reply sent to {recipient_id}: {text} with {len(quick_replies)} options"
+            f"[MOCK] Quick reply sent to {recipient_id} ({len(text)} chars) with {len(quick_replies)} options"
         )
 
         return True

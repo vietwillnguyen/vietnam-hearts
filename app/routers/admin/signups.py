@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import time
+from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from google import genai
@@ -17,6 +18,7 @@ from app.models import Volunteer as VolunteerModel
 from app.routers.admin.helpers import create_new_volunteer_object
 from app.services.email_service import email_service
 from app.services.google_sheets import sheets_service
+from app.services.volunteer_activity import record_activity_from_schedule_sheets
 from app.utils.config_helper import ConfigHelper
 from app.utils.logging_config import get_api_logger
 from app.utils.retry_utils import log_ssl_error
@@ -193,18 +195,22 @@ def get_signup_form_submissions(
             )
 
             if non_accepted_submissions > 0:
-                logger.info(
-                    f"Skipped non-accepted: {[{'email': s.get('email_address'), 'status': s.get('applicant_status')} for s in submissions if s.get('applicant_status', '').upper() != 'ACCEPTED']}"
+                skipped_statuses = Counter(
+                    (s.get("applicant_status") or "BLANK").upper()
+                    for s in submissions
+                    if s.get("applicant_status", "").upper() != "ACCEPTED"
                 )
+                logger.info(f"Skipped non-accepted by status: {dict(skipped_statuses)}")
 
             logger.info(f"Found {len(new_submissions)} new submissions to process")
 
-            for submission in new_submissions:
+            for index, submission in enumerate(new_submissions):
                 try:
                     new_volunteers.append(create_new_volunteer_object(submission))
                 except Exception as e:
                     logger.error(
-                        f"Failed to process submission for {submission.get('email_address', 'unknown')}: {str(e)}"
+                        f"Failed to process new submission {index + 1}/{len(new_submissions)} "
+                        f"(timestamp={submission.get('timestamp', 'unknown')}): {str(e)}"
                     )
                     failed_submissions.append(
                         {
@@ -220,8 +226,6 @@ def get_signup_form_submissions(
                     logger.info(
                         f"Added {len(new_volunteers)} new volunteers to database"
                     )
-                    for v in new_volunteers:
-                        logger.info(f"New Volunteer {v.email} created with id: {v.id}")
                 except Exception as e:
                     logger.error(f"Failed to save new volunteers to database: {str(e)}")
                     db.rollback()
@@ -314,17 +318,15 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
     processed = accepted = rejected = errors = 0
 
     for row_number, submission in pending_rows:
-        email = submission.get("email_address", "unknown")
         try:
             judgment = _judge_submission(submission)
             status = judgment.get("verdict", "REJECTED").upper()
             summary = judgment.get("summary", "")
             rating = int(judgment.get("rating", 0))
 
-            logger.info(
-                f"Judgment row {row_number} ({email}): "
-                f"{status} rating={rating} — {judgment.get('reasoning', '')}"
-            )
+            # The reasoning describes the applicant, so it goes to the sheet
+            # (below) and never into the logs.
+            logger.info(f"Judgment row {row_number}: {status} rating={rating}")
 
             if dry_run:
                 logger.info(
@@ -347,9 +349,7 @@ def _run_llm_judge(db: Session, limit: int) -> dict:
                 rejected += 1
 
         except Exception as e:
-            logger.error(
-                f"Failed to judge row {row_number} ({email}): {e}", exc_info=True
-            )
+            logger.error(f"Failed to judge row {row_number}: {e}", exc_info=True)
             errors += 1
 
         # Gemini 3.5 Flash Tier 1: 150-300 RPM — 1s gap is safe.
@@ -389,6 +389,8 @@ def judge_pending_submissions(
         "Full pipeline for the scheduled cron job:\n"
         "1. LLM judges up to `limit` PENDING submissions and writes ACCEPTED/REJECTED to the sheet.\n"
         "2. Syncs all ACCEPTED submissions from the sheet into the volunteer database and sends confirmation emails.\n"
+        "3. Records volunteer activity from the visible schedule tabs, which is what the weekly "
+        "reminder's recency window is measured against.\n"
         "Respects dry_run — when True, step 1 logs only and step 2 still syncs (it reads the sheet state).\n"
         "A hard sync failure (e.g. a Sheets permission error) raises a 502 rather than "
         "returning `status: success` - per-row judge errors are still reported via `judge.errors`."
@@ -412,6 +414,20 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
     sync_details = sync_result.get("details", {})
     logger.info(f"Sync step done: status={sync_status} details={sync_details}")
 
+    # Step 3: record who is signed up on the visible schedule weeks. This is
+    # the only input to the weekly reminder's recency window, and a scan that
+    # quietly stops running lets last_active_at go stale - which drops real
+    # volunteers off the reminder rather than merely failing to add them. So a
+    # Sheets failure here propagates, exactly as step 2's does.
+    activity_results = record_activity_from_schedule_sheets(db)
+    unmatched = sorted(
+        {name for _, result in activity_results for name in result.unmatched}
+    )
+    logger.info(
+        f"Activity step done: {len(activity_results)} tab(s) scanned, "
+        f"{len(unmatched)} signup name(s) unmatched"
+    )
+
     return {
         "status": "success",
         "judge": judge_result,
@@ -420,11 +436,19 @@ def review_and_sync(request: Request, db: Session = Depends(get_db), limit: int 
             "volunteers_created": sync_details.get("volunteers_created", 0),
             "accepted_submissions": sync_details.get("accepted_submissions", 0),
         },
+        "activity": {
+            "tabs_scanned": len(activity_results),
+            "volunteers_credited": sum(r.matched for _, r in activity_results),
+            # Surfaced rather than only logged: an unplaceable name is a
+            # volunteer who will look lapsed, and the captain is the only one
+            # who can fix the record or ask for a full name.
+            "unmatched_signup_names": unmatched,
+        },
     }
 
 
 @router.post("/sync-volunteers")
-async def sync_volunteers(request: Request, db: Session = Depends(get_db)):
+def sync_volunteers(request: Request, db: Session = Depends(get_db)):
     """Sync volunteers from Google Sheets and process new signups"""
     try:
         result = get_signup_form_submissions(db=db, process_new=True)

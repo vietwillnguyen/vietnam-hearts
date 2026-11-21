@@ -18,7 +18,7 @@ from app.config import (
     SUPABASE_SECRET_KEY,
     SUPABASE_URL,
 )
-from app.utils.logging_config import get_logger
+from app.utils.logging_config import get_logger, mask_email
 
 logger = get_logger("auth_service")
 
@@ -97,7 +97,7 @@ class AuthService:
     ) -> dict[str, Any]:
         """Handle OAuth callback from Google"""
         try:
-            logger.info(f"Processing OAuth callback with code: {code[:10]}...")
+            logger.info("Processing OAuth callback")
 
             response = self.supabase.auth.exchange_code_for_session({"auth_code": code})
 
@@ -126,7 +126,9 @@ class AuthService:
                     "message": "Successfully signed in with Google",
                 }
             else:
-                logger.error(f"Unexpected response format from Supabase: {response}")
+                logger.error(
+                    f"Unexpected response format from Supabase: {type(response).__name__}"
+                )
                 raise HTTPException(
                     status_code=500,
                     detail="Invalid response from authentication service",
@@ -177,13 +179,22 @@ class AuthService:
         # Get authenticated user
         user = await self.get_current_user(request)
 
+        # The service-role key is the app's own highest credential, so holding
+        # it already settles admin access. Sending it through admin_users
+        # instead is what denied Cloud Scheduler for four Sundays running
+        # (2026-09-27..2026-10-18): that lookup fails closed, so an absent row
+        # or a slow Supabase turned every cron call into a 403.
+        if user.get("is_service_account"):
+            logger.info("Admin access granted to service account via service-role key")
+            return user
+
         # Check admin status (with caching)
         is_admin = await self._is_admin_cached(user["email"])
 
         if not is_admin:
             raise HTTPException(status_code=403, detail="Admin access required")
 
-        logger.info(f"Admin access granted for user: {user.get('email', 'No email')}")
+        logger.info(f"Admin access granted for user: id={user.get('id', 'unknown')}")
         return user
 
     async def _get_user_from_token(self, token: str) -> dict[str, Any]:
@@ -238,7 +249,9 @@ class AuthService:
             logger.warning("Rejected apikey auth attempt: key is invalid or mismatched")
             raise HTTPException(status_code=401, detail="Invalid service role key")
 
-        # Return service account user info
+        # Return service account user info. is_service_account marks this
+        # identity as already holding the highest privilege the app has, so the
+        # admin gate does not put it through the admin_users lookup.
         return {
             "id": "service-account-auto-scheduler",
             "email": "auto-scheduler@refined-vector-457419-n6.iam.gserviceaccount.com",
@@ -247,6 +260,7 @@ class AuthService:
             "email_verified": True,
             "created_at": "2024-01-01T00:00:00Z",
             "last_sign_in": "2024-01-01T00:00:00Z",
+            "is_service_account": True,
         }
 
     def _is_secret_key(self, token: str) -> bool:
@@ -280,7 +294,7 @@ class AuthService:
             cache_data = self._admin_cache[email]
             if time.time() - cache_data["timestamp"] < self._cache_ttl:
                 logger.debug(
-                    f"Admin status from cache: {email} = {cache_data['is_admin']}"
+                    f"Admin status from cache: {mask_email(email)} = {cache_data['is_admin']}"
                 )
                 return cache_data["is_admin"]
 
@@ -291,7 +305,7 @@ class AuthService:
                 "timestamp": time.time(),
                 "source": "environment",
             }
-            logger.info(f"Admin access granted via environment: {email}")
+            logger.info(f"Admin access granted via environment: {mask_email(email)}")
             return True
 
         # Check database (slowest, but cached)
@@ -303,11 +317,11 @@ class AuthService:
         }
 
         if is_admin:
-            logger.info(f"Admin access granted via database: {email}")
+            logger.info(f"Admin access granted via database: {mask_email(email)}")
             # Update last login asynchronously (don't wait for it)
             asyncio.create_task(self._update_last_login_async(email))
         else:
-            logger.warning(f"Access denied for non-admin user: {email}")
+            logger.warning(f"Access denied for non-admin user: {mask_email(email)}")
 
         return is_admin
 
@@ -321,11 +335,13 @@ class AuthService:
             # Use timeout to prevent hanging
             result = await asyncio.wait_for(
                 asyncio.to_thread(
-                    lambda: self.admin_supabase.table("admin_users")
-                    .select("email")
-                    .eq("email", email.lower())
-                    .eq("is_active", True)
-                    .execute()
+                    lambda: (
+                        self.admin_supabase.table("admin_users")
+                        .select("email")
+                        .eq("email", email.lower())
+                        .eq("is_active", True)
+                        .execute()
+                    )
                 ),
                 timeout=5.0,  # Reduced timeout for better performance
             )
@@ -333,10 +349,10 @@ class AuthService:
             return len(result.data) > 0
 
         except TimeoutError:
-            logger.error(f"Timeout checking admin status for {email}")
+            logger.error(f"Timeout checking admin status for {mask_email(email)}")
             return False
         except Exception as e:
-            logger.error(f"Failed to check admin status for {email}: {e}")
+            logger.error(f"Failed to check admin status for {mask_email(email)}: {e}")
             return False
 
     async def _update_last_login_async(self, email: str):
@@ -355,7 +371,7 @@ class AuthService:
             )
         except Exception as e:
             # Don't log as error since this is non-critical
-            logger.debug(f"Failed to update last login for {email}: {e}")
+            logger.debug(f"Failed to update last login for {mask_email(email)}: {e}")
 
     async def sign_out(self, access_token: str | None = None) -> dict[str, str]:
         """Sign out the current user"""
@@ -422,7 +438,7 @@ class AuthService:
         """Clear admin cache for specific user or all users"""
         if email:
             self._admin_cache.pop(email, None)
-            logger.info(f"Cleared admin cache for {email}")
+            logger.info(f"Cleared admin cache for {mask_email(email)}")
         else:
             self._admin_cache.clear()
             logger.info("Cleared all admin cache")

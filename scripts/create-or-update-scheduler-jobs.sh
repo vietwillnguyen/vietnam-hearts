@@ -22,6 +22,7 @@ source "$CONFIG_FILE"
 # Map config vars to local names
 REGION="${SCHEDULER_REGION}"
 TIMEZONE="${SCHEDULER_TIMEZONE}"
+ATTEMPT_DEADLINE="${SCHEDULER_ATTEMPT_DEADLINE}"
 
 # Load environment variables (for secrets)
 ENV_FILE="${SCRIPT_DIR}/../.env"  # secrets stay at project root
@@ -49,26 +50,29 @@ FAILED_JOBS=()
 # which is what silently froze the apikey header on rotate-schedule and
 # send-weekly-reminders at a pre-migration Supabase key.
 #
+# --attempt-deadline is sent on BOTH paths, unlike the cadence below, because
+# it is a correctness bound rather than an admin preference: Cloud Scheduler
+# defaults to 180s, which is shorter than Cloud Run's own 300s request timeout,
+# so the scheduler used to abandon the weekly reminder run - and record it as
+# failed - while the service was still serving it. Matching the two means a run
+# is only ever cut off in one place, by Cloud Run, which at least logs it.
+#
 # The `$schedule` and `$TIMEZONE` arguments are bootstrap defaults and are
 # therefore only sent on the CREATE path. Cadence belongs to the CRON_*
 # settings, applied by POST /admin/sync-cron-schedules; sending it on UPDATE
 # too would mean every credential rotation silently stamped these hardcoded
 # values back over whatever an admin had configured - putting the dashboard
 # back to lying about cadence, which is the failure this repair exists to end.
-# The fifth argument is the attempt deadline (e.g. "600s"). Unlike the schedule
-# it IS sent on the update path: it is a property of how long the endpoint takes
-# to run, which is ours to know, not a cadence an admin tunes on the dashboard.
+# The optional fifth argument overrides SCHEDULER_ATTEMPT_DEADLINE for one job
+# (e.g. "600s"). Like the default it IS sent on the update path: it is a
+# property of how long the endpoint takes to run, which is ours to know, not a
+# cadence an admin tunes on the dashboard.
 create_or_update_job() {
     local job_name=$1
     local schedule=$2
     local endpoint=$3
     local description=$4
-    local attempt_deadline=$5
-
-    local deadline_args=()
-    if [ -n "$attempt_deadline" ]; then
-        deadline_args=(--attempt-deadline="$attempt_deadline")
-    fi
+    local attempt_deadline=${5:-$ATTEMPT_DEADLINE}
 
     echo -e "${YELLOW}Setting up job: ${job_name}${NC}"
 
@@ -79,8 +83,8 @@ create_or_update_job() {
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
             --update-headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
+            --attempt-deadline="$attempt_deadline" \
             --location="$REGION" \
-            "${deadline_args[@]}" \
             --description="$description"; then
             echo -e "${GREEN}✓ Updated job: ${job_name}${NC}"
         else
@@ -94,9 +98,9 @@ create_or_update_job() {
             --uri="${BASE_URL}${endpoint}" \
             --http-method=POST \
             --headers="Content-Type=application/json,apikey=$SUPABASE_SECRET_KEY" \
+            --attempt-deadline="$attempt_deadline" \
             --time-zone="$TIMEZONE" \
             --location="$REGION" \
-            "${deadline_args[@]}" \
             --description="$description"; then
             echo -e "${GREEN}✓ Created job: ${job_name}${NC}"
         else
@@ -182,6 +186,14 @@ create_or_update_job \
     "/admin/email-bot/sync-knowledge-base" \
     "Re-read the curated knowledge-base doc the inbox bot answers FAQ questions from (daily)" \
     "300s"
+
+# system_logs keeps LOG_RETENTION_DAYS (default 30) of history. Deleting is
+# idempotent, so a missed day is simply caught up by the next run.
+create_or_update_job \
+    "prune-system-logs" \
+    "0 3 * * *" \
+    "/admin/prune-system-logs" \
+    "Delete system_logs rows older than the retention window (daily)"
 
 if [ ${#FAILED_JOBS[@]} -gt 0 ]; then
     echo -e "${RED}❌ ${#FAILED_JOBS[@]} job(s) failed: ${FAILED_JOBS[*]}${NC}"

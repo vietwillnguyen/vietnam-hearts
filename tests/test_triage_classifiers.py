@@ -215,7 +215,7 @@ class TestJevRefusesToGuess:
             classifier.classify(MESSAGE)
 
     def test_the_exception_carries_the_id_and_not_the_mail(self):
-        # Exceptions reach Sentry, which runs with send_default_pii=True.
+        # Exceptions reach Sentry; its scrubber is a safety net, not a licence.
         classifier = JevClassifier(StubJevClient(error=RuntimeError("boom")))
         with pytest.raises(TriageUnavailable) as raised:
             classifier.classify(MESSAGE)

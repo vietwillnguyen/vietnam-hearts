@@ -5,6 +5,8 @@ name: Deploy to Cloud Run
 # Auth is keyless via Workload Identity Federation (no stored SA keys):
 #   pool "github" / provider "github-oidc", restricted to this repository,
 #   impersonating github-actions@refined-vector-457419-n6.iam.gserviceaccount.com
+# Jobs run on the runner the CI_RUNS_ON repository variable names (e.g.
+# `self-hosted`), and on ubuntu-latest when it is unset.
 
 on:
   push:
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-latest' }}
     steps:
     - uses: actions/checkout@v7
 
@@ -48,7 +50,7 @@ jobs:
 
   deploy:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-latest' }}
     # Serialize deploys: back-to-back merges once raced here and the older
     # image deployed last, rolling production back (issue #21). With
     # cancel-in-progress false the running deploy finishes and only the
@@ -62,6 +64,19 @@ jobs:
         # Full history so the ordering guard can run ancestry checks
         # against the currently deployed commit.
         fetch-depth: 0
+
+    # A self-hosted runner shares its home directory with a person. Without
+    # this, setup-gcloud would make the CI service account the active account
+    # in their ~/.config/gcloud and `gcloud auth configure-docker` would add a
+    # gcr.io helper to their ~/.docker/config.json. Pointing both at the job's
+    # temp dir keeps every credential this job writes inside the job. A hosted
+    # VM is thrown away after the job, so this step does not run there.
+    - name: Keep gcloud and Docker config inside the job
+      if: runner.environment == 'self-hosted'
+      run: |
+        mkdir -p "$RUNNER_TEMP/gcloud" "$RUNNER_TEMP/docker"
+        echo "CLOUDSDK_CONFIG=$RUNNER_TEMP/gcloud" >> "$GITHUB_ENV"
+        echo "DOCKER_CONFIG=$RUNNER_TEMP/docker" >> "$GITHUB_ENV"
 
     - name: Load deploy config
       id: config

@@ -47,7 +47,7 @@ def no_real_typesafe_client():
     with patch.object(
         JevClassifier,
         "from_api_key",
-        lambda key, model="jev-latest": (JevClassifier(MagicMock(), model=model)),
+        lambda key, model="jev-latest": JevClassifier(MagicMock(), model=model),
     ):
         yield
 

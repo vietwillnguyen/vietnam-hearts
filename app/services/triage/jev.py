@@ -111,7 +111,8 @@ class JevClassifier:
             )
         except Exception as exc:
             # The id is safe to carry; the message is not, and this exception
-            # reaches Sentry, which runs with send_default_pii=True.
+            # reaches Sentry, whose scrubber is a safety net rather than a
+            # licence to carry mail.
             raise TriageUnavailable(
                 f"Jev classification failed for {message.provider_message_id}: "
                 f"{type(exc).__name__}"

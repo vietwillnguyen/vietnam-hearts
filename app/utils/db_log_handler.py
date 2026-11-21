@@ -18,7 +18,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 _SKIPPED_LOGGER_PREFIXES = ("sqlalchemy",)
 
@@ -105,13 +105,10 @@ class DatabaseLogHandler(logging.Handler):
                 try:
                     session.bulk_insert_mappings(SystemLog, pending)
                     if not self._retention_done:
-                        # Naive UTC to match how emit() stores created_at
-                        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-                            days=self.retention_days
-                        )
-                        session.query(SystemLog).filter(
-                            SystemLog.created_at < cutoff
-                        ).delete(synchronize_session=False)
+                        # A backstop for the daily prune-system-logs job.
+                        from app.services.log_retention import prune_system_logs
+
+                        prune_system_logs(session, self.retention_days)
                         self._retention_done = True
                     session.commit()
                 finally:

@@ -21,9 +21,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
-
-T = TypeVar("T")
 
 
 def in_anyio_worker_thread() -> bool:
@@ -43,7 +40,7 @@ def in_anyio_worker_thread() -> bool:
     return True
 
 
-def run_coroutine(factory: Callable[[], Awaitable[T]]) -> T:
+def run_coroutine[T](factory: Callable[[], Awaitable[T]]) -> T:
     """Run ``factory()`` to completion from synchronous code.
 
     Takes a factory rather than a coroutine so that nothing is created until a

@@ -46,16 +46,10 @@ Handles Cross-Origin Resource Sharing for web frontend integration.
 **Configuration:**
 ```python
 # Development origins
-allowed_origins = [
-    "http://localhost:3000",
-    "http://localhost:8000"
-]
+allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
 
 # Production origins (update these)
-allowed_origins = [
-    "https://yourdomain.com",
-    "https://admin.yourdomain.com"
-]
+allowed_origins = ["https://yourdomain.com", "https://admin.yourdomain.com"]
 ```
 
 ### 3. Error Handling Middleware (`error_handling.py`)
@@ -149,10 +143,11 @@ Error handling is therefore *not* the outermost layer: an exception raised insid
 # In app/middleware/__init__.py
 from .custom_middleware import CustomMiddleware
 
+
 def setup_middleware(app: FastAPI) -> None:
     # Add custom middleware
     app.add_middleware(CustomMiddleware)
-    
+
     # ... existing middleware
 ```
 
@@ -204,9 +199,10 @@ For production, consider replacing in-memory storage with Redis:
 # In rate_limit_middleware.py
 import redis
 
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
-        self.redis = redis.Redis(host='localhost', port=6379, db=0)
+        self.redis = redis.Redis(host="localhost", port=6379, db=0)
         # ... rest of implementation
 ```
 
@@ -217,7 +213,7 @@ Update the production origins in `cors_middleware.py`:
 allowed_origins = [
     "https://vietnamhearts.org",
     "https://admin.vietnamhearts.org",
-    "https://volunteer.vietnamhearts.org"
+    "https://volunteer.vietnamhearts.org",
 ]
 ```
 

@@ -79,7 +79,7 @@ The application uses the following environment variables (see `env.template` for
 - `SCHEDULE_SIGNUP_LINK` - Link for volunteer signups
 - `EMAIL_PREFERENCES_LINK` - Link for email preferences
 - `NEW_SIGNUPS_RESPONSES_LINK` - Google Sheets ID for new signups
-- Community & social links (`INVITE_LINK_ZALO`, `INSTAGRAM_LINK`, `FACEBOOK_PAGE_LINK`)
+- Community & social links (`INVITE_LINK_ZALO`, `INVITE_LINK_WHATSAPP`, `INSTAGRAM_LINK`, `FACEBOOK_PAGE_LINK`)
 
 #### Google Sheets Integration
 - `SCHEDULE_SIGNUP_LINK` - Main schedule Google Sheets ID
@@ -234,6 +234,21 @@ SCHEDULER_TIMEZONE    # Cron job timezone at creation (live value: SCHEDULE_TIME
 To change the deployment target (e.g. bump version or change region), edit `scripts/deploy.config`.
 Both `scripts/docker.sh` and `scripts/create-or-update-scheduler-jobs.sh` source this file automatically.
 
+### Privacy policy URL
+
+The deployed service serves a public privacy policy at `<BASE_URL>/privacy`, unauthenticated by design.
+
+```
+https://vietnam-hearts-automation-367619842919.northamerica-northeast1.run.app/privacy
+```
+
+Enter that URL in the **Privacy policy link** field of the Google OAuth consent screen (Google Cloud Console > **APIs & Services** > **OAuth consent screen** > **Branding**) for every OAuth client this project uses, including the one that grants the volunteer inbox its `gmail.modify` access.
+Google requires a reachable privacy policy there for a published external app, and it checks that the page states the Limited Use disclosure.
+
+The page's text, contact address, Limited Use sentence and "Last updated" date come from the constants at the top of `app/routers/public.py`; the markup is `templates/web/privacy.html`.
+Bump `PRIVACY_POLICY_LAST_UPDATED` whenever the policy text changes.
+`tests/test_privacy_policy.py` pins the properties Google depends on - that the page answers without authentication and carries the disclosure verbatim.
+
 ## Scripts
 
 ### `scripts/setup-dev-env.sh`
@@ -266,7 +281,7 @@ Each job stores its own copy of that key in an HTTP header, so a rotated key lea
 
 This script owns job *existence* and *credentials*.
 The job *cadence* is owned by the `CRON_*` settings and applied by `POST /admin/sync-cron-schedules`; the schedule and timezone in this script are only bootstrap defaults, sent when creating a job that does not exist yet.
-Re-running the script against existing jobs refreshes the `apikey` header, URI, description, and any attempt deadline but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
+Re-running the script against existing jobs refreshes the `apikey` header, URI, description, and attempt deadline (`SCHEDULER_ATTEMPT_DEADLINE`, or a per-job override such as the inbox poll's `600s`) but deliberately leaves their schedule and timezone alone, so a credential rotation never reverts a cadence an admin configured.
 
 ### `run.sh`
 Local application runner (no Docker):
