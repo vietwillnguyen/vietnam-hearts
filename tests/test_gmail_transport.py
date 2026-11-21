@@ -578,3 +578,74 @@ class _Raising:
 
     def execute(self):
         raise self._error
+
+
+def _server_error_naming(digits: str):
+    """A 500 whose text happens to contain ``digits``, as a real one can.
+
+    Gmail ids are opaque strings, and ``str(HttpError)`` includes the request
+    URL, so a draft or message id with "404" in it puts those digits in the
+    text of any error about it.
+    """
+    import httplib2
+    from googleapiclient.errors import HttpError
+
+    return HttpError(
+        httplib2.Response({"status": "500"}),
+        b"backend error",
+        uri=f"https://gmail.googleapis.com/gmail/v1/users/me/drafts/r-{digits}",
+    )
+
+
+class TestOnlyTheStatusDecidesWhatAnErrorMeans:
+    """ "Gone" and "already exists" are read from the status, never the text.
+
+    They used to be read from the text as well (``"404" in str(exc)``). A
+    server error about an id containing those digits then read as "the draft
+    is gone", which the acceptance metric takes to mean the captain sent or
+    deleted it. It also made the suite flaky: a MagicMock in the error text
+    prints its memory address, which contains "404" now and then.
+    """
+
+    def test_a_server_error_reading_a_draft_is_not_a_missing_draft(self, service):
+        from googleapiclient.errors import HttpError
+
+        class BrokenDrafts(_Drafts):
+            def get(self, userId, id, format):  # noqa: A002,N803
+                raise _server_error_naming("404")
+
+        service.drafts = lambda: BrokenDrafts(service)
+        with pytest.raises(HttpError):
+            GmailTransport(service).get_draft("r-404")
+
+    def test_a_server_error_deleting_a_draft_is_not_swallowed(self, service):
+        from googleapiclient.errors import HttpError
+
+        class BrokenDrafts(_Drafts):
+            def delete(self, userId, id):  # noqa: A002,N803
+                raise _server_error_naming("404")
+
+        service.drafts = lambda: BrokenDrafts(service)
+        with pytest.raises(HttpError):
+            GmailTransport(service).delete_draft("r-404")
+
+    def test_a_server_error_reading_a_message_is_not_a_deleted_message(self, service):
+        from googleapiclient.errors import HttpError
+
+        def broken(userId, id, format):  # noqa: A002,N803
+            raise _server_error_naming("404")
+
+        service.get_calls = broken
+        with pytest.raises(HttpError):
+            GmailTransport(service).get_message("r-404")
+
+    def test_a_server_error_creating_a_label_is_not_a_name_conflict(self, service):
+        from googleapiclient.errors import HttpError
+
+        class BrokenLabels(_Labels):
+            def create(self, userId, body):  # noqa: N803
+                raise _server_error_naming("409")
+
+        service.labels = lambda: BrokenLabels(service)
+        with pytest.raises(HttpError):
+            GmailTransport(service).ensure_labels(["VH-Bot/New"])
