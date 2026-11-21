@@ -73,7 +73,9 @@ class AuthService:
         try:
             from app.config import API_URL
 
-            final_redirect_to = redirect_to or f"{API_URL}/auth/callback"
+            # A trailing slash on API_URL must not become "//auth/callback":
+            # the provider compares this address to its allow list exactly.
+            final_redirect_to = redirect_to or f"{API_URL.rstrip('/')}/auth/callback"
 
             auth_url = self.supabase.auth.sign_in_with_oauth(
                 {"provider": "google", "options": {"redirect_to": final_redirect_to}}
