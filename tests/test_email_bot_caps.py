@@ -77,7 +77,6 @@ def seed(test_db):
                     direction="outbound",
                     action="sent",
                     language="en",
-                    text="a reply",
                     gmail_message_id_out=f"sent-{index}",
                     created_at=as_stored(when),
                 )
@@ -321,7 +320,6 @@ class TestTheStoredFrameIsTheOneProductionWrites:
                 direction="outbound",
                 action="sent",
                 language="en",
-                text="a reply",
                 gmail_message_id_out="sent-1",
                 created_at=now_utc,
             )

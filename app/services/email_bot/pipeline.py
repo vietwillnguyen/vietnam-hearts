@@ -349,7 +349,7 @@ class EmailBotPipeline:
 
         result = reconcile_draft(
             draft_still_exists=still_there,
-            drafted_text=row.text or "",
+            drafted_text=self.conversations.outbound_text(row),
             thread_messages=self.adapter.get_thread(row.gmail_thread_id),
             inbox_address=self.adapter.inbox_address,
             bot_message_ids=self.conversations.bot_sent_message_ids(conversation),

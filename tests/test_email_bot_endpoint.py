@@ -469,7 +469,6 @@ class TestMetricsEndpoint:
                 direction="outbound",
                 action="drafted",
                 language="en",
-                text="a reply",
                 category=kind,
                 gmail_draft_id=f"draft-{kind}-{index}",
                 draft_outcome=outcome,
@@ -661,7 +660,6 @@ class TestCapsOnTheMetricsEndpoint:
                 direction="outbound",
                 action="sent",
                 language="en",
-                text="a reply",
                 gmail_message_id_out="sent-1",
                 created_at=datetime.now(UTC),
             )

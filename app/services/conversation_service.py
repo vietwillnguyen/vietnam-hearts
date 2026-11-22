@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.models import Conversation, Message
 from app.services.channels.base import IncomingMessage
 from app.services.triage.protocol import Tier, TriageDecision, TriageSignals
+from app.utils.field_crypto import cipher_from_env
 from app.utils.logging_config import get_logger
 
 logger = get_logger("conversation_service")
@@ -51,6 +52,8 @@ DRAFT_PENDING = "pending"
 DRAFT_SENT_UNCHANGED = "sent_unchanged"
 DRAFT_SENT_EDITED = "sent_edited"
 DRAFT_DELETED = "deleted"
+
+BODY_CONTEXT = "messages.body_encrypted"
 
 
 class ConversationService:
@@ -158,7 +161,6 @@ class ConversationService:
             direction="inbound",
             provider_message_id=message.provider_message_id,
         )
-        row.text = None
         row.language = decision.language
         row.action = action
         row.rfc_message_id = message.rfc_message_id
@@ -190,7 +192,6 @@ class ConversationService:
             direction="inbound",
             provider_message_id=message.provider_message_id,
         )
-        row.text = None
         row.action = action
         row.rfc_message_id = message.rfc_message_id
         row.gmail_thread_id = message.thread_key
@@ -228,7 +229,7 @@ class ConversationService:
             conversation_id=conversation.id,
             direction="outbound",
             provider_message_id=None,
-            text=text,
+            body_encrypted=cipher_from_env().encrypt(text, BODY_CONTEXT),
             language=language,
             action=action,
             category=kind,
@@ -245,6 +246,14 @@ class ConversationService:
         self.db.commit()
         self.db.refresh(row)
         return row
+
+    def outbound_text(self, row: Message) -> str:
+        """The bot's own text on an outbound row, decrypted; empty if erased."""
+        if row.body_encrypted is None:
+            return ""
+        return cipher_from_env().decrypt(
+            row.body_encrypted, BODY_CONTEXT, ids=f"message id={row.id}"
+        )
 
     def can_bot_reply(self, conversation: Conversation) -> bool:
         """Whether the bot may put another reply in this thread."""

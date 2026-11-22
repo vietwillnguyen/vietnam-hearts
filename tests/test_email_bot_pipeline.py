@@ -43,6 +43,7 @@ from app.services.email_bot.settings import EmailBotSettings
 from app.services.knowledge_service import EmbeddingsUnavailable
 from app.services.triage.protocol import TriageUnavailable
 from tests.fixtures import gmail_payloads as payloads
+from tests.fixtures.conversations import body
 from tests.fixtures.email_bot import (
     FakeBotService,
     FakeClassifier,
@@ -604,7 +605,7 @@ class TestFaqAnswer:
         assert summary.forwarded == 1
         assert "0.31" in notifier.events[0].reason
         # The answer the model produced is discarded, not offered.
-        assert all("A guess." not in (row.text or "") for row in outbound(test_db))
+        assert all("A guess." not in body(row) for row in outbound(test_db))
 
     def test_the_refusal_sentinel_escalates(self, test_db):
         from app.services.triage.prompts import REFUSAL_SENTINEL
@@ -762,7 +763,7 @@ class TestEscalation:
 
         row = [r for r in outbound(test_db) if r.action == "drafted"][0]
         assert row.language == "vi"
-        assert "trợ lý tự động" in row.text
+        assert "trợ lý tự động" in body(row)
 
     def test_escalation_happens_even_when_the_mode_delivers_nothing(self, test_db):
         # Knowing about a safeguarding mail is not something a delivery switch
@@ -929,7 +930,7 @@ class TestFailClosed:
 
         assert summary.forwarded == 1
         row = [r for r in outbound(test_db) if r.action == "drafted"][0]
-        assert "automated assistant" in row.text
+        assert "automated assistant" in body(row)
 
 
 class TestCircuitBreaker:

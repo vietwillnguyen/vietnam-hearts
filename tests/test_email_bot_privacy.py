@@ -36,6 +36,7 @@ from app.services.channels.gmail import GmailAdapter
 from app.services.email_bot.pipeline import EmailBotPipeline
 from app.services.email_bot.settings import EmailBotSettings
 from tests.fixtures import gmail_payloads as payloads
+from tests.fixtures.conversations import body
 from tests.fixtures.email_bot import (
     FakeClassifier,
     FakeTransport,
@@ -285,7 +286,7 @@ class TestTheDatabaseStoresNoInboundContent:
     def test_no_inbound_row_carries_text(self, swept, test_db):
         rows = test_db.query(Message).filter(Message.direction == "inbound").all()
         assert rows
-        assert all(row.text is None for row in rows)
+        assert all(row.body_encrypted is None for row in rows)
 
     def test_no_row_anywhere_carries_a_fixture_phrase_from_an_inbound_mail(
         self, swept, test_db
@@ -293,7 +294,12 @@ class TestTheDatabaseStoresNoInboundContent:
         stored = " ".join(
             str(value)
             for row in test_db.query(Message).all()
-            for value in (row.text, row.category, row.classifier, row.triage_shadow)
+            for value in (
+                row.body_encrypted,
+                row.category,
+                row.classifier,
+                row.triage_shadow,
+            )
             if value is not None
         )
         for phrase in swept["forbidden"]:
@@ -310,7 +316,7 @@ class TestTheDatabaseStoresNoInboundContent:
         # was offered on his behalf, and E2 compares it against what was sent.
         outbound = test_db.query(Message).filter(Message.direction == "outbound").all()
         assert outbound
-        assert any(row.text for row in outbound)
+        assert any(body(row) for row in outbound)
 
 
 class TestTheDiscordPayloadCarriesNoPII:

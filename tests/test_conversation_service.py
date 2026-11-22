@@ -287,7 +287,7 @@ class TestAuditRows:
         conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
         row = service.record_inbound(conversation, message(), decision())
 
-        assert row.text is None
+        assert row.body_encrypted is None
         assert row.provider_message_id == "msg-1"
         assert row.category == "signup"
         assert row.tier == "auto_answer"
@@ -339,7 +339,8 @@ class TestAuditRows:
             kind="signup",
         )
 
-        assert row.text == "Thanks for writing."
+        assert service.outbound_text(row) == "Thanks for writing."
+        assert "Thanks for writing." not in row.body_encrypted
         assert row.language == "vi"
         assert row.sources == ["kb"]
         assert row.category == "signup"
