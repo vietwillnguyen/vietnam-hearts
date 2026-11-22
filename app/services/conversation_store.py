@@ -292,11 +292,19 @@ class SqlConversationStore:
         for row in rows:
             if row.content_erased_at is not None:
                 continue
+            # Counted only where there was something to delete; every row is
+            # still stamped, so a mail retried later cannot store text again.
+            erased += any(
+                (
+                    row.subject_encrypted,
+                    row.body_encrypted,
+                    row.sender_address_encrypted,
+                )
+            )
             row.subject_encrypted = None
             row.body_encrypted = None
             row.sender_address_encrypted = None
             row.content_erased_at = now
-            erased += 1
 
         # In the same commit as the erasure, so there is never a deletion
         # without its record or a record without its deletion.
