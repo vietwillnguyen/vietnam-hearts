@@ -22,6 +22,7 @@ safe again.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import func
@@ -52,6 +53,55 @@ DRAFT_PENDING = "pending"
 DRAFT_SENT_UNCHANGED = "sent_unchanged"
 DRAFT_SENT_EDITED = "sent_edited"
 DRAFT_DELETED = "deleted"
+
+
+OUTCOME_TAKEN_OVER = "taken_over"
+OUTCOME_ESCALATED = "escalated"
+OUTCOME_SENT = "sent"
+OUTCOME_SKIPPED = "skipped"
+OUTCOME_IN_PROGRESS = "in_progress"
+
+
+@dataclass(frozen=True)
+class ConversationSummary:
+    """One conversation as the dashboard list shows it. Holds no content."""
+
+    id: int
+    channel: str
+    thread_key: str
+    status: str
+    category: str | None
+    tier: str | None
+    received_at: datetime | None
+    last_activity_at: datetime | None
+    inbound_count: int
+    outbound_count: int
+    outcome: str
+    has_content: bool
+    erased: bool
+
+
+def _outcome(status: str, rows: list[Message]) -> str:
+    """What became of a conversation, in the words the dashboard list uses.
+
+    A person's involvement outranks the bot's: a thread an admin took over or
+    the bot escalated reads that way even if a draft or holding message is
+    also in it. Otherwise the newest bot reply decides, then a skip.
+    """
+    if status == STATUS_PAUSED_MANUAL:
+        return OUTCOME_TAKEN_OVER
+    if status == STATUS_PAUSED_HANDOFF:
+        return OUTCOME_ESCALATED
+    outbound = [row for row in rows if row.direction == "outbound"]
+    if outbound:
+        newest = max(outbound, key=lambda row: row.id)
+        if newest.action == ACTION_SENT:
+            return OUTCOME_SENT
+        if newest.action == ACTION_DRAFTED:
+            return f"draft_{newest.draft_outcome or DRAFT_PENDING}"
+    if any(row.action == ACTION_SKIPPED for row in rows):
+        return OUTCOME_SKIPPED
+    return OUTCOME_IN_PROGRESS
 
 
 class ConversationService:
@@ -410,6 +460,121 @@ class ConversationService:
             .order_by(Conversation.updated_at.desc())
             .limit(limit)
             .all()
+        )
+
+    def conversation_page(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[ConversationSummary], int]:
+        """A page of conversations, most recent activity first, with the total.
+
+        Reads no content column, so it needs no key and cannot leak text:
+        ``load_only`` keeps the encrypted columns out of the query entirely,
+        and ``has_content`` is answered by the database.
+        """
+        from sqlalchemy.orm import load_only
+
+        activity = (
+            self.db.query(
+                Message.conversation_id.label("conversation_id"),
+                func.min(Message.created_at).label("first_at"),
+                func.max(Message.created_at).label("last_at"),
+            )
+            .group_by(Message.conversation_id)
+            .subquery()
+        )
+        page = (
+            self.db.query(Conversation, activity.c.first_at, activity.c.last_at)
+            .outerjoin(activity, activity.c.conversation_id == Conversation.id)
+            .order_by(
+                activity.c.last_at.is_(None),
+                activity.c.last_at.desc(),
+                Conversation.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        total = self.db.query(func.count(Conversation.id)).scalar() or 0
+
+        ids = [conversation.id for conversation, _first, _last in page]
+        rows_by_conversation: dict[int, list[Message]] = {cid: [] for cid in ids}
+        if ids:
+            rows = (
+                self.db.query(Message)
+                .options(
+                    load_only(
+                        Message.id,
+                        Message.conversation_id,
+                        Message.direction,
+                        Message.action,
+                        Message.draft_outcome,
+                        Message.content_erased_at,
+                    )
+                )
+                .filter(Message.conversation_id.in_(ids))
+                .all()
+            )
+            for row in rows:
+                rows_by_conversation[row.conversation_id].append(row)
+            with_content = {
+                cid
+                for (cid,) in self.db.query(Message.conversation_id)
+                .filter(
+                    Message.conversation_id.in_(ids),
+                    Message.body_encrypted.isnot(None),
+                )
+                .distinct()
+            }
+        else:
+            with_content = set()
+
+        summaries = []
+        for conversation, first_at, last_at in page:
+            rows = rows_by_conversation[conversation.id]
+            summaries.append(
+                ConversationSummary(
+                    id=conversation.id,
+                    channel=conversation.channel,
+                    thread_key=conversation.thread_key,
+                    status=conversation.status,
+                    category=conversation.last_category,
+                    tier=conversation.last_tier,
+                    received_at=first_at or conversation.created_at,
+                    last_activity_at=last_at or conversation.updated_at,
+                    inbound_count=sum(row.direction == "inbound" for row in rows),
+                    outbound_count=sum(row.direction == "outbound" for row in rows),
+                    outcome=_outcome(conversation.status, rows),
+                    has_content=conversation.id in with_content,
+                    erased=any(row.content_erased_at is not None for row in rows),
+                )
+            )
+        return summaries, total
+
+    def summary(self, conversation_id: int) -> ConversationSummary | None:
+        """One conversation's summary, or None if there is no such conversation."""
+        conversation = self.db.get(Conversation, conversation_id)
+        if conversation is None:
+            return None
+        rows = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .all()
+        )
+        stamps = [row.created_at for row in rows if row.created_at is not None]
+        return ConversationSummary(
+            id=conversation.id,
+            channel=conversation.channel,
+            thread_key=conversation.thread_key,
+            status=conversation.status,
+            category=conversation.last_category,
+            tier=conversation.last_tier,
+            received_at=min(stamps) if stamps else conversation.created_at,
+            last_activity_at=max(stamps) if stamps else conversation.updated_at,
+            inbound_count=sum(row.direction == "inbound" for row in rows),
+            outbound_count=sum(row.direction == "outbound" for row in rows),
+            outcome=_outcome(conversation.status, rows),
+            has_content=any(row.body_encrypted is not None for row in rows),
+            erased=any(row.content_erased_at is not None for row in rows),
         )
 
     def shadow_agreement(self) -> dict[str, object]:

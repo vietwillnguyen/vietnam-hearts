@@ -29,7 +29,7 @@ from typing import Protocol, runtime_checkable
 
 from sqlalchemy.orm import Session
 
-from app.models import Message
+from app.models import ConversationView, Message
 from app.services.channels.base import IncomingMessage
 from app.utils.field_crypto import FieldCipher, cipher_from_env
 
@@ -64,6 +64,21 @@ class StoredMessage:
     erased: bool = False
 
 
+@dataclass(frozen=True)
+class Viewer:
+    """Who is reading: the signed-in admin's id and address, nothing more."""
+
+    id: str
+    email: str | None
+
+
+@dataclass(frozen=True)
+class ViewRecord:
+    viewer_id: str
+    viewer_email: str | None
+    viewed_at: datetime | None
+
+
 @runtime_checkable
 class ConversationStore(Protocol):
     """Content in and out of the conversation record, and nothing else."""
@@ -79,6 +94,14 @@ class ConversationStore(Protocol):
 
     def messages(self, conversation_id: int) -> list[StoredMessage]:
         """Every row of one conversation, oldest first, decrypted."""
+
+    def record_view(self, conversation_id: int, viewer: Viewer) -> None:
+        """Commit a record that ``viewer`` opened this conversation, now."""
+
+    def views(
+        self, conversation_id: int, limit: int = 10
+    ) -> tuple[int, list[ViewRecord]]:
+        """How many times this conversation was opened, and the latest views."""
 
 
 class SqlConversationStore:
@@ -135,6 +158,37 @@ class SqlConversationStore:
             .all()
         )
         return [self._decrypted(row) for row in rows]
+
+    # ------------------------------------------------------------- viewing
+
+    def record_view(self, conversation_id: int, viewer: Viewer) -> None:
+        # Committed on its own, before anything is decrypted, so a view that
+        # happened is on the record even if what follows fails.
+        self.db.add(
+            ConversationView(
+                conversation_id=conversation_id,
+                viewer_id=viewer.id,
+                viewer_email=viewer.email,
+            )
+        )
+        self.db.commit()
+
+    def views(
+        self, conversation_id: int, limit: int = 10
+    ) -> tuple[int, list[ViewRecord]]:
+        query = self.db.query(ConversationView).filter(
+            ConversationView.conversation_id == conversation_id
+        )
+        recent = (
+            query.order_by(
+                ConversationView.viewed_at.desc(), ConversationView.id.desc()
+            )
+            .limit(limit)
+            .all()
+        )
+        return query.count(), [
+            ViewRecord(row.viewer_id, row.viewer_email, row.viewed_at) for row in recent
+        ]
 
     def _decrypted(self, row: Message) -> StoredMessage:
         has_content = any(
