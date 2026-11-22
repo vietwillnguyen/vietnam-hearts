@@ -60,3 +60,50 @@ def test_home_page_links_to_the_privacy_policy():
     assert response.status_code == 200
     assert 'href="/privacy"' in response.text
     assert "Privacy Policy" in response.text
+
+
+def test_the_inbox_section_says_a_copy_is_kept_and_who_can_read_it():
+    from app.routers.public import INBOX_RECORD_DISCLOSURE
+
+    assert INBOX_RECORD_DISCLOSURE == (
+        "The Portal keeps a copy of the messages you send to the volunteer inbox "
+        "and of our replies, so that we have a record of each conversation. "
+        "Only Vietnam Hearts administrators can read it."
+    )
+    body = html.unescape(client.get("/privacy").text)
+    section = body[body.index("Volunteer inbox assistant") :]
+    section = section[: section.index("<h2>")]
+    assert INBOX_RECORD_DISCLOSURE in " ".join(section.split())
+
+
+def test_the_retention_sentence_is_true_for_inbox_conversations_too():
+    from app.routers.public import RETENTION_STATEMENT
+
+    assert RETENTION_STATEMENT == (
+        "Volunteer records are kept only as long as needed for volunteer "
+        "management. Inbox conversations are kept until you ask us to delete "
+        "them. You can ask at any time by writing to us."
+    )
+    body = html.unescape(client.get("/privacy").text)
+    retention = body[body.index("Data retention") :]
+    retention = retention[: retention.index("<h2>")]
+    assert RETENTION_STATEMENT in " ".join(retention.split())
+    # The old sentence was untrue once conversations are kept on purpose.
+    assert "It is deleted on request or when no longer needed" not in body
+
+
+def test_the_last_updated_date_is_the_change_date():
+    from app.routers.public import PRIVACY_POLICY_LAST_UPDATED
+
+    assert PRIVACY_POLICY_LAST_UPDATED == "November 22, 2026"
+    assert "November 22, 2026" in client.get("/privacy").text
+
+
+def test_the_limited_use_sentence_is_byte_for_byte_unchanged():
+    # Pinned as bytes, separately from the rendered check above, so an edit
+    # to the constant itself (a curly apostrophe, a reflowed space) fails.
+    assert LIMITED_USE_DISCLOSURE.encode("utf-8") == (
+        b"Vietnam Hearts' use and transfer of information received from Google "
+        b"APIs will adhere to the Google API Services User Data Policy, "
+        b"including the Limited Use requirements."
+    )

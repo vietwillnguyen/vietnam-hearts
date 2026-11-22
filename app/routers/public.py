@@ -44,9 +44,27 @@ LIMITED_USE_DISCLOSURE = (
     "Limited Use requirements."
 )
 
+# What the inbox bot keeps (decided 2026-11-22): an encrypted copy of each
+# conversation, readable by admins only, kept until the person asks for it to
+# be deleted. Constants rather than template text so the tests can pin them.
+INBOX_RECORD_DISCLOSURE = (
+    "The Portal keeps a copy of the messages you send to the volunteer inbox "
+    "and of our replies, so that we have a record of each conversation. "
+    "Only Vietnam Hearts administrators can read it."
+)
+
+# True for both kinds of data the Portal holds. The previous sentence ("kept
+# only as long as needed ... deleted on request or when no longer needed")
+# stopped being true for inbox conversations, which have no expiry.
+RETENTION_STATEMENT = (
+    "Volunteer records are kept only as long as needed for volunteer "
+    "management. Inbox conversations are kept until you ask us to delete "
+    "them. You can ask at any time by writing to us."
+)
+
 # The date this policy text last changed. Bump it whenever the text below it
 # does; the page states it, and people rely on it to tell versions apart.
-PRIVACY_POLICY_LAST_UPDATED = "September 30, 2026"
+PRIVACY_POLICY_LAST_UPDATED = "November 22, 2026"
 
 
 @public_router.get("/", response_class=HTMLResponse)
@@ -77,6 +95,8 @@ async def privacy_policy_page(request: Request):
             "version": APPLICATION_VERSION,
             "contact_email": CONTACT_EMAIL,
             "limited_use_disclosure": LIMITED_USE_DISCLOSURE,
+            "inbox_record_disclosure": INBOX_RECORD_DISCLOSURE,
+            "retention_statement": RETENTION_STATEMENT,
             "last_updated": PRIVACY_POLICY_LAST_UPDATED,
         },
     )
