@@ -55,6 +55,7 @@ from app.services.conversation_service import (
     ACTION_PAUSED,
     ACTION_SKIPPED,
     DRAFT_PENDING,
+    DRAFT_UNMEASURED,
     ConversationService,
 )
 from app.services.conversation_store import ConversationStore, SqlConversationStore
@@ -353,6 +354,18 @@ class EmailBotPipeline:
         self.conversations.mark_draft_checked(row)
         still_there = self.adapter.get_draft(row.gmail_draft_id) is not None
         conversation = row.conversation
+
+        if row.content_erased_at is not None:
+            # The text was deleted on request, so there is nothing to compare
+            # the sent message with. Still pending while the draft exists, so
+            # a takeover can still find and delete it; unmeasured once gone.
+            if not still_there:
+                self.conversations.set_draft_outcome(row, DRAFT_UNMEASURED)
+                self._summary.reconciled += 1
+                logger.info(
+                    "Draft %s resolved as %s", row.gmail_draft_id, DRAFT_UNMEASURED
+                )
+            return
 
         result = reconcile_draft(
             draft_still_exists=still_there,

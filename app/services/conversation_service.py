@@ -53,6 +53,10 @@ DRAFT_PENDING = "pending"
 DRAFT_SENT_UNCHANGED = "sent_unchanged"
 DRAFT_SENT_EDITED = "sent_edited"
 DRAFT_DELETED = "deleted"
+# The draft is gone but its text was deleted on request first, so whether it
+# went out unchanged cannot be known. Counted apart rather than guessed, and
+# left out of the acceptance rate either way.
+DRAFT_UNMEASURED = "unmeasured"
 
 
 OUTCOME_TAKEN_OVER = "taken_over"

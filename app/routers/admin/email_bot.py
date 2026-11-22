@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.config import EMAIL_BOT_ENABLED
@@ -23,7 +23,12 @@ from app.dependencies.auth import get_current_admin_user
 from app.dependencies.services import get_bot_service
 from app.models import Conversation, EmailBotRun
 from app.services.conversation_service import ConversationService, ConversationSummary
-from app.services.conversation_store import SqlConversationStore, StoredMessage, Viewer
+from app.services.conversation_store import (
+    ErasureResult,
+    SqlConversationStore,
+    StoredMessage,
+    Viewer,
+)
 from app.services.email_bot.delivery import DeliveryMode, parse_mode
 from app.services.email_bot.factory import EmailBotNotConfigured, build_pipeline
 from app.services.email_bot.gates import ACCEPTANCE_GATES
@@ -177,7 +182,9 @@ def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
             kind: {
                 "outcomes": outcomes,
                 "resolved": sum(
-                    count for outcome, count in outcomes.items() if outcome != "pending"
+                    count
+                    for outcome, count in outcomes.items()
+                    if outcome not in _NOT_RESOLVED
                 ),
                 "sent_unchanged": outcomes.get("sent_unchanged", 0),
                 # None rather than 0 while nothing has resolved: a rate of zero
@@ -230,8 +237,15 @@ def _knowledge_base_health(db: Session) -> dict[str, Any]:
     }
 
 
+# Outcomes that say nothing about whether the draft was right: still waiting,
+# or deleted on request before anyone could tell.
+_NOT_RESOLVED = {"pending", "unmeasured"}
+
+
 def _acceptance_rate(outcomes: dict[str, int]) -> float | None:
-    resolved = sum(count for outcome, count in outcomes.items() if outcome != "pending")
+    resolved = sum(
+        count for outcome, count in outcomes.items() if outcome not in _NOT_RESOLVED
+    )
     if resolved == 0:
         return None
     return outcomes.get("sent_unchanged", 0) / resolved
@@ -337,7 +351,7 @@ def read_conversation(
     if summary is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    viewer = Viewer(id=str(admin.get("id") or "unknown"), email=admin.get("email"))
+    viewer = _viewer(admin)
     store = SqlConversationStore(db)
     store.record_view(conversation_id, viewer)
     logger.info("Conversation %s opened by admin id=%s", conversation_id, viewer.id)
@@ -369,6 +383,74 @@ def read_conversation(
             ],
         },
         "viewer": {"id": viewer.id, "email": viewer.email},
+    }
+
+
+@router.post("/conversations/erase-by-sender")
+def erase_conversations_by_sender(
+    payload: dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    admin: dict[str, Any] = Depends(require_person_admin),
+) -> dict[str, Any]:
+    """Delete the text and address of everything one email address sent.
+
+    The address arrives in the JSON body, never the URL, because request lines
+    are logged by Cloud Run and the access log. It is hashed, matched against
+    ``sender_key``, and neither logged, echoed back nor stored. The body is
+    read as a plain dict and checked by hand so that a validation error cannot
+    quote the address back either.
+    """
+    address = payload.get("email") if isinstance(payload, dict) else None
+    if not isinstance(address, str):
+        raise HTTPException(status_code=422, detail='Send {"email": <address>}')
+    try:
+        result = SqlConversationStore(db).erase_sender(address, _viewer(admin))
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="That is not an email address"
+        ) from None
+    logger.info(
+        "Deletion %s by address: %s message(s) in %s conversation(s), by admin id=%s",
+        result.deletion_id,
+        result.messages_erased,
+        len(result.conversation_ids),
+        admin.get("id"),
+    )
+    return _erasure_as_dict(result)
+
+
+@router.post("/conversations/{conversation_id}/erase")
+def erase_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    admin: dict[str, Any] = Depends(require_person_admin),
+) -> dict[str, Any]:
+    """Delete one conversation's text and addresses, keeping what the bot did."""
+    result = SqlConversationStore(db).erase_conversation(
+        conversation_id, _viewer(admin)
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    logger.info(
+        "Deletion %s of conversation %s: %s message(s), by admin id=%s",
+        result.deletion_id,
+        conversation_id,
+        result.messages_erased,
+        admin.get("id"),
+    )
+    return _erasure_as_dict(result)
+
+
+def _viewer(admin: dict[str, Any]) -> Viewer:
+    return Viewer(id=str(admin.get("id") or "unknown"), email=admin.get("email"))
+
+
+def _erasure_as_dict(result: ErasureResult) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "deletion_id": result.deletion_id,
+        "conversation_ids": result.conversation_ids,
+        "messages_erased": result.messages_erased,
     }
 
 

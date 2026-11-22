@@ -24,13 +24,15 @@ logs nothing, and its errors carry row ids only.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models import ConversationView, Message
+from app.models import Conversation, ConversationDeletion, ConversationView, Message
 from app.services.channels.base import IncomingMessage
+from app.services.channels.mail_guards import normalise_address, sender_key
 from app.utils.field_crypto import FieldCipher, cipher_from_env
 
 # Long enough for any real subject line; RFC 5322 itself recommends 78.
@@ -79,6 +81,19 @@ class ViewRecord:
     viewed_at: datetime | None
 
 
+@dataclass(frozen=True)
+class ErasureResult:
+    """What one deletion request did. Ids and counts, never content."""
+
+    deletion_id: int
+    conversation_ids: list[int]
+    messages_erased: int
+
+
+SCOPE_CONVERSATION = "conversation"
+SCOPE_SENDER = "sender"
+
+
 @runtime_checkable
 class ConversationStore(Protocol):
     """Content in and out of the conversation record, and nothing else."""
@@ -102,6 +117,14 @@ class ConversationStore(Protocol):
         self, conversation_id: int, limit: int = 10
     ) -> tuple[int, list[ViewRecord]]:
         """How many times this conversation was opened, and the latest views."""
+
+    def erase_conversation(
+        self, conversation_id: int, requested_by: Viewer
+    ) -> ErasureResult | None:
+        """Delete one conversation's text and addresses; None if there is none."""
+
+    def erase_sender(self, address: str, requested_by: Viewer) -> ErasureResult:
+        """Delete the text and address of everything one address sent."""
 
 
 class SqlConversationStore:
@@ -189,6 +212,110 @@ class SqlConversationStore:
         return query.count(), [
             ViewRecord(row.viewer_id, row.viewer_email, row.viewed_at) for row in recent
         ]
+
+    # ------------------------------------------------------------- erasing
+    #
+    # Erasing overwrites the three content columns with NULL and stamps
+    # content_erased_at; everything else on the row stays, because idempotence,
+    # the caps, the metrics and the escalations view read it. Nothing is
+    # decrypted, so this works without the key. A row already erased is left
+    # exactly as it is, which is what makes a second request a no-op.
+
+    def erase_conversation(
+        self, conversation_id: int, requested_by: Viewer
+    ) -> ErasureResult | None:
+        if self.db.get(Conversation, conversation_id) is None:
+            return None
+        rows = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .all()
+        )
+        return self._erase(
+            rows,
+            scope=SCOPE_CONVERSATION,
+            conversation_ids=[conversation_id],
+            key=None,
+            requested_by=requested_by,
+        )
+
+    def erase_sender(self, address: str, requested_by: Viewer) -> ErasureResult:
+        """Everything this address sent, and every conversation it started.
+
+        Found through the hash: the conversations it started, by
+        ``conversations.sender_key``, are erased whole, bot replies included;
+        its own mail in a thread somebody else started, by
+        ``messages.sender_key``, is erased message by message, leaving the
+        other person's words alone.
+        """
+        normalised = normalise_address(address)
+        if not normalised:
+            raise ValueError("not an email address")
+        key = sender_key(normalised)
+
+        started = [
+            conversation_id
+            for (conversation_id,) in self.db.query(Conversation.id).filter(
+                Conversation.sender_key == key
+            )
+        ]
+        rows = (
+            self.db.query(Message)
+            .filter(
+                or_(
+                    Message.conversation_id.in_(started),
+                    Message.sender_key == key,
+                )
+            )
+            .all()
+        )
+        conversation_ids = sorted(set(started) | {row.conversation_id for row in rows})
+        return self._erase(
+            rows,
+            scope=SCOPE_SENDER,
+            conversation_ids=conversation_ids,
+            key=key,
+            requested_by=requested_by,
+        )
+
+    def _erase(
+        self,
+        rows: list[Message],
+        *,
+        scope: str,
+        conversation_ids: list[int],
+        key: str | None,
+        requested_by: Viewer,
+    ) -> ErasureResult:
+        now = datetime.now(UTC)
+        erased = 0
+        for row in rows:
+            if row.content_erased_at is not None:
+                continue
+            row.subject_encrypted = None
+            row.body_encrypted = None
+            row.sender_address_encrypted = None
+            row.content_erased_at = now
+            erased += 1
+
+        # In the same commit as the erasure, so there is never a deletion
+        # without its record or a record without its deletion.
+        record = ConversationDeletion(
+            scope=scope,
+            conversation_ids=conversation_ids,
+            messages_erased=erased,
+            sender_key=key,
+            requested_by_id=requested_by.id,
+            requested_by_email=requested_by.email,
+            created_at=now,
+        )
+        self.db.add(record)
+        self.db.commit()
+        return ErasureResult(
+            deletion_id=record.id,
+            conversation_ids=conversation_ids,
+            messages_erased=erased,
+        )
 
     def _decrypted(self, row: Message) -> StoredMessage:
         has_content = any(
