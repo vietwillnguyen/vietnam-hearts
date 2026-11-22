@@ -174,10 +174,12 @@ The cadences it sets are only bootstrap defaults; the live cadences are owned by
 
 Then, in order:
 
-1. Set `EMAIL_BOT_ENABLED=true` on the Cloud Run service. This is the operator-level stop and lives outside the database.
-2. On the dashboard, set `EMAIL_BOT_MODE` to `draft`.
-3. Set `VOLUNTEER_SIGNUP_FORM_LINK` to the volunteer signup form. While it is empty the sign-up reply is not rendered at all and those mails go to a person instead, because a reply saying "fill out the form below" with no form below is worse than no reply.
-4. Check `SCHEDULE_TEACHING_DAYS`, `CLASS_START_TIME` and `CLASS_END_TIME`. These render into the sign-up reply, so a wrong value is a wrong statement to a prospective volunteer.
+1. Generate the conversation encryption key with `uv run python -m app.utils.field_crypto generate-key --key-id k1`, store a copy outside Google Cloud first (see "Conversation records" below), then set it as `CONVERSATION_ENCRYPTION_KEYS` on the Cloud Run service, ideally from Secret Manager.
+   The bot stores every conversation encrypted with it, so in production the service refuses to start with the bot enabled and no key, and refuses whenever the key is malformed.
+2. Set `EMAIL_BOT_ENABLED=true` on the Cloud Run service. This is the operator-level stop and lives outside the database.
+3. On the dashboard, set `EMAIL_BOT_MODE` to `draft`.
+4. Set `VOLUNTEER_SIGNUP_FORM_LINK` to the volunteer signup form. While it is empty the sign-up reply is not rendered at all and those mails go to a person instead, because a reply saying "fill out the form below" with no form below is worse than no reply.
+5. Check `SCHEDULE_TEACHING_DAYS`, `CLASS_START_TIME` and `CLASS_END_TIME`. These render into the sign-up reply, so a wrong value is a wrong statement to a prospective volunteer.
 
 Watch the **Inbox Bot** card on the dashboard after the next scheduled run.
 

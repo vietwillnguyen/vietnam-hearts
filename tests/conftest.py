@@ -7,6 +7,12 @@ os.environ["PERSIST_LOGS_TO_DB"] = "false"
 # Must be set before app.main is imported: init_sentry() runs at import time
 # and skips initialization when TESTING=true, keeping test errors out of Sentry.
 os.environ["TESTING"] = "true"
+# A fixed, test-only key for stored inbox conversations, so every pipeline test
+# stores through the real cipher rather than a path that skips encryption. It
+# protects nothing and must never be used anywhere else.
+os.environ["CONVERSATION_ENCRYPTION_KEYS"] = (
+    "test:dGVzdC1vbmx5LWtleS1kby1ub3QtdXNlLWFueXdoZXI="
+)
 import logging
 import secrets
 from unittest.mock import MagicMock, patch
