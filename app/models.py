@@ -201,9 +201,10 @@ class Conversation(Base):
 
     Channel-neutral on purpose: email fills ``thread_key`` with the Gmail
     threadId, Messenger will fill it with its own thread id when it moves onto
-    the same engine. The sender address is never stored - ``sender_key`` is a
-    SHA-256 of the lower-cased address, which is all the per-sender cap and
-    the grouping need.
+    the same engine. ``sender_key`` is a SHA-256 of the lower-cased address,
+    which is all the per-sender cap, the grouping and deletion by address
+    need; the address itself is kept only encrypted, on each inbound message
+    row (``Message.sender_address_encrypted``).
 
     ``status`` is the "never talk over a human" control:
       ``bot``            the bot may still act

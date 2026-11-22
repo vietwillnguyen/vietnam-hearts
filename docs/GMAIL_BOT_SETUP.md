@@ -12,6 +12,7 @@ Once the steps below are done and `EMAIL_BOT_MODE` is set to `draft`, the bot re
 In `draft` it sends nothing to a member of the public.
 Only `auto` sends, and only sign-up replies, confident FAQ answers and holding messages, in-thread, in the languages listed in `EMAIL_BOT_AUTO_LANGUAGES`, one reply per thread, and under the daily and per-sender caps; a reply held back by any of those is drafted instead.
 `GmailTransport.send_reply` is the only send path in the repository, and a test fails if a second one appears.
+It also keeps an encrypted copy of each conversation that admins can read on the dashboard; see "Conversation records" below.
 Do not set `auto` until the loop test and the canary week below have been done.
 
 ## Before you start
@@ -202,6 +203,54 @@ Only the **Resume bot** button on the dashboard hands the thread back.
 
 **Reading the card.** Mode, today's sending against the caps, the last run's counters, when the knowledge base was last synced (with a warning once that is more than 36 hours ago), and open escalations with a link straight into Gmail.
 A warning banner means the last run recorded a problem; it clears itself on the next clean run, so a banner that stays means the problem is still there.
+
+## Conversation records
+
+Since 2026-11-22 the bot keeps a copy of each conversation: the subject, plain-text body and sender address of every mail it triages, and its own replies.
+Everything is encrypted by the app with the key in `CONVERSATION_ENCRYPTION_KEYS` before it reaches the database, and there is no expiry.
+Attachments, HTML and headers are not kept, and neither is mail the bot skips before triage (newsletters, bounces, our own mail).
+The privacy policy says so, and promises deletion on request.
+
+**Reading one.** Dashboard, **Inbox Bot** card, **Conversations**, then **Open**.
+Only signed-in admins can read a conversation, and every open is recorded with who and when.
+The list itself never shows message text.
+
+### Answering a deletion request
+
+Two places hold the person's mail, and the app clears only one of them.
+
+1. Check the request comes from the address it is about, for example by replying to it from the volunteer inbox and waiting for an answer from that address.
+2. On the dashboard, under **Inbox Bot**, **Delete on request**, type their address and press **Delete their stored text**.
+   This removes the text and address of everything they sent and of every conversation they started, including the bot's replies in those threads.
+   What the bot did (dates, category, outcome) is kept, and a deletion record with no content is written.
+   Running it again is harmless.
+   To delete a single conversation instead, open it and press **Delete this conversation's text**.
+3. Delete their mail in Gmail by hand, because the app does not.
+   In the volunteer inbox search `from:<address> OR to:<address>`, select every conversation, delete, then open **Trash** and **Delete forever**; Gmail otherwise keeps it for 30 days.
+4. Do the same in the inbox of `ESCALATION_OWNER_EMAIL` for any forwards of their mail.
+   Discord notices carry no message content, so there is nothing to delete there.
+5. Reply to confirm it is done.
+
+### Backing up the key
+
+The key must exist somewhere other than the service, because without it the stored history cannot be read by anyone.
+When you generate it, before setting it on Cloud Run, save the whole `<key id>:<key>` line in the Vietnam Hearts password manager, in an item at least two organisers can open.
+Do not rely on Secret Manager alone: it lives in the same Google Cloud project as the service, so losing or locking that project loses both.
+Never put the key in the settings table, a document, chat, or the repository.
+
+### Rotating the key
+
+Generate a new entry (`uv run python -m app.utils.field_crypto generate-key --key-id k2`), back it up, and set `CONVERSATION_ENCRYPTION_KEYS` to `k2:<new key>,k1:<old key>`.
+New text is encrypted with the first entry; old rows say which key wrote them and keep reading with it, so nothing is rewritten.
+Keep the old entry for as long as any row was written with it.
+If a key has leaked, rotating stops new text being readable with it, but rows already written stay readable by whoever holds it and a copy of the database until they are re-encrypted (`FieldCipher.reencrypt`); ask an engineer.
+
+### Losing the key
+
+If every copy of a key is lost, every subject, body and address encrypted with it is unreadable for good; there is no recovery.
+Opening such a conversation shows an error naming the key id, and nothing else breaks: the list, the metrics, the escalations and the bot's dedupe use only unencrypted columns.
+In production the service refuses to start while the bot is enabled and the key is missing, so set a new key (a new key id) to bring it back; new conversations are then stored with it.
+The original mail is still in Gmail unless it was deleted there.
 
 ## Re-consent
 
