@@ -21,11 +21,12 @@ EMAIL_CHANNEL = "email"
 class IncomingMessage:
     """One inbound message, normalised.
 
-    ``sender_address`` is the one field here that must never be persisted or
-    logged. It exists because a reply has to be addressed to somebody, and it
-    lives in memory for the length of one pipeline step. ``sender_key`` is the
-    durable form: a SHA-256 of the lower-cased address, which the per-sender
-    cap and the grouping can use without storing who wrote in.
+    ``sender_address``, ``subject`` and ``text`` must never be logged, put in
+    an exception message or sent to Discord. They are persisted in exactly one
+    way: encrypted, through ``ConversationStore.keep_inbound``. ``sender_key``
+    is the form everything else uses: a SHA-256 of the lower-cased address,
+    which the per-sender cap, the grouping and deletion by address can use
+    without decrypting anything.
     """
 
     channel: str

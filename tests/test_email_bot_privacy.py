@@ -283,10 +283,16 @@ class TestExceptionMessagesCarryIdsOnly:
 
 
 class TestTheDatabaseStoresNoInboundContent:
-    def test_no_inbound_row_carries_text(self, swept, test_db):
+    def test_inbound_content_is_stored_only_encrypted(self, swept, test_db):
         rows = test_db.query(Message).filter(Message.direction == "inbound").all()
-        assert rows
-        assert all(row.body_encrypted is None for row in rows)
+        assert any(row.body_encrypted for row in rows)
+        for row in rows:
+            for token in (
+                row.subject_encrypted,
+                row.body_encrypted,
+                row.sender_address_encrypted,
+            ):
+                assert token is None or token.startswith("vhenc:v1:")
 
     def test_no_row_anywhere_carries_a_fixture_phrase_from_an_inbound_mail(
         self, swept, test_db

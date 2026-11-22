@@ -29,8 +29,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message
 from app.services.channels.base import IncomingMessage
+from app.services.conversation_store import ConversationStore, SqlConversationStore
 from app.services.triage.protocol import Tier, TriageDecision, TriageSignals
-from app.utils.field_crypto import cipher_from_env
 from app.utils.logging_config import get_logger
 
 logger = get_logger("conversation_service")
@@ -53,14 +53,18 @@ DRAFT_SENT_UNCHANGED = "sent_unchanged"
 DRAFT_SENT_EDITED = "sent_edited"
 DRAFT_DELETED = "deleted"
 
-BODY_CONTEXT = "messages.body_encrypted"
-
 
 class ConversationService:
-    """Every read and write of ``conversations`` and ``messages``."""
+    """Every read and write of ``conversations`` and ``messages``.
 
-    def __init__(self, db: Session) -> None:
+    Message *content* - subjects, bodies, addresses, the bot's replies - goes
+    through ``store`` and nowhere else, so this class never sees a decrypted
+    value it did not just write.
+    """
+
+    def __init__(self, db: Session, store: ConversationStore | None = None) -> None:
         self.db = db
+        self.store = store or SqlConversationStore(db)
 
     def is_duplicate(self, provider_message_id: str) -> bool:
         """True when this provider message already has an inbound row.
@@ -148,10 +152,10 @@ class ConversationService:
     ) -> Message:
         """The audit row for one inbound mail, committed before any side effect.
 
-        ``text`` is left null on purpose. The inbound body stays in Gmail; what
-        the database keeps is the ids, the triage metadata and the action, which
-        is everything the dashboard, the metrics and an investigation need
-        without the database becoming a second copy of the inbox.
+        Committed together with the mail's encrypted subject, body and address
+        (``ConversationStore.keep_inbound``), so the record of what was said
+        exists before anything is done about it, and a crash part-way leaves
+        both or neither.
         """
         # Updated in place when a previous run recorded this mail but never
         # finished with it. Inserting again would hit the unique index, and the
@@ -165,6 +169,8 @@ class ConversationService:
         row.action = action
         row.rfc_message_id = message.rfc_message_id
         row.gmail_thread_id = message.thread_key
+        row.sender_key = message.sender_key
+        self.store.keep_inbound(row, message)
         row.category = decision.category
         row.tier = decision.tier
         row.triage_confidence = decision.confidence
@@ -179,13 +185,22 @@ class ConversationService:
         return row
 
     def record_action(
-        self, conversation: Conversation, message: IncomingMessage, action: str
+        self,
+        conversation: Conversation,
+        message: IncomingMessage,
+        action: str,
+        *,
+        keep_content: bool = False,
     ) -> Message:
         """An inbound row for a mail that was never triaged.
 
         Guard skips and manual-pause detections take this path: there is no
         decision to record, but the idempotence key must still be written or
         the next run would process the mail again.
+
+        ``keep_content`` is false for a guard skip - automated mail, our own
+        mail, mail with no usable sender, none of it a conversation with a
+        person - and true for a mail a human has taken over, which is.
         """
         row = self._inbound_row(message.provider_message_id) or Message(
             conversation_id=conversation.id,
@@ -195,6 +210,9 @@ class ConversationService:
         row.action = action
         row.rfc_message_id = message.rfc_message_id
         row.gmail_thread_id = message.thread_key
+        row.sender_key = message.sender_key
+        if keep_content:
+            self.store.keep_inbound(row, message)
 
         self.db.add(row)
         self.db.commit()
@@ -216,9 +234,9 @@ class ConversationService:
     ) -> Message:
         """The audit row for something the bot produced.
 
-        Outbound text *is* stored, unlike inbound. It is the organisation's own
-        words, the captain needs to see what was offered on his behalf, and the
-        draft-acceptance metric compares it against what was eventually sent.
+        The text is kept, encrypted like the inbound side: the captain needs to
+        see what was offered on his behalf, and the draft-acceptance metric
+        compares it against what was eventually sent.
 
         Counts toward ``bot_reply_count`` only for a draft or a send, not for a
         forward: the forward goes to the captain, and letting it consume the
@@ -229,7 +247,6 @@ class ConversationService:
             conversation_id=conversation.id,
             direction="outbound",
             provider_message_id=None,
-            body_encrypted=cipher_from_env().encrypt(text, BODY_CONTEXT),
             language=language,
             action=action,
             category=kind,
@@ -240,6 +257,7 @@ class ConversationService:
             triage_confidence=confidence,
             sources=sources,
         )
+        self.store.keep_outbound(row, text)
         if action in (ACTION_DRAFTED, ACTION_SENT):
             conversation.bot_reply_count = (conversation.bot_reply_count or 0) + 1
         self.db.add(row)
@@ -249,11 +267,7 @@ class ConversationService:
 
     def outbound_text(self, row: Message) -> str:
         """The bot's own text on an outbound row, decrypted; empty if erased."""
-        if row.body_encrypted is None:
-            return ""
-        return cipher_from_env().decrypt(
-            row.body_encrypted, BODY_CONTEXT, ids=f"message id={row.id}"
-        )
+        return self.store.outbound_text(row)
 
     def can_bot_reply(self, conversation: Conversation) -> bool:
         """Whether the bot may put another reply in this thread."""

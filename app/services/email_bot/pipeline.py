@@ -57,6 +57,7 @@ from app.services.conversation_service import (
     DRAFT_PENDING,
     ConversationService,
 )
+from app.services.conversation_store import ConversationStore, SqlConversationStore
 from app.services.email_bot.bridge import run_coroutine
 from app.services.email_bot.caps import CapDecision
 from app.services.email_bot.delivery import (
@@ -90,6 +91,7 @@ from app.services.triage.protocol import (
     TriageSignals,
     TriageUnavailable,
 )
+from app.utils.field_crypto import cipher_from_env
 from app.utils.logging_config import get_logger
 
 logger = get_logger("email_bot_pipeline")
@@ -164,6 +166,7 @@ class EmailBotPipeline:
         admin_emails: tuple[str, ...] = (),
         sinks: dict[str, ReplySink] | None = None,
         caps: Any = None,
+        store: ConversationStore | None = None,
     ) -> None:
         self.db = db
         self.adapter = adapter
@@ -174,7 +177,11 @@ class EmailBotPipeline:
         self.gemini_client = gemini_client
         self.admin_emails = admin_emails
         self.mode = parse_mode(settings.mode)
-        self.conversations = ConversationService(db)
+        # The key is resolved here, before any mail is listed, so a missing or
+        # malformed key stops the run before Gmail is touched rather than
+        # after the first mail has been labelled.
+        self.store = store or SqlConversationStore(db, cipher_from_env())
+        self.conversations = ConversationService(db, store=self.store)
 
         self.caps = caps
         if sinks is None:
@@ -527,7 +534,9 @@ class EmailBotPipeline:
                 self.db.commit()
 
         self.conversations.pause_manual(conversation)
-        row = self.conversations.record_action(conversation, message, ACTION_PAUSED)
+        row = self.conversations.record_action(
+            conversation, message, ACTION_PAUSED, keep_content=True
+        )
         self.conversations.mark_handled(row)
         self._label(message, [LABEL_PAUSED, LABEL_SEEN])
 
