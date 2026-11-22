@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Vietnam Hearts Admin Dashboard</title>
     
     <!-- Favicon using the Vietnam Hearts logo -->
@@ -111,6 +113,38 @@
             height: 12px;
             border-radius: 50%;
             margin-right: 8px;
+        }
+        .inbox-conversation-body {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 0.9em;
+        }
+        .inbox-conversation-message.inbound {
+            border-left: 3px solid #0dcaf0 !important;
+        }
+        .inbox-conversation-message.outbound {
+            border-left: 3px solid #6c757d !important;
+            background-color: #f8f9fa;
+        }
+        @media (max-width: 575.98px) {
+            /* 40px of margin and padding a side left a phone a 270px column. */
+            .table-container {
+                margin: 8px 0;
+                padding: 12px;
+            }
+        }
+        .inbox-conversation-when { width: 8.5rem; }
+        .inbox-conversation-category { width: 11rem; }
+        @media (max-width: 767.98px) {
+            .inbox-conversation-when { width: 100%; }
+            .inbox-conversation-category { width: auto; }
+        }
+        /* On a phone an escalation reads as: what it is, why, then the two
+           actions on their own line, instead of overflowing the card. */
+        @media (max-width: 767.98px) {
+            .inbox-escalation .inbox-escalation-reason { flex-basis: 100%; }
+            .inbox-escalation .inbox-escalation-gmail { order: 5; }
+            .inbox-escalation .inbox-escalation-resume { order: 6; }
         }
         .status-success { background-color: #28a745; }
         .status-danger { background-color: #dc3545; }
@@ -288,6 +322,33 @@
                                         <span class="text-muted small">Loading...</span>
                                     </div>
 
+                                    <h6 class="text-muted mt-3">Conversations</h6>
+                                    <p class="text-muted small mb-1">What came in and what happened to it. Message text is shown only when you open a conversation, and every open is recorded.</p>
+                                    <div id="inbox-bot-conversations">
+                                        <span class="text-muted small">Loading...</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2 mt-1" id="inbox-bot-conversations-pager" style="display: none !important;">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="inbox-bot-conversations-newer" onclick="pageInboxConversations(-1)">
+                                            <i class="fas fa-chevron-left"></i> Newer
+                                        </button>
+                                        <span class="text-muted small" id="inbox-bot-conversations-range"></span>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="inbox-bot-conversations-older" onclick="pageInboxConversations(1)">
+                                            Older <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+
+                                    <h6 class="text-muted mt-3">Delete on request</h6>
+                                    <p class="text-muted small mb-1">Removes the stored text and address of everything one person sent, and of the conversations they started. What the bot did is kept. This does not delete their mail in Gmail; do that by hand as well (runbook: <code>docs/GMAIL_BOT_SETUP.md</code>, "Conversation records").</p>
+                                    <form id="inbox-bot-erase-sender" class="d-flex flex-wrap gap-2" autocomplete="off" onsubmit="eraseInboxSender(event)">
+                                        <label for="inbox-bot-erase-email" class="visually-hidden">Their email address</label>
+                                        <input type="email" class="form-control form-control-sm" id="inbox-bot-erase-email"
+                                               placeholder="their email address" required autocomplete="off" style="max-width: 280px;">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm text-nowrap">
+                                            <i class="fas fa-eraser"></i> Delete their stored text
+                                        </button>
+                                    </form>
+                                    <div id="inbox-bot-erase-result" class="small mt-1" role="status"></div>
+
                                     <h6 class="text-muted mt-3">Draft acceptance</h6>
                                     <p class="text-muted small mb-1">How often a draft was sent unchanged. This is what decides whether replies are ever sent automatically: the gate is {% for kind, gate in acceptance_gates.items() %}{{ "%.0f"|format(gate * 100) }}% for {{ {"signup": "sign-up", "faq": "FAQ"}.get(kind, kind) }} drafts{% if not loop.last %} and {% endif %}{% endfor %}, over two weeks.</p>
                                     <div id="inbox-bot-acceptance">
@@ -322,6 +383,7 @@
                         </div>
                     </div>
 
+                    <div class="table-responsive">
                     <table class="table table-striped">
                         <thead>
                             <tr>
@@ -453,6 +515,7 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
             
@@ -460,6 +523,7 @@
             <div class="tab-pane fade" id="emails" role="tabpanel">
                 <div class="table-container">
                     <h2>Email Logs ({{ total_emails }})</h2>
+                    <div class="table-responsive">
                     <table class="table table-striped">
                         <thead>
                             <tr>
@@ -493,6 +557,7 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
 
@@ -1066,6 +1131,30 @@
         </div>
     </div>
     
+    <!-- One stored conversation. Filled only when an admin opens it, and
+         emptied again when it closes, so the decrypted text does not stay in
+         the page. -->
+    <div class="modal fade" id="inboxConversationModal" tabindex="-1" aria-labelledby="inboxConversationTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="inboxConversationTitle">Conversation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="inboxConversationBody"></div>
+                <div class="modal-footer justify-content-between">
+                    <span class="text-muted small" id="inboxConversationViews"></span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="inboxConversationErase" onclick="eraseInboxConversation()">
+                            <i class="fas fa-eraser"></i> Delete this conversation's text
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Initialize dashboard on page load
@@ -3145,6 +3234,9 @@ async function loadInboxBotCard() {
         return;
     }
 
+    // Not awaited: the list has nothing to do with the run counters below.
+    loadInboxConversations();
+
     try {
         const response = await fetch('/admin/email-bot/runs?limit=1');
         if (!response.ok) {
@@ -3221,14 +3313,14 @@ async function loadInboxBotCard() {
             return item.tier && reason.startsWith(prefix) ? reason.slice(prefix.length) : reason;
         };
         escalations.innerHTML = open.map((item) => `
-            <div class="d-flex align-items-center gap-2 small mb-1">
-                <a class="text-nowrap flex-shrink-0"
+            <div class="inbox-escalation d-flex flex-wrap flex-md-nowrap align-items-center gap-2 small py-1 border-bottom">
+                <a class="inbox-escalation-gmail text-nowrap flex-shrink-0"
                    href="https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(item.thread_key)}"
                    target="_blank" rel="noopener">Open in Gmail</a>
-                <span class="badge bg-light text-dark flex-shrink-0">${escapeHtml(item.category || 'unknown')}</span>
+                <span class="badge bg-light text-dark border ms-0 flex-shrink-0">${escapeHtml(inboxCategoryLabel(item.category))}</span>
                 <span class="text-muted text-nowrap flex-shrink-0">${escapeHtml(item.tier || '')}</span>
-                <span class="text-muted text-truncate flex-grow-1" style="min-width: 0;">${escapeHtml(reasonOf(item))}</span>
-                <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap flex-shrink-0"
+                <span class="inbox-escalation-reason text-muted text-truncate flex-grow-1" style="min-width: 0;">${escapeHtml(reasonOf(item))}</span>
+                <button type="button" class="inbox-escalation-resume btn btn-outline-secondary btn-sm text-nowrap flex-shrink-0"
                         onclick="resumeInboxConversation(${item.id})">Resume bot</button>
             </div>`).join('');
     } catch (error) {
@@ -3350,6 +3442,277 @@ function renderAgreement(agreement) {
         <span class="text-secondary">over ${agreement.compared} message(s)</span>
     </div>`;
 }
+
+// ------------------------------------------------ inbox conversations
+//
+// The list carries no message text. Content is fetched only by
+// openInboxConversation, which only a click on Open reaches, and the server
+// records that open before it decrypts anything. Every value interpolated into
+// HTML here goes through escapeHtml: the subject and body are whatever a
+// stranger typed into an email.
+
+const INBOX_PAGE_SIZE = 10;
+let inboxConversationOffset = 0;
+let inboxConversationOpen = null;
+
+const INBOX_CATEGORY_LABELS = {
+    signup: 'Sign-up question',
+    faq: 'FAQ',
+    volunteer_ops: 'Volunteer operations',
+    sponsorship: 'Sponsorship',
+    donation: 'Donation',
+    partnership: 'Partnership',
+    press: 'Press',
+    safeguarding_legal: 'Safeguarding or legal',
+    acceptance: 'Acceptance',
+    human_other: 'Other',
+    automated: 'Automated',
+    holding: 'Holding message',
+};
+
+const INBOX_OUTCOME_LABELS = {
+    draft_pending: 'Draft waiting',
+    draft_sent_unchanged: 'Draft sent unchanged',
+    draft_sent_edited: 'Draft sent, edited',
+    draft_deleted: 'Draft deleted',
+    draft_unmeasured: 'Draft gone',
+    sent: 'Sent automatically',
+    escalated: 'Escalated',
+    taken_over: 'Answered by a person',
+    skipped: 'Skipped',
+    in_progress: 'In progress',
+};
+
+const INBOX_LANGUAGE_LABELS = { en: 'English', vi: 'Vietnamese', other: 'Other language' };
+
+function inboxCategoryLabel(category) {
+    return INBOX_CATEGORY_LABELS[category] || category || 'Uncategorised';
+}
+
+function inboxWhen(iso, withDay = true) {
+    if (!iso) {
+        return '';
+    }
+    const options = withDay
+        ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+        : { hour: '2-digit', minute: '2-digit' };
+    return new Date(iso).toLocaleString(undefined, options);
+}
+
+async function loadInboxConversations() {
+    const target = document.getElementById('inbox-bot-conversations');
+    const pager = document.getElementById('inbox-bot-conversations-pager');
+    if (!target) {
+        return;
+    }
+    try {
+        const response = await fetch(`/admin/email-bot/conversations?limit=${INBOX_PAGE_SIZE}&offset=${inboxConversationOffset}`);
+        if (!response.ok) {
+            throw new Error('conversations request failed');
+        }
+        const page = await response.json();
+        const items = page.conversations || [];
+        if (items.length === 0 && inboxConversationOffset > 0) {
+            inboxConversationOffset = Math.max(0, inboxConversationOffset - INBOX_PAGE_SIZE);
+            return loadInboxConversations();
+        }
+        if (items.length === 0) {
+            target.innerHTML = '<span class="text-muted small">No conversations stored yet.</span>';
+            pager.style.setProperty('display', 'none', 'important');
+            return;
+        }
+        // A row per conversation: a table on a wide screen in all but name,
+        // and on a phone the date on its own line above what happened.
+        const rows = items.map((item) => {
+            const outcome = INBOX_OUTCOME_LABELS[item.outcome] || item.outcome;
+            const erased = item.erased
+                ? '<span class="badge bg-light text-muted border ms-1">text deleted</span>'
+                : '';
+            return `<div class="d-flex flex-wrap flex-md-nowrap align-items-center gap-2 small py-1 border-bottom">
+                <span class="inbox-conversation-when text-muted text-nowrap flex-shrink-0">${escapeHtml(inboxWhen(item.received_at))}</span>
+                <span class="inbox-conversation-category flex-shrink-0"><span class="badge bg-light text-dark border ms-0">${escapeHtml(item.category ? inboxCategoryLabel(item.category) : 'Not triaged')}</span></span>
+                <span class="flex-grow-1" style="min-width: 0; flex-basis: 0;">${escapeHtml(outcome)}${erased}</span>
+                <button type="button" class="btn btn-outline-primary btn-sm flex-shrink-0"
+                        onclick="openInboxConversation(${Number(item.id)})">Open</button>
+            </div>`;
+        }).join('');
+        target.innerHTML = `<div class="border-top">${rows}</div>`;
+
+        const total = Number(page.total) || 0;
+        const first = inboxConversationOffset + 1;
+        const last = inboxConversationOffset + items.length;
+        document.getElementById('inbox-bot-conversations-range').textContent =
+            `${first}-${last} of ${total}`;
+        document.getElementById('inbox-bot-conversations-newer').disabled = inboxConversationOffset === 0;
+        document.getElementById('inbox-bot-conversations-older').disabled = last >= total;
+        pager.style.setProperty('display', total > INBOX_PAGE_SIZE ? 'flex' : 'none', 'important');
+    } catch (error) {
+        target.innerHTML = '<span class="text-muted small">Could not load conversations.</span>';
+    }
+}
+
+function pageInboxConversations(direction) {
+    inboxConversationOffset = Math.max(0, inboxConversationOffset + direction * INBOX_PAGE_SIZE);
+    loadInboxConversations();
+}
+
+function renderInboxMessage(message, conversation) {
+    const inbound = message.direction === 'inbound';
+    let label;
+    let meta;
+    if (inbound) {
+        label = 'Incoming';
+        meta = [
+            inboxWhen(message.created_at),
+            INBOX_LANGUAGE_LABELS[message.language] || '',
+            message.sender_address ? `from ${message.sender_address}` : '',
+        ];
+    } else {
+        const holding = message.category === 'holding';
+        const sent = message.action === 'sent';
+        label = `Bot ${holding ? 'holding message' : 'reply'}${sent ? ', sent' : ' draft'}`;
+        const outcome = message.draft_outcome && message.draft_outcome !== 'pending'
+            ? (INBOX_OUTCOME_LABELS[`draft_${message.draft_outcome}`] || message.draft_outcome).toLowerCase()
+            : (message.draft_outcome === 'pending' ? 'waiting in Gmail' : '');
+        meta = [
+            inboxWhen(message.created_at, false),
+            holding ? '' : `category: ${inboxCategoryLabel(message.category || conversation.category)}`,
+            holding ? '' : `tier: ${conversation.tier || 'unknown'}`,
+            outcome,
+        ];
+    }
+    const metaText = meta.filter(Boolean).join(' \u00b7 ');
+    let content;
+    if (message.erased) {
+        content = '<div class="text-muted fst-italic small">Text deleted on request.</div>';
+    } else if (!inbound && message.body === null) {
+        content = '<div class="text-muted fst-italic small">No text stored.</div>';
+    } else if (inbound && message.body === null && message.subject === null) {
+        content = '<div class="text-muted fst-italic small">Not kept: skipped before triage.</div>';
+    } else {
+        const subject = inbound && message.subject
+            ? `<div class="fw-semibold mb-1">${escapeHtml(message.subject)}</div>`
+            : '';
+        const text = message.body
+            ? `<div class="inbox-conversation-body">${escapeHtml(message.body)}</div>`
+            : '<div class="text-muted fst-italic small">The body was empty.</div>';
+        content = `${subject}${text}`;
+    }
+    return `<div class="inbox-conversation-message ${inbound ? 'inbound' : 'outbound'} border rounded p-2 mb-2">
+        <div class="small text-muted mb-1"><span class="fw-semibold text-body">${escapeHtml(label)}</span> \u00b7 ${escapeHtml(metaText)}</div>
+        ${content}
+    </div>`;
+}
+
+async function openInboxConversation(conversationId) {
+    const modalElement = document.getElementById('inboxConversationModal');
+    const title = document.getElementById('inboxConversationTitle');
+    const body = document.getElementById('inboxConversationBody');
+    const views = document.getElementById('inboxConversationViews');
+    const erase = document.getElementById('inboxConversationErase');
+    inboxConversationOpen = conversationId;
+    title.textContent = 'Conversation';
+    body.innerHTML = '<span class="text-muted small">Loading...</span>';
+    views.textContent = '';
+    erase.disabled = true;
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+
+    try {
+        const response = await fetch(`/admin/email-bot/conversations/${Number(conversationId)}`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || 'Could not open this conversation.');
+        }
+        const conversation = data.conversation || {};
+        title.textContent = `Conversation - ${inboxCategoryLabel(conversation.category)}`;
+        const messages = data.messages || [];
+        body.innerHTML = messages.length
+            ? messages.map((message) => renderInboxMessage(message, conversation)).join('')
+            : '<span class="text-muted small">Nothing recorded.</span>';
+        const earlier = Math.max(0, (Number(data.views && data.views.count) || 1) - 1);
+        const earlierText = earlier === 0
+            ? 'No earlier views.'
+            : earlier + (earlier === 1 ? ' earlier view.' : ' earlier views.');
+        views.textContent = 'Viewed by you just now. ' + earlierText;
+        const hasText = messages.some((message) => !message.erased && (message.body !== null || message.subject !== null));
+        erase.disabled = !hasText;
+    } catch (error) {
+        body.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+async function eraseInboxConversation() {
+    const conversationId = inboxConversationOpen;
+    if (conversationId === null) {
+        return;
+    }
+    if (!confirm("Delete this conversation's stored text and the sender's address? What the bot did is kept. This cannot be undone, and it does not delete the mail in Gmail.")) {
+        return;
+    }
+    const erase = document.getElementById('inboxConversationErase');
+    erase.disabled = true;
+    try {
+        const response = await fetch(`/admin/email-bot/conversations/${Number(conversationId)}/erase`, { method: 'POST' });
+        if (!response.ok) {
+            throw new Error('erase failed');
+        }
+        await openInboxConversation(conversationId);
+    } catch (error) {
+        document.getElementById('inboxConversationViews').textContent = 'Could not delete the text. Nothing was changed.';
+        erase.disabled = false;
+    } finally {
+        loadInboxConversations();
+    }
+}
+
+async function eraseInboxSender(event) {
+    event.preventDefault();
+    const input = document.getElementById('inbox-bot-erase-email');
+    const result = document.getElementById('inbox-bot-erase-result');
+    const address = input.value.trim();
+    if (!address) {
+        return;
+    }
+    if (!confirm('Delete the stored text and address of everything this person sent? What the bot did is kept. This cannot be undone, and it does not delete their mail in Gmail.')) {
+        return;
+    }
+    try {
+        // In the body, never the URL: request lines are logged.
+        const response = await fetch('/admin/email-bot/conversations/erase-by-sender', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: address }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || 'The deletion failed.');
+        }
+        input.value = '';
+        const messages = Number(data.messages_erased) || 0;
+        const conversations = (data.conversation_ids || []).length;
+        result.className = 'small mt-1 text-success';
+        result.textContent = messages === 0
+            ? 'Nothing stored for that address (or already deleted). The request is recorded.'
+            : `Deleted the text of ${messages} message${messages === 1 ? '' : 's'} in ${conversations} conversation${conversations === 1 ? '' : 's'}. Now delete their mail in Gmail.`;
+    } catch (error) {
+        result.className = 'small mt-1 text-danger';
+        result.textContent = error.message;
+    } finally {
+        loadInboxConversations();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const modalElement = document.getElementById('inboxConversationModal');
+    if (modalElement) {
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            document.getElementById('inboxConversationBody').innerHTML = '';
+            document.getElementById('inboxConversationViews').textContent = '';
+            inboxConversationOpen = null;
+        });
+    }
+});
+// ---------------------------------------- end inbox conversations
 
 function escapeHtml(value) {
     const element = document.createElement('div');
