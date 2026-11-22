@@ -201,9 +201,10 @@ class Conversation(Base):
 
     Channel-neutral on purpose: email fills ``thread_key`` with the Gmail
     threadId, Messenger will fill it with its own thread id when it moves onto
-    the same engine. The sender address is never stored - ``sender_key`` is a
-    SHA-256 of the lower-cased address, which is all the per-sender cap and
-    the grouping need.
+    the same engine. ``sender_key`` is a SHA-256 of the lower-cased address,
+    which is all the per-sender cap, the grouping and deletion by address
+    need; the address itself is kept only encrypted, on each inbound message
+    row (``Message.sender_address_encrypted``).
 
     ``status`` is the "never talk over a human" control:
       ``bot``            the bot may still act
@@ -254,9 +255,21 @@ class Message(Base):
     key: the inbound row is committed before any side effect, so a re-listed
     Gmail message re-applies labels and does nothing else.
 
-    Privacy: on the email channel ``text`` holds outbound bot text only.
-    Inbound bodies are never copied out of Gmail; the row carries ids, triage
-    metadata and the action instead.
+    Content (decided 2026-11-22): the conversation is kept, encrypted, with no
+    expiry until someone asks for it to be deleted. ``subject_encrypted`` and
+    ``body_encrypted`` hold an inbound mail's subject and plain-text body
+    (truncated at ``conversation_store.BODY_MAX_CHARS``; never HTML, headers or
+    attachments), and ``body_encrypted`` holds the bot's own text on an
+    outbound row. ``sender_address_encrypted`` is the inbound sender. All three
+    are AES-GCM tokens from ``app/utils/field_crypto.py`` and are read only
+    through ``app/services/conversation_store.py``; nothing else may decrypt,
+    log or return them. There is no plaintext text column.
+
+    ``sender_key`` is the SHA-256 of the inbound sender's address, which is how
+    a deletion request by address finds a person's mail without decrypting
+    anything. ``content_erased_at`` is set when the text and address were
+    deleted on request; the rest of the row stays, because idempotence, the
+    caps and the metrics read it.
     """
 
     __tablename__ = "messages"
@@ -281,7 +294,12 @@ class Message(Base):
     # the unique index therefore constrains inbound rows only.
     provider_message_id = Column(String, nullable=True)
 
-    text = Column(Text, nullable=True)
+    subject_encrypted = Column(Text, nullable=True)
+    body_encrypted = Column(Text, nullable=True)
+    sender_address_encrypted = Column(Text, nullable=True)
+    sender_key = Column(String, nullable=True, index=True)
+    content_erased_at = Column(DateTime, nullable=True)
+
     language = Column(String, nullable=True)  # "en" | "vi" | "other"
     action = Column(String, nullable=False)
 
@@ -319,6 +337,48 @@ class Message(Base):
 
     class Config:
         from_attributes = True
+
+
+class ConversationView(Base):
+    """One admin opening one conversation's content on the dashboard.
+
+    Written before the content is returned, so a view that happened is never
+    missing. Who and when only; nothing here can hold message content.
+    """
+
+    __tablename__ = "conversation_views"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(
+        Integer, ForeignKey("conversations.id"), nullable=False, index=True
+    )
+    viewer_id = Column(String, nullable=False)
+    viewer_email = Column(String, nullable=True)
+    viewed_at = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True
+    )
+
+
+class ConversationDeletion(Base):
+    """One deletion of stored conversation content, by conversation or by sender.
+
+    Records what was erased and by whom, never what it said: the affected
+    conversation ids, how many rows lost their text, and for a by-address
+    request the address's SHA-256, which is already on the conversation rows.
+    """
+
+    __tablename__ = "conversation_deletions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scope = Column(String, nullable=False)  # "conversation" | "sender"
+    conversation_ids = Column(JSON, nullable=False)
+    messages_erased = Column(Integer, nullable=False)
+    sender_key = Column(String, nullable=True)
+    requested_by_id = Column(String, nullable=False)
+    requested_by_email = Column(String, nullable=True)
+    created_at = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True
+    )
 
 
 class EmailBotRun(Base):

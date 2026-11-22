@@ -103,7 +103,7 @@ The application uses the following environment variables (see `env.template` for
 - `SENTRY_TRACES_SAMPLE_RATE` - Fraction of requests to sample for Sentry performance tracing (default: 0.1)
 
 #### Volunteer Inbox Bot (optional, off by default)
-- `EMAIL_BOT_ENABLED`, `GMAIL_OAUTH_*`, `TYPESAFE_API_KEY`, `DISCORD_WEBHOOK_URL`, `ANTHROPIC_API_KEY` - see the inbound email bot block in `env.template` and the setup runbook [`docs/GMAIL_BOT_SETUP.md`](docs/GMAIL_BOT_SETUP.md)
+- `EMAIL_BOT_ENABLED`, `GMAIL_OAUTH_*`, `TYPESAFE_API_KEY`, `DISCORD_WEBHOOK_URL`, `ANTHROPIC_API_KEY`, `CONVERSATION_ENCRYPTION_KEYS` - see the inbound email bot block in `env.template` and the setup runbook [`docs/GMAIL_BOT_SETUP.md`](docs/GMAIL_BOT_SETUP.md)
 
 ### Google Sheets Setup
 

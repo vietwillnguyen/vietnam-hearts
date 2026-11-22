@@ -55,8 +55,10 @@ from app.services.conversation_service import (
     ACTION_PAUSED,
     ACTION_SKIPPED,
     DRAFT_PENDING,
+    DRAFT_UNMEASURED,
     ConversationService,
 )
+from app.services.conversation_store import ConversationStore, SqlConversationStore
 from app.services.email_bot.bridge import run_coroutine
 from app.services.email_bot.caps import CapDecision
 from app.services.email_bot.delivery import (
@@ -90,6 +92,7 @@ from app.services.triage.protocol import (
     TriageSignals,
     TriageUnavailable,
 )
+from app.utils.field_crypto import cipher_from_env
 from app.utils.logging_config import get_logger
 
 logger = get_logger("email_bot_pipeline")
@@ -164,6 +167,7 @@ class EmailBotPipeline:
         admin_emails: tuple[str, ...] = (),
         sinks: dict[str, ReplySink] | None = None,
         caps: Any = None,
+        store: ConversationStore | None = None,
     ) -> None:
         self.db = db
         self.adapter = adapter
@@ -174,7 +178,11 @@ class EmailBotPipeline:
         self.gemini_client = gemini_client
         self.admin_emails = admin_emails
         self.mode = parse_mode(settings.mode)
-        self.conversations = ConversationService(db)
+        # The key is resolved here, before any mail is listed, so a missing or
+        # malformed key stops the run before Gmail is touched rather than
+        # after the first mail has been labelled.
+        self.store = store or SqlConversationStore(db, cipher_from_env())
+        self.conversations = ConversationService(db, store=self.store)
 
         self.caps = caps
         if sinks is None:
@@ -347,9 +355,21 @@ class EmailBotPipeline:
         still_there = self.adapter.get_draft(row.gmail_draft_id) is not None
         conversation = row.conversation
 
+        if row.content_erased_at is not None:
+            # The text was deleted on request, so there is nothing to compare
+            # the sent message with. Still pending while the draft exists, so
+            # a takeover can still find and delete it; unmeasured once gone.
+            if not still_there:
+                self.conversations.set_draft_outcome(row, DRAFT_UNMEASURED)
+                self._summary.reconciled += 1
+                logger.info(
+                    "Draft %s resolved as %s", row.gmail_draft_id, DRAFT_UNMEASURED
+                )
+            return
+
         result = reconcile_draft(
             draft_still_exists=still_there,
-            drafted_text=row.text or "",
+            drafted_text=self.conversations.outbound_text(row),
             thread_messages=self.adapter.get_thread(row.gmail_thread_id),
             inbox_address=self.adapter.inbox_address,
             bot_message_ids=self.conversations.bot_sent_message_ids(conversation),
@@ -382,14 +402,19 @@ class EmailBotPipeline:
         except (_CircuitOpen, GmailAuthRevoked):
             raise
         except Exception as exc:
-            self._note_failure(
-                f"{message.provider_message_id} failed: {type(exc).__name__}"
-            )
+            # Rolled back first: a database error leaves the session unusable,
+            # and without this every later message, the last-error banner and
+            # the run row itself fail behind it, leaving a run that never
+            # finishes and blocks the next one for STALE_RUN_AFTER.
+            self._rollback_quietly()
             logger.error(
                 "Message %s failed: %s",
                 message.provider_message_id,
                 type(exc).__name__,
                 exc_info=True,
+            )
+            self._note_failure(
+                f"{message.provider_message_id} failed: {type(exc).__name__}"
             )
             return
 
@@ -527,7 +552,9 @@ class EmailBotPipeline:
                 self.db.commit()
 
         self.conversations.pause_manual(conversation)
-        row = self.conversations.record_action(conversation, message, ACTION_PAUSED)
+        row = self.conversations.record_action(
+            conversation, message, ACTION_PAUSED, keep_content=True
+        )
         self.conversations.mark_handled(row)
         self._label(message, [LABEL_PAUSED, LABEL_SEEN])
 
@@ -878,6 +905,12 @@ class EmailBotPipeline:
             )
 
         return result
+
+    def _rollback_quietly(self) -> None:
+        try:
+            self.db.rollback()
+        except Exception:
+            logger.error("Could not roll back after a failed message", exc_info=True)
 
     def _count_capped(self, _decision: CapDecision) -> None:
         # Drafted while the mode says send because a cap was reached. Counted

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app import config
 from app.services.channels.gmail import GmailAdapter
 from app.services.channels.gmail_transport import GmailTransport
+from app.services.conversation_store import SqlConversationStore
 from app.services.email_bot.pipeline import EmailBotPipeline
 from app.services.email_bot.settings import EmailBotSettings
 from app.services.notifier import (
@@ -30,6 +31,7 @@ from app.services.notifier import (
 from app.services.triage.jev import JevClassifier
 from app.services.triage.litellm import LiteLLMClassifier
 from app.services.triage.shadow import ShadowingClassifier
+from app.utils.field_crypto import EncryptionKeyError, cipher_from_env
 from app.utils.logging_config import get_logger
 
 logger = get_logger("email_bot_factory")
@@ -152,6 +154,15 @@ def build_pipeline(
     bot_service: Any = None,
 ) -> EmailBotPipeline:
     creds = credentials or Credentials.from_env()
+
+    # Before the Gmail credentials, because without the key the bot cannot
+    # keep the conversation record it is required to keep, and a poll that
+    # labelled mail it then could not store would leave the record with gaps.
+    try:
+        cipher = cipher_from_env()
+    except EncryptionKeyError as exc:
+        raise EmailBotNotConfigured(str(exc)) from None
+
     creds.require_gmail()
 
     adapter = GmailAdapter(
@@ -176,4 +187,5 @@ def build_pipeline(
             getattr(bot_service, "knowledge_service", None), "gemini_client", None
         ),
         admin_emails=tuple(config.ADMIN_EMAILS),
+        store=SqlConversationStore(db, cipher),
     )

@@ -22,6 +22,7 @@ safe again.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import func
@@ -29,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message
 from app.services.channels.base import IncomingMessage
+from app.services.conversation_store import ConversationStore, SqlConversationStore
 from app.services.triage.protocol import Tier, TriageDecision, TriageSignals
 from app.utils.logging_config import get_logger
 
@@ -51,13 +53,72 @@ DRAFT_PENDING = "pending"
 DRAFT_SENT_UNCHANGED = "sent_unchanged"
 DRAFT_SENT_EDITED = "sent_edited"
 DRAFT_DELETED = "deleted"
+# The draft is gone but its text was deleted on request first, so whether it
+# went out unchanged cannot be known. Counted apart rather than guessed, and
+# left out of the acceptance rate either way.
+DRAFT_UNMEASURED = "unmeasured"
+
+
+OUTCOME_TAKEN_OVER = "taken_over"
+OUTCOME_ESCALATED = "escalated"
+OUTCOME_SENT = "sent"
+OUTCOME_SKIPPED = "skipped"
+OUTCOME_IN_PROGRESS = "in_progress"
+
+
+@dataclass(frozen=True)
+class ConversationSummary:
+    """One conversation as the dashboard list shows it. Holds no content."""
+
+    id: int
+    channel: str
+    thread_key: str
+    status: str
+    category: str | None
+    tier: str | None
+    received_at: datetime | None
+    last_activity_at: datetime | None
+    inbound_count: int
+    outbound_count: int
+    outcome: str
+    has_content: bool
+    erased: bool
+
+
+def _outcome(status: str, rows: list[Message]) -> str:
+    """What became of a conversation, in the words the dashboard list uses.
+
+    A person's involvement outranks the bot's: a thread an admin took over or
+    the bot escalated reads that way even if a draft or holding message is
+    also in it. Otherwise the newest bot reply decides, then a skip.
+    """
+    if status == STATUS_PAUSED_MANUAL:
+        return OUTCOME_TAKEN_OVER
+    if status == STATUS_PAUSED_HANDOFF:
+        return OUTCOME_ESCALATED
+    outbound = [row for row in rows if row.direction == "outbound"]
+    if outbound:
+        newest = max(outbound, key=lambda row: row.id)
+        if newest.action == ACTION_SENT:
+            return OUTCOME_SENT
+        if newest.action == ACTION_DRAFTED:
+            return f"draft_{newest.draft_outcome or DRAFT_PENDING}"
+    if any(row.action == ACTION_SKIPPED for row in rows):
+        return OUTCOME_SKIPPED
+    return OUTCOME_IN_PROGRESS
 
 
 class ConversationService:
-    """Every read and write of ``conversations`` and ``messages``."""
+    """Every read and write of ``conversations`` and ``messages``.
 
-    def __init__(self, db: Session) -> None:
+    Message *content* - subjects, bodies, addresses, the bot's replies - goes
+    through ``store`` and nowhere else, so this class never sees a decrypted
+    value it did not just write.
+    """
+
+    def __init__(self, db: Session, store: ConversationStore | None = None) -> None:
         self.db = db
+        self.store = store or SqlConversationStore(db)
 
     def is_duplicate(self, provider_message_id: str) -> bool:
         """True when this provider message already has an inbound row.
@@ -145,10 +206,10 @@ class ConversationService:
     ) -> Message:
         """The audit row for one inbound mail, committed before any side effect.
 
-        ``text`` is left null on purpose. The inbound body stays in Gmail; what
-        the database keeps is the ids, the triage metadata and the action, which
-        is everything the dashboard, the metrics and an investigation need
-        without the database becoming a second copy of the inbox.
+        Committed together with the mail's encrypted subject, body and address
+        (``ConversationStore.keep_inbound``), so the record of what was said
+        exists before anything is done about it, and a crash part-way leaves
+        both or neither.
         """
         # Updated in place when a previous run recorded this mail but never
         # finished with it. Inserting again would hit the unique index, and the
@@ -158,11 +219,12 @@ class ConversationService:
             direction="inbound",
             provider_message_id=message.provider_message_id,
         )
-        row.text = None
         row.language = decision.language
         row.action = action
         row.rfc_message_id = message.rfc_message_id
         row.gmail_thread_id = message.thread_key
+        row.sender_key = message.sender_key
+        self.store.keep_inbound(row, message)
         row.category = decision.category
         row.tier = decision.tier
         row.triage_confidence = decision.confidence
@@ -177,23 +239,34 @@ class ConversationService:
         return row
 
     def record_action(
-        self, conversation: Conversation, message: IncomingMessage, action: str
+        self,
+        conversation: Conversation,
+        message: IncomingMessage,
+        action: str,
+        *,
+        keep_content: bool = False,
     ) -> Message:
         """An inbound row for a mail that was never triaged.
 
         Guard skips and manual-pause detections take this path: there is no
         decision to record, but the idempotence key must still be written or
         the next run would process the mail again.
+
+        ``keep_content`` is false for a guard skip - automated mail, our own
+        mail, mail with no usable sender, none of it a conversation with a
+        person - and true for a mail a human has taken over, which is.
         """
         row = self._inbound_row(message.provider_message_id) or Message(
             conversation_id=conversation.id,
             direction="inbound",
             provider_message_id=message.provider_message_id,
         )
-        row.text = None
         row.action = action
         row.rfc_message_id = message.rfc_message_id
         row.gmail_thread_id = message.thread_key
+        row.sender_key = message.sender_key
+        if keep_content:
+            self.store.keep_inbound(row, message)
 
         self.db.add(row)
         self.db.commit()
@@ -215,9 +288,9 @@ class ConversationService:
     ) -> Message:
         """The audit row for something the bot produced.
 
-        Outbound text *is* stored, unlike inbound. It is the organisation's own
-        words, the captain needs to see what was offered on his behalf, and the
-        draft-acceptance metric compares it against what was eventually sent.
+        The text is kept, encrypted like the inbound side: the captain needs to
+        see what was offered on his behalf, and the draft-acceptance metric
+        compares it against what was eventually sent.
 
         Counts toward ``bot_reply_count`` only for a draft or a send, not for a
         forward: the forward goes to the captain, and letting it consume the
@@ -228,7 +301,6 @@ class ConversationService:
             conversation_id=conversation.id,
             direction="outbound",
             provider_message_id=None,
-            text=text,
             language=language,
             action=action,
             category=kind,
@@ -239,12 +311,17 @@ class ConversationService:
             triage_confidence=confidence,
             sources=sources,
         )
+        self.store.keep_outbound(row, text)
         if action in (ACTION_DRAFTED, ACTION_SENT):
             conversation.bot_reply_count = (conversation.bot_reply_count or 0) + 1
         self.db.add(row)
         self.db.commit()
         self.db.refresh(row)
         return row
+
+    def outbound_text(self, row: Message) -> str:
+        """The bot's own text on an outbound row, decrypted; empty if erased."""
+        return self.store.outbound_text(row)
 
     def can_bot_reply(self, conversation: Conversation) -> bool:
         """Whether the bot may put another reply in this thread."""
@@ -387,6 +464,121 @@ class ConversationService:
             .order_by(Conversation.updated_at.desc())
             .limit(limit)
             .all()
+        )
+
+    def conversation_page(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[ConversationSummary], int]:
+        """A page of conversations, most recent activity first, with the total.
+
+        Reads no content column, so it needs no key and cannot leak text:
+        ``load_only`` keeps the encrypted columns out of the query entirely,
+        and ``has_content`` is answered by the database.
+        """
+        from sqlalchemy.orm import load_only
+
+        activity = (
+            self.db.query(
+                Message.conversation_id.label("conversation_id"),
+                func.min(Message.created_at).label("first_at"),
+                func.max(Message.created_at).label("last_at"),
+            )
+            .group_by(Message.conversation_id)
+            .subquery()
+        )
+        page = (
+            self.db.query(Conversation, activity.c.first_at, activity.c.last_at)
+            .outerjoin(activity, activity.c.conversation_id == Conversation.id)
+            .order_by(
+                activity.c.last_at.is_(None),
+                activity.c.last_at.desc(),
+                Conversation.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        total = self.db.query(func.count(Conversation.id)).scalar() or 0
+
+        ids = [conversation.id for conversation, _first, _last in page]
+        rows_by_conversation: dict[int, list[Message]] = {cid: [] for cid in ids}
+        if ids:
+            rows = (
+                self.db.query(Message)
+                .options(
+                    load_only(
+                        Message.id,
+                        Message.conversation_id,
+                        Message.direction,
+                        Message.action,
+                        Message.draft_outcome,
+                        Message.content_erased_at,
+                    )
+                )
+                .filter(Message.conversation_id.in_(ids))
+                .all()
+            )
+            for row in rows:
+                rows_by_conversation[row.conversation_id].append(row)
+            with_content = {
+                cid
+                for (cid,) in self.db.query(Message.conversation_id)
+                .filter(
+                    Message.conversation_id.in_(ids),
+                    Message.body_encrypted.isnot(None),
+                )
+                .distinct()
+            }
+        else:
+            with_content = set()
+
+        summaries = []
+        for conversation, first_at, last_at in page:
+            rows = rows_by_conversation[conversation.id]
+            summaries.append(
+                ConversationSummary(
+                    id=conversation.id,
+                    channel=conversation.channel,
+                    thread_key=conversation.thread_key,
+                    status=conversation.status,
+                    category=conversation.last_category,
+                    tier=conversation.last_tier,
+                    received_at=first_at or conversation.created_at,
+                    last_activity_at=last_at or conversation.updated_at,
+                    inbound_count=sum(row.direction == "inbound" for row in rows),
+                    outbound_count=sum(row.direction == "outbound" for row in rows),
+                    outcome=_outcome(conversation.status, rows),
+                    has_content=conversation.id in with_content,
+                    erased=any(row.content_erased_at is not None for row in rows),
+                )
+            )
+        return summaries, total
+
+    def summary(self, conversation_id: int) -> ConversationSummary | None:
+        """One conversation's summary, or None if there is no such conversation."""
+        conversation = self.db.get(Conversation, conversation_id)
+        if conversation is None:
+            return None
+        rows = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .all()
+        )
+        stamps = [row.created_at for row in rows if row.created_at is not None]
+        return ConversationSummary(
+            id=conversation.id,
+            channel=conversation.channel,
+            thread_key=conversation.thread_key,
+            status=conversation.status,
+            category=conversation.last_category,
+            tier=conversation.last_tier,
+            received_at=min(stamps) if stamps else conversation.created_at,
+            last_activity_at=max(stamps) if stamps else conversation.updated_at,
+            inbound_count=sum(row.direction == "inbound" for row in rows),
+            outbound_count=sum(row.direction == "outbound" for row in rows),
+            outcome=_outcome(conversation.status, rows),
+            has_content=any(row.body_encrypted is not None for row in rows),
+            erased=any(row.content_erased_at is not None for row in rows),
         )
 
     def shadow_agreement(self) -> dict[str, object]:

@@ -40,6 +40,10 @@ dependencies = [
     # docs/superpowers/specs/2026-09-29-email-channel-design.md, decision 2.
     "litellm>=1.77.0,<2",
     "typesafe-sdk>=0.7.2,<1",
+    # AES-256-GCM for stored inbox conversations (app/utils/field_crypto.py).
+    # Already installed transitively; pinned directly because the app now
+    # imports it and must not lose it to another package's dependency change.
+    "cryptography>=46,<51",
 ]
 
 [dependency-groups]

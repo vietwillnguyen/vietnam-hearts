@@ -11,8 +11,9 @@ Two properties make this safe to run against production, and both are asserted
 by ``tests/test_evals_runners.py``:
 
 *It stores nothing.* The inbound text is fetched from Gmail by id at run time,
-judged in memory, and never written anywhere. The database deliberately does
-not hold inbound bodies, and this script is not the thing that starts.
+judged in memory, and never written anywhere. The bot's own record of the
+conversation is encrypted and admin-only (``app/services/conversation_store.py``);
+this script neither reads it for questions nor adds to it.
 
 *It only looks at what was sent.* Drafts are measured by the draft-acceptance
 rate instead, because a draft the captain corrected before sending is not a
@@ -115,6 +116,8 @@ async def retrieve_context(bot_service, question: str) -> str:
 async def evaluate(
     db, adapter, bot_service, gemini_client, rows
 ) -> GroundednessMetrics:
+    from app.services.conversation_service import ConversationService
+
     metrics = GroundednessMetrics()
 
     for row in rows:
@@ -148,7 +151,7 @@ async def evaluate(
             verdict = judge_answer(
                 gemini_client,
                 question=question,
-                answer=row.text or "",
+                answer=ConversationService(db).outbound_text(row),
                 context=context,
                 must_mention=(),
                 must_not_answer=LIVE_PROHIBITIONS,

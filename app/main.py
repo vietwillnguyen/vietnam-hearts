@@ -96,6 +96,10 @@ async def lifespan(app: FastAPI):
         init_db()
         logger.info("✅ Database initialized")
 
+        # After init_db, because whether the inbox bot could run is partly a
+        # database setting. Raises, and so stops startup, only in production.
+        check_conversation_storage_key()
+
         # Now we can safely access database settings
         try:
             db = next(get_db())
@@ -121,6 +125,47 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down API server...")
+
+
+def check_conversation_storage_key() -> str:
+    """Refuse to start when the inbox bot would have no key to store mail with.
+
+    The rule itself is ``field_crypto.check_storage_key_at_startup``; this reads
+    the three inputs it needs. Only the key's status is logged, never the key.
+    """
+    from app import config
+    from app.database import SessionLocal
+    from app.services.email_bot.settings import EmailBotSettings
+    from app.utils.field_crypto import KEYS_SETTING, check_storage_key_at_startup
+
+    mode: str | None = None
+    try:
+        db = SessionLocal()
+        try:
+            mode = EmailBotSettings.load(db).mode
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning(
+            "Could not read EMAIL_BOT_MODE at startup: %s", type(exc).__name__
+        )
+
+    status = check_storage_key_at_startup(
+        environment=config.ENVIRONMENT,
+        bot_enabled=config.EMAIL_BOT_ENABLED,
+        mode=mode,
+        raw_keys=os.environ.get(KEYS_SETTING),
+    )
+    if status == "ok":
+        logger.info("- conversation encryption key: ok")
+    else:
+        logger.warning(
+            "- conversation encryption key: %s. %s is not set or not usable, so "
+            "the inbox bot will refuse to poll until it is.",
+            status,
+            KEYS_SETTING,
+        )
+    return status
 
 
 # Initialize FastAPI app with lifespan

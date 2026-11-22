@@ -29,6 +29,7 @@ from app.services.channels.gmail_transport import (
 )
 from app.services.email_bot.pipeline import EmailBotPipeline
 from app.services.email_bot.settings import EmailBotSettings
+from tests.fixtures.conversations import body
 from tests.fixtures.email_bot import (
     FakeBotService,
     FakeClassifier,
@@ -96,7 +97,7 @@ class Scenario:
             .all()
         )
         assert len(rows) == 1, f"expected one draft, found {len(rows)}"
-        return rows[0].text
+        return body(rows[0])
 
 
 class TestSignupIsAnsweredFromTheTemplate:

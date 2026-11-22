@@ -741,6 +741,13 @@ class TestWeeklyLiveSampling:
             "created_at": datetime.now(UTC),
         }
         values.update(kwargs)
+        text = values.pop("text")
+        if text is not None:
+            from app.utils.field_crypto import cipher_from_env
+
+            values["body_encrypted"] = cipher_from_env().encrypt(
+                text, "messages.body_encrypted"
+            )
         row = Message(**values)
         db.add(row)
         db.commit()
@@ -854,7 +861,7 @@ class TestWeeklyLiveSampling:
         # and discarded. Nothing new is in the database.
         assert test_db.query(Message).count() == before
         assert all(
-            row.text is None
+            row.body_encrypted is None
             for row in test_db.query(Message).filter(Message.direction == "inbound")
         )
 

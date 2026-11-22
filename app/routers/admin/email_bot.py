@@ -14,14 +14,21 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.config import EMAIL_BOT_ENABLED
 from app.database import get_db
+from app.dependencies.auth import get_current_admin_user
 from app.dependencies.services import get_bot_service
 from app.models import Conversation, EmailBotRun
-from app.services.conversation_service import ConversationService
+from app.services.conversation_service import ConversationService, ConversationSummary
+from app.services.conversation_store import (
+    ErasureResult,
+    SqlConversationStore,
+    StoredMessage,
+    Viewer,
+)
 from app.services.email_bot.delivery import DeliveryMode, parse_mode
 from app.services.email_bot.factory import EmailBotNotConfigured, build_pipeline
 from app.services.email_bot.gates import ACCEPTANCE_GATES
@@ -32,6 +39,7 @@ from app.services.email_bot.settings import (
     EmailBotSettings,
 )
 from app.services.settings_service import get_setting, set_setting
+from app.utils.field_crypto import DecryptionError, EncryptionKeyError
 from app.utils.logging_config import get_api_logger
 
 logger = get_api_logger()
@@ -174,7 +182,9 @@ def bot_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
             kind: {
                 "outcomes": outcomes,
                 "resolved": sum(
-                    count for outcome, count in outcomes.items() if outcome != "pending"
+                    count
+                    for outcome, count in outcomes.items()
+                    if outcome not in _NOT_RESOLVED
                 ),
                 "sent_unchanged": outcomes.get("sent_unchanged", 0),
                 # None rather than 0 while nothing has resolved: a rate of zero
@@ -227,8 +237,15 @@ def _knowledge_base_health(db: Session) -> dict[str, Any]:
     }
 
 
+# Outcomes that say nothing about whether the draft was right: still waiting,
+# or deleted on request before anyone could tell.
+_NOT_RESOLVED = {"pending", "unmeasured"}
+
+
 def _acceptance_rate(outcomes: dict[str, int]) -> float | None:
-    resolved = sum(count for outcome, count in outcomes.items() if outcome != "pending")
+    resolved = sum(
+        count for outcome, count in outcomes.items() if outcome not in _NOT_RESOLVED
+    )
     if resolved == 0:
         return None
     return outcomes.get("sent_unchanged", 0) / resolved
@@ -279,6 +296,197 @@ def resume_conversation(
 
     ConversationService(db).resume(conversation)
     return {"status": "success", "conversation_id": conversation.id, "state": "bot"}
+
+
+# ---------------------------------------------------------- conversations
+#
+# The stored record of each conversation. Readable by people only: the cron
+# service account is an admin for every scheduled job, and no job reads mail,
+# so a leaked scheduler key is not a way into the inbox. Only ids, counts and
+# outcomes are listed; content is returned for one conversation at a time, and
+# that open is recorded before anything is decrypted. Nothing here logs content
+# or puts it in an error.
+
+
+def require_person_admin(
+    admin: dict[str, Any] = Depends(get_current_admin_user),
+) -> dict[str, Any]:
+    """The signed-in admin, or 403 for the service-role key."""
+    if admin.get("is_service_account"):
+        raise HTTPException(
+            status_code=403,
+            detail="Conversations are readable by signed-in admins only",
+        )
+    return admin
+
+
+@router.get("/conversations")
+def list_conversations(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _admin: dict[str, Any] = Depends(require_person_admin),
+) -> dict[str, Any]:
+    """A page of conversations with no subject, body or address in it."""
+    summaries, total = ConversationService(db).conversation_page(
+        limit=limit, offset=offset
+    )
+    return {
+        "conversations": [_summary_as_dict(summary) for summary in summaries],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/conversations/{conversation_id}")
+def read_conversation(
+    conversation_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    admin: dict[str, Any] = Depends(require_person_admin),
+) -> dict[str, Any]:
+    """One conversation, decrypted. Records the view first."""
+    summary = ConversationService(db).summary(conversation_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    viewer = _viewer(admin)
+    store = SqlConversationStore(db)
+    store.record_view(conversation_id, viewer)
+    logger.info("Conversation %s opened by admin id=%s", conversation_id, viewer.id)
+
+    # Decrypted content must not sit in a browser or proxy cache.
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        messages = store.messages(conversation_id)
+    except EncryptionKeyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except DecryptionError as exc:
+        # The message names the column and row ids only.
+        logger.error("Could not decrypt conversation %s: %s", conversation_id, exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from None
+
+    count, recent = store.views(conversation_id)
+    return {
+        "conversation": _summary_as_dict(summary),
+        "messages": [_message_as_dict(message) for message in messages],
+        "views": {
+            "count": count,
+            "recent": [
+                {
+                    "viewer_id": view.viewer_id,
+                    "viewer_email": view.viewer_email,
+                    "viewed_at": _utc_iso(view.viewed_at),
+                }
+                for view in recent
+            ],
+        },
+        "viewer": {"id": viewer.id, "email": viewer.email},
+    }
+
+
+@router.post("/conversations/erase-by-sender")
+def erase_conversations_by_sender(
+    payload: dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    admin: dict[str, Any] = Depends(require_person_admin),
+) -> dict[str, Any]:
+    """Delete the text and address of everything one email address sent.
+
+    The address arrives in the JSON body, never the URL, because request lines
+    are logged by Cloud Run and the access log. It is hashed, matched against
+    ``sender_key``, and neither logged, echoed back nor stored. The body is
+    read as a plain dict and checked by hand so that a validation error cannot
+    quote the address back either.
+    """
+    address = payload.get("email") if isinstance(payload, dict) else None
+    if not isinstance(address, str):
+        raise HTTPException(status_code=422, detail='Send {"email": <address>}')
+    try:
+        result = SqlConversationStore(db).erase_sender(address, _viewer(admin))
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="That is not an email address"
+        ) from None
+    logger.info(
+        "Deletion %s by address: %s message(s) in %s conversation(s), by admin id=%s",
+        result.deletion_id,
+        result.messages_erased,
+        len(result.conversation_ids),
+        admin.get("id"),
+    )
+    return _erasure_as_dict(result)
+
+
+@router.post("/conversations/{conversation_id}/erase")
+def erase_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    admin: dict[str, Any] = Depends(require_person_admin),
+) -> dict[str, Any]:
+    """Delete one conversation's text and addresses, keeping what the bot did."""
+    result = SqlConversationStore(db).erase_conversation(
+        conversation_id, _viewer(admin)
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    logger.info(
+        "Deletion %s of conversation %s: %s message(s), by admin id=%s",
+        result.deletion_id,
+        conversation_id,
+        result.messages_erased,
+        admin.get("id"),
+    )
+    return _erasure_as_dict(result)
+
+
+def _viewer(admin: dict[str, Any]) -> Viewer:
+    return Viewer(id=str(admin.get("id") or "unknown"), email=admin.get("email"))
+
+
+def _erasure_as_dict(result: ErasureResult) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "deletion_id": result.deletion_id,
+        "conversation_ids": result.conversation_ids,
+        "messages_erased": result.messages_erased,
+    }
+
+
+def _summary_as_dict(summary: ConversationSummary) -> dict[str, Any]:
+    return {
+        "id": summary.id,
+        "channel": summary.channel,
+        "thread_key": summary.thread_key,
+        "status": summary.status,
+        "category": summary.category,
+        "tier": summary.tier,
+        "received_at": _utc_iso(summary.received_at),
+        "last_activity_at": _utc_iso(summary.last_activity_at),
+        "inbound_count": summary.inbound_count,
+        "outbound_count": summary.outbound_count,
+        "outcome": summary.outcome,
+        "has_content": summary.has_content,
+        "erased": summary.erased,
+    }
+
+
+def _message_as_dict(message: StoredMessage) -> dict[str, Any]:
+    return {
+        "id": message.id,
+        "direction": message.direction,
+        "action": message.action,
+        "category": message.category,
+        "tier": message.tier,
+        "language": message.language,
+        "draft_outcome": message.draft_outcome,
+        "created_at": _utc_iso(message.created_at),
+        "subject": message.subject,
+        "body": message.body,
+        "sender_address": message.sender_address,
+        "erased": message.erased,
+    }
 
 
 def _utc_iso(value: datetime | None) -> str | None:

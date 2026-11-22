@@ -208,10 +208,23 @@ Two properties of that code are load-bearing and easy to break:
   exactly `{"send_reply"}` - an exact set, because "at most one" would quietly permit a
   rename. The only other outbound path is `EmailForwardNotifier`, whose recipient is
   fixed at construction.
-- **Nothing derived from inbound mail may be logged or stored.** Log lines and exception
-  messages carry Gmail ids, categories, tiers and actions only, because logs persist to the
-  database and reach Sentry, whose redaction cannot recognise a subject or body. `tests/test_email_bot_privacy.py`
-  sweeps the whole fixture corpus and fails on an `@` or a body phrase anywhere.
+- **Mail content is never logged, and stored only encrypted, for admins only.** Since 2026-11-22
+  the bot keeps each conversation (subject, plain-text body, sender address, its own replies) in the
+  `messages.*_encrypted` columns, AES-GCM through `app/utils/field_crypto.py`, and nowhere else; every
+  read and write goes through `app/services/conversation_store.py`. Only a signed-in admin can read
+  one (`GET /admin/email-bot/conversations/{id}`; the cron service account is refused), each open is
+  committed to `conversation_views` before anything is decrypted, and deletion on request NULLs the
+  content and keeps the skeleton. Log lines, exception messages, Discord notices and Sentry events
+  still carry ids, categories, tiers and actions only: logs persist to the database, and no redaction
+  recognises a subject or body. Sentry runs with `include_local_variables=False` and the engine with
+  `hide_parameters=True` because frame locals and failed-INSERT text both used to carry mail.
+  `tests/test_email_bot_privacy.py` sweeps the fixture corpus through all of those sinks, including
+  on a crash, a database error and a failed decrypt.
+- **The key is `CONVERSATION_ENCRYPTION_KEYS`, in the service environment, never the settings
+  table.** The first entry encrypts and every entry decrypts, so rotate by putting a new key in front.
+  Production refuses to start when the key is malformed, or missing while the bot could run; with the
+  bot off it starts. Losing every copy of the key loses the history, so it is backed up outside
+  Google Cloud (`docs/GMAIL_BOT_SETUP.md`, "Conversation records").
 
 ## Evaluating the inbox bot
 

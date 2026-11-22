@@ -204,7 +204,7 @@ class TestInboxBotCard:
         # escaper rather than raw interpolation into innerHTML.
         html = admin_client.get("/admin/dashboard").text
         assert "function escapeHtml" in html
-        assert "escapeHtml(item.category" in html
+        assert "escapeHtml(inboxCategoryLabel(item.category))" in html
 
 
 class TestPollInboxCronField:
@@ -415,3 +415,110 @@ class TestLapsedVolunteerFlag:
         html = admin_client.get("/admin/dashboard").text
 
         assert "Never matched" in html
+
+
+def conversations_script(html: str) -> str:
+    """The JavaScript that renders stored conversations, between its markers."""
+    start = html.index(
+        "// ------------------------------------------------ inbox conversations"
+    )
+    end = html.index(
+        "// ---------------------------------------- end inbox conversations"
+    )
+    return html[start:end]
+
+
+class TestConversationsOnTheCard:
+    """The stored-conversation list, the viewer and the delete controls.
+
+    Message text is attacker-controlled - anyone can mail the inbox - so it is
+    rendered into the page only through ``escapeHtml``, and only after a
+    conversation is opened.
+    """
+
+    def test_the_sections_are_present(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert 'id="inbox-bot-conversations"' in html
+        assert 'id="inboxConversationModal"' in html
+        assert 'id="inbox-bot-erase-sender"' in html
+
+    def test_it_says_text_appears_only_on_open_and_opens_are_recorded(
+        self, admin_client, test_db
+    ):
+        html = admin_client.get("/admin/dashboard").text
+        assert "Message text is shown only when you open a conversation" in html
+        assert "every open is recorded" in html
+
+    def test_it_says_deleting_here_does_not_delete_in_gmail(
+        self, admin_client, test_db
+    ):
+        html = admin_client.get("/admin/dashboard").text
+        assert "does not delete their mail in Gmail" in html
+
+    def test_the_list_and_the_viewer_read_their_endpoints(self, admin_client, test_db):
+        script = conversations_script(admin_client.get("/admin/dashboard").text)
+        assert "fetch(`/admin/email-bot/conversations?" in script
+        assert "fetch(`/admin/email-bot/conversations/${" in script
+        assert "/erase`" in script
+        assert "'/admin/email-bot/conversations/erase-by-sender'" in script
+
+    def test_content_is_fetched_only_when_a_conversation_is_opened(
+        self, admin_client, test_db
+    ):
+        # The list loads with the card; the content endpoint is called only
+        # from openInboxConversation, which only a click reaches.
+        script = conversations_script(admin_client.get("/admin/dashboard").text)
+        body = script[script.index("async function openInboxConversation") :]
+        listing = script[: script.index("async function openInboxConversation")]
+        assert "fetch(`/admin/email-bot/conversations/${" not in listing
+        assert "fetch(`/admin/email-bot/conversations/${" in body
+
+    def test_every_interpolation_into_html_goes_through_the_escaper(
+        self, admin_client, test_db
+    ):
+        script = conversations_script(admin_client.get("/admin/dashboard").text)
+        # Template literals that build markup. The renderer avoids nesting
+        # backticks so that this pairing is exact.
+        html_literals = [
+            literal for literal in re.findall(r"`[^`]*`", script) if "<" in literal
+        ]
+        assert html_literals, "no HTML-building literals found; the check is void"
+        interpolations = [
+            expression
+            for literal in html_literals
+            for expression in re.findall(r"\$\{([^}]*)\}", literal)
+        ]
+        # Already-escaped markup built a line earlier, or a number.
+        assembled = {"rows", "erased", "subject", "content", "text"}
+        unsafe = [
+            expression
+            for expression in interpolations
+            if expression.strip() not in assembled
+            and not re.match(r"^\s*(escapeHtml|Number)\(", expression)
+            and not re.match(r"^\s*inbound \? 'inbound' : 'outbound'\s*$", expression)
+        ]
+        assert unsafe == [], f"interpolated into HTML without escaping: {unsafe}"
+
+    def test_message_text_reaches_markup_only_escaped(self, admin_client, test_db):
+        script = conversations_script(admin_client.get("/admin/dashboard").text)
+        html_literals = [
+            literal for literal in re.findall(r"`[^`]*`", script) if "<" in literal
+        ]
+        for literal in html_literals:
+            for field in ("message.body", "message.subject", "message.sender_address"):
+                for match in re.finditer(re.escape(field), literal):
+                    before = literal[max(0, match.start() - 11) : match.start()]
+                    assert before.endswith("escapeHtml("), (
+                        f"{field} unescaped in {literal}"
+                    )
+
+    def test_the_viewer_forgets_the_text_when_closed(self, admin_client, test_db):
+        script = conversations_script(admin_client.get("/admin/dashboard").text)
+        assert "hidden.bs.modal" in script
+
+    def test_the_page_is_usable_on_a_phone(self, admin_client, test_db):
+        html = admin_client.get("/admin/dashboard").text
+        assert (
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            in html
+        )

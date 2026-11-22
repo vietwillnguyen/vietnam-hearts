@@ -32,15 +32,34 @@ def _redact(value: Any) -> Any:
     return value
 
 
+def _drop_frame_vars(value: Any) -> Any:
+    """Remove ``vars`` from every stack frame, wherever frames appear.
+
+    Local variables are the one part of an event that pattern redaction cannot
+    make safe: an inbox mail's subject and body sit in a frame's locals while
+    it is processed, and neither looks like an address or a token.
+    """
+    if isinstance(value, dict):
+        return {
+            key: _drop_frame_vars(item)
+            for key, item in value.items()
+            if not (key == "vars" and "frames" not in value)
+        }
+    if isinstance(value, list | tuple):
+        return [_drop_frame_vars(item) for item in value]
+    return value
+
+
 def scrub_event(event: dict, hint: dict | None = None) -> dict:
     """before_send: mask personal data and credentials before an event leaves.
 
     Covers exception messages, the log message, breadcrumbs (Sentry records
-    log lines as breadcrumbs before any logging filter has run), request data,
-    extras and captured frame variables - the whole event, since a volunteer
-    address can surface in any of them.
+    log lines as breadcrumbs before any logging filter has run), request data
+    and extras - the whole event, since a volunteer address can surface in any
+    of them. Frame variables are dropped outright rather than redacted, as a
+    second line behind ``include_local_variables=False``.
     """
-    return _redact(event)
+    return _redact(_drop_frame_vars(event))
 
 
 def init_sentry() -> None:
@@ -61,6 +80,10 @@ def init_sentry() -> None:
         # No request IP, cookies or user info on events; scrub_event masks
         # whatever personal data still rides in messages and breadcrumbs.
         send_default_pii=False,
+        # Never snapshot frame locals: while a mail is processed its subject,
+        # body and sender sit in them, and no redaction pattern recognises a
+        # subject or a body.
+        include_local_variables=False,
         before_send=scrub_event,
     )
     logger.info(f"Sentry error tracking initialized for environment={ENVIRONMENT}")

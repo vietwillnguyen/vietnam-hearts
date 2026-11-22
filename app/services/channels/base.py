@@ -21,24 +21,27 @@ EMAIL_CHANNEL = "email"
 class IncomingMessage:
     """One inbound message, normalised.
 
-    ``sender_address`` is the one field here that must never be persisted or
-    logged. It exists because a reply has to be addressed to somebody, and it
-    lives in memory for the length of one pipeline step. ``sender_key`` is the
-    durable form: a SHA-256 of the lower-cased address, which the per-sender
-    cap and the grouping can use without storing who wrote in.
+    ``sender_address``, ``subject`` and ``text`` must never be logged, put in
+    an exception message or sent to Discord. They are persisted in exactly one
+    way: encrypted, through ``ConversationStore.keep_inbound``. ``sender_key``
+    is the form everything else uses: a SHA-256 of the lower-cased address,
+    which the per-sender cap, the grouping and deletion by address can use
+    without decrypting anything.
     """
 
     channel: str
     thread_key: str
     provider_message_id: str
     sender_key: str
-    sender_address: str
-    subject: str
-    text: str
-    rfc_message_id: str
-    references: tuple[str, ...] = ()
+    # repr=False on everything a person wrote or that names them, so an
+    # f-string, a debugger or a Sentry frame snapshot shows ids only.
+    sender_address: str = field(repr=False)
+    subject: str = field(repr=False)
+    text: str = field(repr=False)
+    rfc_message_id: str = field(repr=False)
+    references: tuple[str, ...] = field(default=(), repr=False)
     received_at: datetime | None = None
-    headers: Mapping[str, str] = field(default_factory=dict)
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     label_ids: tuple[str, ...] = ()
 
 
@@ -52,11 +55,11 @@ class OutboundReply:
     """
 
     thread_key: str
-    to_address: str
-    subject: str
-    in_reply_to: str
-    references: tuple[str, ...]
-    text: str
+    to_address: str = field(repr=False)
+    subject: str = field(repr=False)
+    in_reply_to: str = field(repr=False)
+    references: tuple[str, ...] = field(repr=False)
+    text: str = field(repr=False)
     language: str
     kind: str
 

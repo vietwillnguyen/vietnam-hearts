@@ -150,14 +150,14 @@ One Alembic migration adds the parent spec's two tables with the email-specific 
 | Column | Notes |
 |---|---|
 | `thread_key` | Gmail `threadId` for email. The parent spec said root `Message-ID`; the thread id is what drafts, replies and thread reads need, and the `Message-ID` lives on the message row |
-| `sender_key` | SHA-256 of the lower-cased sender address. Enough for the per-sender cap and for grouping; the address itself is never stored |
+| `sender_key` | SHA-256 of the lower-cased sender address. Enough for the per-sender cap, for grouping and for deletion by address. The address itself is stored only encrypted, on the message row (amended 2026-11-22, below) |
 | `status` | `bot`, `paused_handoff`, `paused_manual`. A human reply from the inbox address moves a thread to `paused_manual` and only a dashboard resume moves it back |
 
 `messages`, as in the parent spec, with:
 
 | Column | Notes |
 |---|---|
-| `text` | Outbound bot text only on the email channel. Inbound bodies are not copied out of Gmail; the audit row carries ids and triage metadata |
+| `text` | Replaced 2026-11-22 by the encrypted content columns (amendment below). Originally: outbound bot text only; inbound bodies not copied out of Gmail |
 | `rfc_message_id`, `gmail_thread_id` | For `In-Reply-To` and `References`, and for the Gmail link on the dashboard |
 | `language` | `en`, `vi`, `other` |
 | `triage_confidence`, `classifier` | The deciding classifier's confidence and name |
@@ -322,7 +322,7 @@ If summary generation fails, the forward and the post go out without it.
 | Circuit breaker | Three consecutive infrastructure failures in one run abort the run, leave the remaining mail unlabelled for the next run, record `aborted_reason`, and report to Sentry. A systemic outage must not turn into twenty forwards |
 | Idempotence | Unique index on the Gmail message id; the inbound row is committed before any side effect; `VH-Bot/Seen` is applied last. A re-listed message re-applies labels and does nothing else |
 | RFC 3834 | Outbound replies carry `Auto-Submitted: auto-replied` and `X-Auto-Response-Suppress: All`, so well-behaved auto-responders stay silent. Inbound guards catch the rest |
-| Privacy of logs | Log lines carry Gmail ids, category, tier, language and action; never a subject, body or address, because logs persist to the database. Exception messages raised by the pipeline carry ids only, since Sentry runs with `send_default_pii=True` for request debugging. The database stores sender hashes and outbound bot text, not inbound bodies. The existing `Processing chat message` line in `BotService.chat()`, which logs the first 100 characters of the message, is removed. A test drives the real `BotService.chat()`, with only retrieval and generation mocked, and checks captured log output for `@` and for fixture body text |
+| Privacy of logs | Log lines carry Gmail ids, category, tier, language and action; never a subject, body or address, because logs persist to the database. Exception messages raised by the pipeline carry ids only, since Sentry runs with `send_default_pii=True` for request debugging. The database stores sender hashes and outbound bot text, not inbound bodies (superseded 2026-11-22: inbound bodies and sender addresses are now stored too, encrypted; see the amendment below). The existing `Processing chat message` line in `BotService.chat()`, which logs the first 100 characters of the message, is removed. A test drives the real `BotService.chat()`, with only retrieval and generation mocked, and checks captured log output for `@` and for fixture body text |
 | Audit | Every action is a `messages` row with `action` and the id of anything created, and every run is an `email_bot_runs` row; labels mirror both inside Gmail |
 
 ## Language handling
@@ -401,6 +401,29 @@ A failed send therefore takes the same path as any other failure after the
 inbound row is committed: the mail is forwarded to `ESCALATION_OWNER_EMAIL`,
 posted to Discord, and the thread is paused for handoff. What has not changed is
 that the mail is never relabelled `Sent`, because nothing was sent.
+
+## Amendment 2026-11-22: conversations are kept, encrypted
+
+The owner decided that the bot keeps a full record of each conversation for traceability, with no expiry.
+This reverses the "inbound bodies are not copied out of Gmail" rule in the data model and in the privacy row of the safety controls, under four safeguards.
+
+1. **Disclosed.** The privacy policy's inbox section says a copy is kept and only administrators can read it, and its retention sentence says inbox conversations are kept until the person asks for deletion.
+2. **Deletable on request.** By conversation, or by email address through `sender_key`, without decrypting anything.
+   Deletion overwrites the content with NULL and keeps the skeleton (ids, timestamps, category, tier, language, action), because idempotence, the caps, the metrics and the escalations view read it.
+   Every request writes a `conversation_deletions` row with no content.
+3. **Readable by admins only, every view recorded.** The list endpoint carries no content; one conversation is decrypted per request, after a `conversation_views` row is committed.
+   The cron service-role key is refused, since no scheduled job reads mail.
+4. **Never in logs, Discord or Sentry.** Unchanged from the original rule, and extended: Sentry no longer captures frame locals, and database errors no longer quote bound parameters.
+
+What is stored: an inbound mail's subject (cut at 500 characters), plain-text body (cut at 20,000 characters with a marker), and sender address, in `messages.subject_encrypted`, `body_encrypted` and `sender_address_encrypted`; and the bot's own text in `body_encrypted` on outbound rows.
+`messages.text` is dropped, so there is one copy of the text and it is encrypted.
+Attachments, raw HTML and headers are not stored, and neither is mail the guards skip before triage (automated mail, our own mail, mail with no usable sender).
+
+The content is encrypted in the application with AES-256-GCM before it reaches the database (`app/utils/field_crypto.py`), with the column bound in as associated data and the key id in every stored value so keys can be rotated without rewriting rows.
+The key lives in the Cloud Run environment as `CONVERSATION_ENCRYPTION_KEYS`, so a copy of the database alone cannot be read; anyone with both the database and the service environment can.
+Storage sits behind `ConversationStore` (`app/services/conversation_store.py`) so it moves with the engine into the shared package.
+
+A draft whose text was deleted before it was reconciled resolves as `unmeasured` and is left out of the acceptance rate, since without its text "sent unchanged" cannot be told from "edited".
 
 ## Evaluation gate
 

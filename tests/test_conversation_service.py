@@ -27,6 +27,7 @@ from app.services.conversation_service import (
     ConversationService,
 )
 from app.services.triage.policy import decide
+from tests.fixtures.conversations import stored
 from tests.fixtures.email_bot import signals
 
 
@@ -280,14 +281,14 @@ class TestOutstandingDraft:
 
 
 class TestAuditRows:
-    def test_an_inbound_row_never_stores_the_body(self, service):
-        # The inbound body stays in Gmail. The row carries ids and triage
-        # metadata, which is everything an investigation needs without the
-        # database becoming a second copy of the inbox.
+    def test_an_inbound_row_stores_the_body_only_encrypted(self, service):
+        # Decided 2026-11-22: the conversation is kept, encrypted. The body is
+        # on the row, and never as plaintext.
         conversation = service.get_or_create(EMAIL_CHANNEL, "thread-1", "hash-a")
         row = service.record_inbound(conversation, message(), decision())
 
-        assert row.text is None
+        assert stored(row, "body_encrypted") == "How do I sign up?"
+        assert "sign up" not in row.body_encrypted
         assert row.provider_message_id == "msg-1"
         assert row.category == "signup"
         assert row.tier == "auto_answer"
@@ -339,7 +340,8 @@ class TestAuditRows:
             kind="signup",
         )
 
-        assert row.text == "Thanks for writing."
+        assert service.outbound_text(row) == "Thanks for writing."
+        assert "Thanks for writing." not in row.body_encrypted
         assert row.language == "vi"
         assert row.sources == ["kb"]
         assert row.category == "signup"

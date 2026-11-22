@@ -151,6 +151,12 @@ GMAIL_OAUTH_CLIENT_ID = os.getenv("GMAIL_OAUTH_CLIENT_ID")
 GMAIL_OAUTH_CLIENT_SECRET = os.getenv("GMAIL_OAUTH_CLIENT_SECRET")
 GMAIL_OAUTH_REFRESH_TOKEN = os.getenv("GMAIL_OAUTH_REFRESH_TOKEN")
 
+# CONVERSATION_ENCRYPTION_KEYS (the key the bot's stored conversations are
+# encrypted with) is deliberately not read here: app/utils/field_crypto.py
+# reads it from the environment at the point of use, so it is never held in a
+# module attribute that a debugger, a repr or a stray log line could show.
+# The startup rule for it is field_crypto.check_storage_key_at_startup.
+
 # Jev (TypeSafe AI), the deciding triage classifier.
 TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
 
