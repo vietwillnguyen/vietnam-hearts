@@ -389,14 +389,19 @@ class EmailBotPipeline:
         except (_CircuitOpen, GmailAuthRevoked):
             raise
         except Exception as exc:
-            self._note_failure(
-                f"{message.provider_message_id} failed: {type(exc).__name__}"
-            )
+            # Rolled back first: a database error leaves the session unusable,
+            # and without this every later message, the last-error banner and
+            # the run row itself fail behind it, leaving a run that never
+            # finishes and blocks the next one for STALE_RUN_AFTER.
+            self._rollback_quietly()
             logger.error(
                 "Message %s failed: %s",
                 message.provider_message_id,
                 type(exc).__name__,
                 exc_info=True,
+            )
+            self._note_failure(
+                f"{message.provider_message_id} failed: {type(exc).__name__}"
             )
             return
 
@@ -887,6 +892,12 @@ class EmailBotPipeline:
             )
 
         return result
+
+    def _rollback_quietly(self) -> None:
+        try:
+            self.db.rollback()
+        except Exception:
+            logger.error("Could not roll back after a failed message", exc_info=True)
 
     def _count_capped(self, _decision: CapDecision) -> None:
         # Drafted while the mode says send because a cap was reached. Counted

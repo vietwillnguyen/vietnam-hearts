@@ -23,7 +23,7 @@ logs nothing, and its errors carry row ids only.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -57,10 +57,11 @@ class StoredMessage:
     language: str | None
     draft_outcome: str | None
     created_at: datetime | None
-    subject: str | None
-    body: str | None
-    sender_address: str | None
-    erased: bool
+    # Kept out of the repr so a log line or a Sentry frame shows ids only.
+    subject: str | None = field(repr=False)
+    body: str | None = field(repr=False)
+    sender_address: str | None = field(repr=False)
+    erased: bool = False
 
 
 @runtime_checkable

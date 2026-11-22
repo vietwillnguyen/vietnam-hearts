@@ -19,7 +19,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base
@@ -48,13 +47,13 @@ def set_test_env():
 
 @pytest.fixture
 def test_engine():
-    engine = create_engine(
-        # uri=true must be in the URL query itself; as a connect_args entry the
-        # dialect ignores it and sqlite creates a literal file named "file::memory:"
-        "sqlite:///file::memory:?cache=shared&uri=true",
-        connect_args={"check_same_thread": False},
-    )
-    return engine
+    from app.database import build_engine
+
+    # Built like the app's own engine (hide_parameters included), so a test of
+    # what a database error says is a test of what production would say.
+    # uri=true must be in the URL query itself; as a connect_args entry the
+    # dialect ignores it and sqlite creates a literal file named "file::memory:"
+    return build_engine("sqlite:///file::memory:?cache=shared&uri=true")
 
 
 @pytest.fixture

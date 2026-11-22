@@ -1,14 +1,23 @@
-"""Nothing the bot writes down may contain a subject, a body, or an address.
+"""Mail content is stored in exactly one place, encrypted, and nowhere else.
 
-Three destinations, all of which persist further than they look:
+Decided 2026-11-22: the bot keeps each conversation - subject, plain-text body,
+sender address and its own replies - encrypted in the ``*_encrypted`` columns,
+readable by admins only. Everywhere else the old rule still holds, and these
+are the destinations it guards, all of which persist further than they look:
 
 - **Log lines.** ``PERSIST_LOGS_TO_DB`` puts application logs in the database and
   the admin dashboard renders them, so a logged address is a durable copy of it.
 - **Exception messages.** Anything an exception carries is sent to Sentry, and
   ``sentry_config.scrub_event`` is a pattern-based safety net that cannot
   recognise a subject or body, so it must not be relied on here.
-- **Database rows.** The design stores sender hashes and outbound bot text, and
-  deliberately not inbound bodies.
+- **Sentry events themselves**, including the local variables of every stack
+  frame, which is where an ``IncomingMessage`` sits while it is processed.
+- **Discord notices.**
+- **Database rows** other than the encrypted columns, which hold ciphertext only.
+
+Each is checked on the happy path and on the failure paths that are most
+likely to dump state: a failing message, a database error, and a value that
+will not decrypt.
 
 The headline test drives the real ``BotService.chat()`` with only retrieval and
 generation mocked, because the log line this replaces
@@ -30,7 +39,7 @@ from unittest.mock import AsyncMock, MagicMock
 import anyio
 import pytest
 
-from app.models import Conversation, Message
+from app.models import Conversation, EmailBotRun, Message
 from app.services.bot_service import BotService
 from app.services.channels.gmail import GmailAdapter
 from app.services.email_bot.pipeline import EmailBotPipeline
@@ -45,6 +54,7 @@ from tests.fixtures.email_bot import (
     signals,
 )
 from tests.fixtures.logs import attached_caplog
+from tests.fixtures.sentry import captured_sentry
 
 OWNER = "owner@example.com"
 FORM = "https://docs.google.com/forms/d/e/1FAIpQLSexample/viewform"
@@ -334,3 +344,259 @@ class TestTheDiscordPayloadCarriesNoPII:
             assert "@example.com" not in content
             for phrase in swept["forbidden"]:
                 assert phrase not in content
+
+
+class TestTheDatabaseKeepsContentOnlyInTheEncryptedColumns:
+    def test_no_plaintext_column_anywhere_holds_a_fixture_phrase(self, swept, test_db):
+        # Every column of every row in every conversation table, as the
+        # database itself returns it.
+        from sqlalchemy import text
+
+        dumped = []
+        for table in ("messages", "conversations", "email_bot_runs", "settings"):
+            for row in test_db.execute(text(f"SELECT * FROM {table}")).all():
+                dumped.extend(str(value) for value in row if value is not None)
+        everything = "\n".join(dumped)
+        assert swept["forbidden"]
+        for phrase in swept["forbidden"]:
+            assert phrase not in everything, f"stored in plaintext: {phrase!r}"
+
+
+class TestObjectsHoldingContentDoNotPrintIt:
+    """A repr is what an f-string, a debugger, a log line or a Sentry frame shows."""
+
+    def test_an_incoming_message_repr_carries_ids_only(self):
+        from app.services.channels.base import IncomingMessage
+
+        message = IncomingMessage(
+            channel="email",
+            thread_key="thread-1",
+            provider_message_id="msg-1",
+            sender_key="hash",
+            sender_address=payloads.TEST_SENDER,
+            subject="A very private subject line",
+            text="A very private body that must never be printed.",
+            rfc_message_id="<abc@x>",
+            headers={"From": payloads.TEST_SENDER},
+        )
+        printed = repr(message) + str(message)
+        assert "msg-1" in printed
+        assert payloads.TEST_SENDER not in printed
+        assert "private" not in printed
+
+    def test_a_stored_message_repr_carries_ids_only(self):
+        from app.services.conversation_store import StoredMessage
+
+        row = StoredMessage(
+            id=7,
+            direction="inbound",
+            action="labelled",
+            category="faq",
+            tier="auto_answer",
+            language="en",
+            draft_outcome=None,
+            created_at=None,
+            subject="A very private subject line",
+            body="A very private body that must never be printed.",
+            sender_address=payloads.TEST_SENDER,
+            erased=False,
+        )
+        printed = repr(row)
+        assert "id=7" in printed
+        assert payloads.TEST_SENDER not in printed
+        assert "private" not in printed
+
+
+class TestADecryptFailureNamesIdsOnly:
+    def test_a_row_encrypted_under_another_key_fails_with_ids(self, swept, test_db):
+        import base64
+
+        from app.services.conversation_store import SqlConversationStore
+        from app.utils.field_crypto import DecryptionError, parse_keys
+
+        row = (
+            test_db.query(Message)
+            .filter(Message.direction == "inbound", Message.body_encrypted.isnot(None))
+            .first()
+        )
+        other = parse_keys("test:" + base64.urlsafe_b64encode(b"x" * 32).decode())
+        store = SqlConversationStore(test_db, other)
+
+        with pytest.raises(DecryptionError) as raised:
+            store.messages(row.conversation_id)
+
+        text = str(raised.value)
+        assert f"message id={row.id}" in text
+        assert f"conversation id={row.conversation_id}" in text
+        assert row.body_encrypted not in text
+        assert row.body_encrypted.split(":")[-1][:16] not in text
+        assert "@" not in text
+        for phrase in swept["forbidden"]:
+            assert phrase not in text
+        # Nothing chained underneath for Sentry to render either.
+        assert raised.value.__cause__ is None
+
+    def test_reading_logs_nothing_about_content(self, swept, test_db, caplog):
+        from app.services.conversation_store import SqlConversationStore
+
+        store = SqlConversationStore(test_db)
+        with attached_caplog(caplog, level=logging.DEBUG):
+            for conversation in test_db.query(Conversation):
+                store.messages(conversation.id)
+
+        for phrase in swept["forbidden"]:
+            assert phrase not in caplog.text
+        assert "@" not in caplog.text
+
+
+def one_mail_pipeline(db, notifier, **overrides):
+    fixtures = [load_gmail("faq_en.json")]
+    transport = FakeTransport(mails=fixtures)
+    return (
+        EmailBotPipeline(
+            db=db,
+            adapter=GmailAdapter(transport),
+            classifier=overrides.pop(
+                "classifier",
+                FakeClassifier(default=signals(category="faq", confidence=0.9)),
+            ),
+            notifier=notifier,
+            settings=EmailBotSettings(
+                mode="draft",
+                escalation_owner_email=OWNER,
+                signup_form_link=FORM,
+                per_run_cap=50,
+            ),
+            bot_service=real_bot_service(),
+        ),
+        fixtures,
+    )
+
+
+class TestFailurePathsLeakNothing:
+    """The paths most likely to dump state: a crash mid-message and a database error."""
+
+    def _assert_clean(self, fixtures, log_text, sentry_text):
+        forbidden = secrets_in(fixtures)
+        assert forbidden
+        for phrase in forbidden:
+            assert phrase not in log_text, f"in the logs: {phrase!r}"
+            assert phrase not in sentry_text, f"in Sentry: {phrase!r}"
+        assert payloads.TEST_SENDER not in log_text
+        assert payloads.TEST_SENDER not in sentry_text
+
+    def test_a_message_that_crashes_mid_processing(self, test_db, caplog, monkeypatch):
+        class Exploding(FakeClassifier):
+            def classify(self, message):
+                # Raised with the message in scope, which is exactly what a
+                # Sentry frame snapshot would capture.
+                raise RuntimeError("classifier blew up")
+
+        notifier = RecordingNotifier()
+        pipeline, fixtures = one_mail_pipeline(
+            test_db, notifier, classifier=Exploding()
+        )
+        with (
+            captured_sentry(monkeypatch) as sentry_payload,
+            attached_caplog(caplog, level=logging.DEBUG),
+        ):
+            summary = run(pipeline)
+            sentry_text = sentry_payload()
+
+        assert summary.errors == 1
+        assert "classifier blew up" in sentry_text, "no Sentry event was captured"
+        self._assert_clean(fixtures, caplog.text, sentry_text)
+
+    def test_a_database_error_while_recording_the_mail(
+        self, test_db, caplog, monkeypatch
+    ):
+        import sqlite3
+
+        from sqlalchemy import event
+
+        engine = test_db.get_bind()
+
+        def refuse_message_writes(conn, cursor, statement, parameters, context, many):
+            if (
+                statement.lstrip()
+                .upper()
+                .startswith(("INSERT INTO MESSAGES", "UPDATE MESSAGES"))
+            ):
+                raise sqlite3.OperationalError("disk I/O error")
+
+        event.listen(engine, "before_cursor_execute", refuse_message_writes)
+        notifier = RecordingNotifier()
+        pipeline, fixtures = one_mail_pipeline(test_db, notifier)
+        try:
+            with (
+                captured_sentry(monkeypatch) as sentry_payload,
+                attached_caplog(caplog, level=logging.DEBUG),
+            ):
+                summary = run(pipeline)
+                sentry_text = sentry_payload()
+        finally:
+            event.remove(engine, "before_cursor_execute", refuse_message_writes)
+
+        assert summary.errors >= 1
+        assert "OperationalError" in caplog.text, "the database error never happened"
+        # The session was rolled back, so the run itself still finished.
+        assert test_db.query(EmailBotRun).one().finished_at is not None
+        assert "disk I/O error" in sentry_text, "no Sentry event was captured"
+        self._assert_clean(fixtures, caplog.text, sentry_text)
+        # Not even the ciphertext: SQLAlchemy's error text quotes bound
+        # parameters unless the engine hides them.
+        assert "vhenc:" not in caplog.text
+        assert "vhenc:" not in sentry_text
+
+
+def test_the_app_engine_hides_bound_parameters_in_errors():
+    from app.database import engine
+
+    assert engine.hide_parameters is True
+
+
+class TestSentryIsConfiguredNotToCaptureLocals:
+    def test_local_variables_are_off(self, monkeypatch):
+        captured = {}
+
+        def init(**kwargs):
+            captured.update(kwargs)
+
+        from app.utils import sentry_config
+
+        monkeypatch.setattr(
+            sentry_config, "SENTRY_DSN", "https://key@o0.ingest.sentry.io/0"
+        )
+        monkeypatch.setenv("TESTING", "false")
+        monkeypatch.setattr(sentry_config.sentry_sdk, "init", init)
+        sentry_config.init_sentry()
+
+        assert captured["include_local_variables"] is False
+
+    def test_scrub_event_drops_frame_variables_as_a_second_line(self):
+        from app.utils.sentry_config import scrub_event
+
+        event = {
+            "exception": {
+                "values": [
+                    {
+                        "stacktrace": {
+                            "frames": [
+                                {
+                                    "function": "_handle",
+                                    "vars": {"message": "IncomingMessage(text='x')"},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "threads": {
+                "values": [{"stacktrace": {"frames": [{"vars": {"body": "private"}}]}}]
+            },
+        }
+        scrubbed = scrub_event(event, {})
+        frames = scrubbed["exception"]["values"][0]["stacktrace"]["frames"]
+        assert "vars" not in frames[0]
+        assert frames[0]["function"] == "_handle"
+        assert "vars" not in scrubbed["threads"]["values"][0]["stacktrace"]["frames"][0]

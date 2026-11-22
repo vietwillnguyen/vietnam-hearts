@@ -25,13 +25,24 @@ from .utils.logging_config import get_database_logger
 # Initialize logger
 logger = get_database_logger()
 
+
+def build_engine(url: str):
+    """The engine the app uses; tests build theirs here too, so they match.
+
+    ``hide_parameters`` keeps bound values out of every database error's text.
+    Without it a failed INSERT quotes the whole row, and that text reaches the
+    logs, the ``system_logs`` table and Sentry - volunteer addresses, and the
+    inbox bot's ciphertext, included.
+    """
+    return create_engine(
+        url,
+        connect_args={"check_same_thread": False} if url.startswith("sqlite") else {},
+        hide_parameters=True,
+    )
+
+
 # Create database engine
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-    if DATABASE_URL.startswith("sqlite")
-    else {},
-)
+engine = build_engine(DATABASE_URL)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
