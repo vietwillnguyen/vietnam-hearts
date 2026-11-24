@@ -87,6 +87,38 @@ class TestDatabasePersistenceWiring:
         assert not any(isinstance(h, DatabaseLogHandler) for h in logger.handlers)
 
 
+class TestLibraryLoggers:
+    """A library logger carrying only its NullHandler must still reach the app's sinks."""
+
+    def test_null_handler_does_not_count_as_configured(self):
+        library = logging.getLogger("test-library-with-null-handler")
+        library.addHandler(logging.NullHandler())
+        logger = setup_logger("test-library-with-null-handler")
+        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+        assert logger.propagate is False
+
+    def test_inbox_core_warning_reaches_app_handlers(self, monkeypatch):
+        import app.services.email_bot.client  # noqa: F401
+
+        configured = logging.getLogger("inbox_core")
+        sinks = [
+            h for h in configured.handlers if not isinstance(h, logging.NullHandler)
+        ]
+        assert sinks, "inbox_core has no app sink attached"
+        emitted: list[tuple[logging.Handler, logging.LogRecord]] = []
+        for handler in sinks:
+            monkeypatch.setattr(
+                handler, "emit", lambda record, h=handler: emitted.append((h, record))
+            )
+
+        logging.getLogger("inbox_core.handlers").warning(
+            "retrieval failed for %s", "m-1"
+        )
+
+        reached = {type(h) for h, r in emitted if r.name == "inbox_core.handlers"}
+        assert logging.StreamHandler in reached
+
+
 if __name__ == "__main__":
     test_logs_appear_console_and_file()
 
