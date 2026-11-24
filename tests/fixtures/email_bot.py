@@ -13,10 +13,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from inbox_core import TriageSignals, TriageUnavailable
+
 from app.services.channels.gmail_transport import RawMail
-from app.services.email_bot.delivery import DeliveryResult
 from app.services.notifier import EscalationEvent
-from app.services.triage.protocol import TriageSignals, TriageUnavailable
 from tests.fixtures import gmail_payloads as payloads
 
 RECORDED_GMAIL = Path(__file__).parent / "gmail_recorded"
@@ -220,16 +220,23 @@ class RecordingNotifier:
 
 
 class FakeSendSink:
-    """Stands in for E3's SendSink so E1 can prove it is never reached."""
+    """A ``ReplySink`` that would send if asked, and records whether it was.
 
-    action = "sent"
+    Holds through the real adapter, so a draft still lands in the fake
+    transport. Its send path is what the draft-mode tests prove is never
+    reached: unlike the sink the pipeline builds, this one does not refuse.
+    """
 
-    def __init__(self) -> None:
+    def __init__(self, adapter: Any = None) -> None:
+        self.adapter = adapter
         self.delivered: list[Any] = []
 
-    def deliver(self, reply: Any) -> DeliveryResult:
+    def hold_for_review(self, reply: Any) -> str:
+        return self.adapter.draft(reply)
+
+    def send_to_public(self, reply: Any) -> str:
         self.delivered.append(reply)
-        return DeliveryResult(action="sent", gmail_message_id_out="sent-1")
+        return "sent-1"
 
 
 class FakeBotService:

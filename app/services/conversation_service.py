@@ -25,13 +25,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from inbox_core import IncomingMessage, TriageDecision, TriageSignals
+from inbox_core.channels.email import EmailDetails
+from inbox_core.triage import Tier
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message
-from app.services.channels.base import IncomingMessage
 from app.services.conversation_store import ConversationStore, SqlConversationStore
-from app.services.triage.protocol import Tier, TriageDecision, TriageSignals
 from app.utils.logging_config import get_logger
 
 logger = get_logger("conversation_service")
@@ -83,6 +84,11 @@ class ConversationSummary:
     outcome: str
     has_content: bool
     erased: bool
+
+
+def _rfc_message_id(message: IncomingMessage) -> str | None:
+    details = message.extension_as(EmailDetails)
+    return details.rfc_message_id if details else None
 
 
 def _outcome(status: str, rows: list[Message]) -> str:
@@ -221,7 +227,7 @@ class ConversationService:
         )
         row.language = decision.language
         row.action = action
-        row.rfc_message_id = message.rfc_message_id
+        row.rfc_message_id = _rfc_message_id(message)
         row.gmail_thread_id = message.thread_key
         row.sender_key = message.sender_key
         self.store.keep_inbound(row, message)
@@ -262,7 +268,7 @@ class ConversationService:
             provider_message_id=message.provider_message_id,
         )
         row.action = action
-        row.rfc_message_id = message.rfc_message_id
+        row.rfc_message_id = _rfc_message_id(message)
         row.gmail_thread_id = message.thread_key
         row.sender_key = message.sender_key
         if keep_content:

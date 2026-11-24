@@ -163,7 +163,7 @@ class TestTheRefusalSentinel:
 
     @pytest.mark.asyncio
     async def test_the_sentinel_in_the_generated_text_raises(self):
-        from app.services.triage.prompts import REFUSAL_SENTINEL
+        from inbox_core.prompts import REFUSAL_SENTINEL
 
         client = MagicMock()
         client.models.generate_content.return_value = MagicMock(text=REFUSAL_SENTINEL)
@@ -174,7 +174,7 @@ class TestTheRefusalSentinel:
 
     @pytest.mark.asyncio
     async def test_the_sentinel_anywhere_in_the_text_raises(self):
-        from app.services.triage.prompts import REFUSAL_SENTINEL
+        from inbox_core.prompts import REFUSAL_SENTINEL
 
         client = MagicMock()
         client.models.generate_content.return_value = MagicMock(
@@ -224,7 +224,7 @@ class TestTheEmailPromptCarriesEveryProhibition:
         assert prohibition in self._prompt()
 
     def test_the_refusal_sentinel_is_offered_to_the_model(self):
-        from app.services.triage.prompts import REFUSAL_SENTINEL
+        from inbox_core.prompts import REFUSAL_SENTINEL
 
         assert REFUSAL_SENTINEL in self._prompt()
 

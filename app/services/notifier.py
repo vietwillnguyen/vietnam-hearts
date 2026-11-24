@@ -20,8 +20,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from app.services.channels.base import IncomingMessage
-from app.services.triage.protocol import TriageDecision
+from inbox_core import IncomingMessage, TriageDecision
+
 from app.utils.logging_config import get_logger
 
 logger = get_logger("notifier")

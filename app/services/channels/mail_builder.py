@@ -21,7 +21,8 @@ from email.utils import formatdate, make_msgid
 from html.parser import HTMLParser
 from typing import Any
 
-from app.services.channels.base import OutboundReply
+from inbox_core import OutboundReply
+from inbox_core.channels.email import EmailReplyDetails
 
 # RFC 3834 section 5 and Microsoft's X-Auto-Response-Suppress. Both say the
 # same thing to two different families of responder: this is a machine reply,
@@ -86,16 +87,21 @@ def build_reply(
     ``message_id`` and ``date`` are injectable so the bytes are deterministic
     under test; in production both default to freshly generated values.
     """
+    details = reply.extension_as(EmailReplyDetails) or EmailReplyDetails()
+    # The chain ends with the message being answered (``gmail.email_reply``),
+    # so its last entry is In-Reply-To and the rest is what it inherited.
+    *inherited, parent = details.references or ("",)
+
     message = EmailMessage()
     message["From"] = f"{Header(from_name, 'utf-8').encode()} <{from_address}>"
     message["To"] = reply.to_address
-    message["Subject"] = reply_subject(reply.subject)
+    message["Subject"] = reply_subject(details.subject)
     message["Date"] = date or formatdate(localtime=True)
     message["Message-ID"] = message_id or make_msgid()
 
-    if reply.in_reply_to:
-        message["In-Reply-To"] = reply.in_reply_to
-    chain = reference_chain(reply.references, reply.in_reply_to)
+    if parent:
+        message["In-Reply-To"] = parent
+    chain = reference_chain(tuple(inherited), parent)
     if chain:
         message["References"] = chain
 

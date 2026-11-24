@@ -10,8 +10,10 @@ import os
 os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 
 import pytest
+from inbox_core import IncomingMessage, decide
+from inbox_core.channels.email import EmailDetails
 
-from app.services.channels.base import EMAIL_CHANNEL, IncomingMessage
+from app.services.channels.gmail import EMAIL_CHANNEL
 from app.services.conversation_service import (
     ACTION_DRAFTED,
     ACTION_FORWARDED,
@@ -26,7 +28,7 @@ from app.services.conversation_service import (
     STATUS_PAUSED_MANUAL,
     ConversationService,
 )
-from app.services.triage.policy import decide
+from app.services.email_bot.client import client_config
 from tests.fixtures.conversations import stored
 from tests.fixtures.email_bot import signals
 
@@ -47,12 +49,12 @@ def message(
         sender_address="sender@example.com",
         subject="Volunteering",
         text="How do I sign up?",
-        rfc_message_id=f"<{message_id}@x>",
+        extension=EmailDetails(rfc_message_id=f"<{message_id}@x>"),
     )
 
 
 def decision(category: str = "signup", **kwargs):
-    return decide(signals(category=category, **kwargs), 0.6)
+    return decide(signals(category=category, **kwargs), client_config().triage)
 
 
 class TestDedupe:

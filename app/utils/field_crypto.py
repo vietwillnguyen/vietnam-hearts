@@ -230,7 +230,7 @@ def check_storage_key_at_startup(
 
     Returns the key status so the caller can log it.
     """
-    from app.services.email_bot.delivery import DeliveryMode, parse_mode
+    from inbox_core.delivery import DeliveryMode, parse_mode
 
     status = key_status(raw_keys)
     if environment != "production" or status == STATUS_OK:

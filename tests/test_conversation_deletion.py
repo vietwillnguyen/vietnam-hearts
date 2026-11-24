@@ -339,7 +339,7 @@ class TestEverythingElseStillWorksOnErasedRows:
         message = corpus["parsed"][row.provider_message_id]
         service = ConversationService(test_db, store=store)
         conversation = test_db.get(Conversation, row.conversation_id)
-        from app.services.triage.protocol import TriageDecision
+        from inbox_core import TriageDecision
 
         service.record_inbound(
             conversation,

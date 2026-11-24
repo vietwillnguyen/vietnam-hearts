@@ -139,7 +139,7 @@
     "id": 13,
     "last_category": "faq",
     "last_tier": "needs_admin",
-    "pause_reason": "needs_admin: unsupported language other",
+    "pause_reason": "needs_admin: unsupported language code",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "thread-syn-hola"
@@ -314,7 +314,7 @@
     "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.92\nWhy: the sender asked for a person\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-call"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: other | Confidence: 0.90\nWhy: unsupported language other\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-hola"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: other | Confidence: 0.90\nWhy: unsupported language code\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-hola"
    },
    {
     "content": "**Volunteer inbox** needs_admin - signup\nLanguage: en | Confidence: 0.41\nWhy: confidence 0.41 below threshold 0.60\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-unsure"
@@ -481,7 +481,7 @@
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, other)<br>Why it escalated: unsupported language other<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-hola\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Hola</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hola, quiero ser voluntario.</pre>",
+    "html_body": "<p>Category: faq (needs_admin, other)<br>Why it escalated: unsupported language code<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-hola\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Hola</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hola, quiero ser voluntario.</pre>",
     "subject": "[VH bot: needs_admin] Hola",
     "to_email": "owner@example.com"
    },
@@ -728,7 +728,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.94,
     "content": {
      "body": "Hello,\n\nI am moving to Ho Chi Minh City next month and would love to help out with your English classes. How do I sign up?\n\nThanks a lot!",
@@ -789,7 +789,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.89,
     "content": {
      "body": "Xin chào,\n\nMình muốn tham gia làm tình nguyện viên dạy tiếng Anh cùng các bạn. Mình cần làm gì để đăng ký ạ?\n\nCảm ơn nhiều!",
@@ -850,7 +850,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.86,
     "content": {
      "body": "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
@@ -915,7 +915,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Hello!\n\nI would like to volunteer as a teaching assistant.",
@@ -976,7 +976,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.7,
     "content": {
      "body": "",
@@ -1118,7 +1118,7 @@
    {
     "action": "labelled",
     "category": "safeguarding_legal",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.91,
     "content": {
      "body": "Chào các bạn,\n\nMình là phụ huynh và mình có một lo ngại về sự an toàn của các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.\n\nXin cảm ơn.",
@@ -1179,7 +1179,7 @@
    {
     "action": "labelled",
     "category": "sponsorship",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.82,
     "content": {
      "body": "Dear Vietnam Hearts,\n\nOur company would like to sponsor your programme and can commit a budget for the coming year. Who should we speak to about a contract?\n\nKind regards",
@@ -1240,7 +1240,7 @@
    {
     "action": "labelled",
     "category": "donation",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.58,
     "content": {
      "body": "Hello,\n\nWhat time do the classes start? Also, my company would like to donate some money to support the programme.\n\nThanks",
@@ -1301,7 +1301,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.92,
     "content": {
      "body": "Could someone phone me about this?",
@@ -1362,7 +1362,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Hola, quiero ser voluntario.",
@@ -1423,7 +1423,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.41,
     "content": {
      "body": "I might want to help?",
@@ -1484,7 +1484,7 @@
    {
     "action": "labelled",
     "category": "volunteer_ops",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "I cannot make Thursday this week.",
@@ -1545,7 +1545,7 @@
    {
     "action": "labelled",
     "category": "automated",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.95,
     "content": {
      "body": "Thanks for your order.",
@@ -1633,7 +1633,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Where is the classroom?",
@@ -1694,7 +1694,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Is the volunteering paid?",
@@ -1863,7 +1863,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Can I teach on weekends?",
@@ -1924,7 +1924,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Evenings?",
@@ -1985,7 +1985,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Summer?",
@@ -2404,7 +2404,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Weekends?",
@@ -2465,7 +2465,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Weekends?",
@@ -2526,7 +2526,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Weekends?",
@@ -2817,7 +2817,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.94,
     "content": {
      "body": "Hello,\n\nI am moving to Ho Chi Minh City next month and would love to help out with your English classes. How do I sign up?\n\nThanks a lot!",
@@ -3145,7 +3145,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.94,
     "content": {
      "body": "Hello,\n\nI am moving to Ho Chi Minh City next month and would love to help out with your English classes. How do I sign up?\n\nThanks a lot!",
@@ -3206,7 +3206,7 @@
    {
     "action": "labelled",
     "category": "sponsorship",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.82,
     "content": {
      "body": "Dear Vietnam Hearts,\n\nOur company would like to sponsor your programme and can commit a budget for the coming year. Who should we speak to about a contract?\n\nKind regards",
@@ -3494,7 +3494,7 @@
     "id": 13,
     "last_category": "faq",
     "last_tier": "needs_admin",
-    "pause_reason": "needs_admin: unsupported language other",
+    "pause_reason": "needs_admin: unsupported language code",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "thread-syn-hola"
@@ -3636,7 +3636,7 @@
     "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.92\nWhy: the sender asked for a person\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-call"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: other | Confidence: 0.90\nWhy: unsupported language other\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-hola"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: other | Confidence: 0.90\nWhy: unsupported language code\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-hola"
    },
    {
     "content": "**Volunteer inbox** needs_admin - signup\nLanguage: en | Confidence: 0.41\nWhy: confidence 0.41 below threshold 0.60\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-unsure"
@@ -3830,7 +3830,7 @@
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, other)<br>Why it escalated: unsupported language other<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-hola\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Hola</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hola, quiero ser voluntario.</pre>",
+    "html_body": "<p>Category: faq (needs_admin, other)<br>Why it escalated: unsupported language code<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-hola\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Hola</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hola, quiero ser voluntario.</pre>",
     "subject": "[VH bot: needs_admin] Hola",
     "to_email": "owner@example.com"
    },
@@ -4056,7 +4056,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.94,
     "content": {
      "body": "Hello,\n\nI am moving to Ho Chi Minh City next month and would love to help out with your English classes. How do I sign up?\n\nThanks a lot!",
@@ -4117,7 +4117,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.89,
     "content": {
      "body": "Xin chào,\n\nMình muốn tham gia làm tình nguyện viên dạy tiếng Anh cùng các bạn. Mình cần làm gì để đăng ký ạ?\n\nCảm ơn nhiều!",
@@ -4178,7 +4178,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.86,
     "content": {
      "body": "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
@@ -4243,7 +4243,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Hello!\n\nI would like to volunteer as a teaching assistant.",
@@ -4304,7 +4304,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.7,
     "content": {
      "body": "",
@@ -4446,7 +4446,7 @@
    {
     "action": "labelled",
     "category": "safeguarding_legal",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.91,
     "content": {
      "body": "Chào các bạn,\n\nMình là phụ huynh và mình có một lo ngại về sự an toàn của các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.\n\nXin cảm ơn.",
@@ -4507,7 +4507,7 @@
    {
     "action": "labelled",
     "category": "sponsorship",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.82,
     "content": {
      "body": "Dear Vietnam Hearts,\n\nOur company would like to sponsor your programme and can commit a budget for the coming year. Who should we speak to about a contract?\n\nKind regards",
@@ -4568,7 +4568,7 @@
    {
     "action": "labelled",
     "category": "donation",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.58,
     "content": {
      "body": "Hello,\n\nWhat time do the classes start? Also, my company would like to donate some money to support the programme.\n\nThanks",
@@ -4629,7 +4629,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.92,
     "content": {
      "body": "Could someone phone me about this?",
@@ -4690,7 +4690,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Hola, quiero ser voluntario.",
@@ -4751,7 +4751,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.41,
     "content": {
      "body": "I might want to help?",
@@ -4812,7 +4812,7 @@
    {
     "action": "labelled",
     "category": "volunteer_ops",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "I cannot make Thursday this week.",
@@ -4873,7 +4873,7 @@
    {
     "action": "labelled",
     "category": "automated",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.95,
     "content": {
      "body": "Thanks for your order.",
@@ -4961,7 +4961,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Where is the classroom?",
@@ -5022,7 +5022,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.9,
     "content": {
      "body": "Is the volunteering paid?",
@@ -5474,7 +5474,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Weekends?",
@@ -5535,7 +5535,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Evenings?",
@@ -5596,7 +5596,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Summer?",
@@ -5657,7 +5657,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.94,
     "content": {
      "body": "Sign me up",
@@ -5958,7 +5958,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.86,
     "content": {
      "body": "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
@@ -6023,7 +6023,7 @@
    {
     "action": "labelled",
     "category": "safeguarding_legal",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.91,
     "content": {
      "body": "Chào các bạn,\n\nMình là phụ huynh và mình có một lo ngại về sự an toàn của các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.\n\nXin cảm ơn.",
@@ -6084,7 +6084,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.88,
     "content": {
      "body": "Sorry to chase - did you get my email?",
@@ -6118,7 +6118,7 @@
    {
     "action": "labelled",
     "category": "faq",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.93,
     "content": {
      "body": "Cảm ơn, tôi có thêm một câu hỏi.",
@@ -6690,7 +6690,7 @@
    {
     "action": "labelled",
     "category": "signup",
-    "classifier": "jev",
+    "classifier": "jev:jev-latest",
     "confidence": 0.94,
     "content": {
      "body": "Hello,\n\nI am moving to Ho Chi Minh City next month and would love to help out with your English classes. How do I sign up?\n\nThanks a lot!",

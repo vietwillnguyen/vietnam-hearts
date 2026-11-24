@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
+from inbox_core.delivery import DeliveryMode, parse_mode
 from sqlalchemy.orm import Session
 
 from app.config import EMAIL_BOT_ENABLED
@@ -29,7 +30,6 @@ from app.services.conversation_store import (
     StoredMessage,
     Viewer,
 )
-from app.services.email_bot.delivery import DeliveryMode, parse_mode
 from app.services.email_bot.factory import EmailBotNotConfigured, build_pipeline
 from app.services.email_bot.gates import ACCEPTANCE_GATES
 from app.services.email_bot.pipeline import ALREADY_RUNNING

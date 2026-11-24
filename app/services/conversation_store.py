@@ -27,11 +27,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from inbox_core import IncomingMessage
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, ConversationDeletion, ConversationView, Message
-from app.services.channels.base import IncomingMessage
 from app.services.channels.mail_guards import normalise_address, sender_key
 from app.utils.field_crypto import FieldCipher, cipher_from_env
 

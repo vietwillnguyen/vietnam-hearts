@@ -13,6 +13,8 @@ os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 from unittest.mock import MagicMock, patch
 
 import pytest
+from inbox_core.adapters.jev import JevClassifier
+from inbox_core.adapters.litellm import LiteLLMClassifier
 
 from app.services.email_bot.factory import (
     Credentials,
@@ -22,8 +24,6 @@ from app.services.email_bot.factory import (
     build_pipeline,
 )
 from app.services.email_bot.settings import EmailBotSettings
-from app.services.triage.jev import JevClassifier
-from app.services.triage.litellm import LiteLLMClassifier
 
 FULL = Credentials(
     gmail_client_id="client-id",
@@ -47,7 +47,9 @@ def no_real_typesafe_client():
     with patch.object(
         JevClassifier,
         "from_api_key",
-        lambda key, model="jev-latest": JevClassifier(MagicMock(), model=model),
+        lambda config, key, model="jev-latest": JevClassifier(
+            config, MagicMock(), model=model
+        ),
     ):
         yield
 
@@ -247,8 +249,11 @@ class TestBuildPipeline:
         assert pipeline.settings.mode == "draft"
         assert pipeline.bot_service is bot
         assert pipeline.gemini_client is bot.knowledge_service.gemini_client
-        # Only a draft sink exists in this phase, so nothing can be sent.
-        assert set(pipeline.sinks) == {"draft"}
+        # A draft-mode pipeline's sink cannot send.
+        from app.services.channels.gmail import SendingDisabled
+
+        with pytest.raises(SendingDisabled):
+            pipeline.delivery.sink.send_to_public(MagicMock())
 
     def test_the_admin_addresses_reach_the_internal_sender_guard(self, test_db):
         import app.config as config

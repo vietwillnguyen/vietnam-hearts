@@ -6,7 +6,9 @@ documents drop in without anything else changing, and what lets every test
 above this layer run against a fake rather than a mocked Discovery client.
 
 ``send_reply`` is the one method here that can put mail in front of a member of
-the public, and ``SendSink`` is its only caller. Everything that bounds it - the
+the public, and ``GmailAdapter.send`` its only caller, reached only from
+``GmailReplySink.send_to_public`` and so only from inbox-core's ``Delivery``.
+Everything that bounds it - the
 delivery mode, the per-language gate, the daily and per-sender caps, the
 one-reply-per-thread rule - is decided before this module is reached, because a
 transport is the wrong place to be making policy. The test for this file asserts
@@ -137,7 +139,7 @@ class MailTransport(Protocol):
 
     def delete_draft(self, draft_id: str) -> None: ...
 
-    # SendSink is the only caller.
+    # GmailAdapter.send, for GmailReplySink, is the only caller.
     def send_reply(self, thread_id: str, mime: bytes) -> str: ...
 
 

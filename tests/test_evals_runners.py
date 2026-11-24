@@ -158,7 +158,7 @@ class TestTriageMetrics:
 
 class TestTheRunnerExitCode:
     def _fake_classifier(self, answers):
-        from app.services.triage.protocol import TriageSignals
+        from inbox_core import TriageSignals
 
         class Fake:
             name = "fake"
@@ -440,7 +440,8 @@ class TestTheJudge:
 
 class TestThresholdSweeps:
     def _answered(self):
-        from app.services.triage.protocol import TriageSignals
+        from inbox_core import TriageSignals
+
         from evals.loader import GoldenCase
 
         def signals(category, confidence):
@@ -510,7 +511,9 @@ class TestThresholdSweeps:
         # otherwise, the rule order would have been broken.
         from evals.calibrate_thresholds import sweep_triage_threshold
 
-        rows = sweep_triage_threshold(self._answered(), thresholds=(0.0, 0.5, 0.9, 1.0))
+        rows = sweep_triage_threshold(
+            self._answered(), thresholds=(0.01, 0.5, 0.9, 1.0)
+        )
         assert {row["executive_recall"] for row in rows} == {1.0}
 
     def test_the_answer_threshold_sweep_reports_precision_and_reach(self):

@@ -27,7 +27,7 @@ from contextlib import contextmanager
 # privacy test's coverage is a deliberate list rather than an accident.
 EMAIL_BOT_LOGGERS = (
     "email_bot_pipeline",
-    "email_bot_delivery",
+    "email_bot_caps",
     "email_bot_settings",
     "email_bot_summaries",
     "email_bot_factory",
@@ -35,9 +35,8 @@ EMAIL_BOT_LOGGERS = (
     "gmail_adapter",
     "conversation_service",
     "notifier",
-    "triage_jev",
-    "triage_litellm",
-    "triage_shadow",
+    # inbox-core's loggers are all children of this one.
+    "inbox_core",
     "api",
 )
 

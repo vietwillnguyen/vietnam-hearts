@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.services.triage.policy import decide
-from app.services.triage.protocol import CATEGORIES, LANGUAGES, TriageSignals
+from inbox_core import TriageDecision, TriageSignals, decide
+
+from app.services.email_bot.client import client_config
 
 GOLDEN_SET_PATH = Path(__file__).parent / "golden_qa.yaml"
 
@@ -33,6 +34,17 @@ GOLDEN_CONFIDENCE = 1.0
 # reference, and a calibration sweep that changed what the expectations *mean*
 # would be measuring itself.
 GOLDEN_THRESHOLD = 0.6
+
+
+CATEGORIES: tuple[str, ...] = tuple(
+    rule.name for rule in client_config().triage.categories
+)
+LANGUAGES: tuple[str, ...] = (*client_config().triage.languages, "other")
+
+
+def decide_at(signals: TriageSignals, threshold: float) -> TriageDecision:
+    """``signals`` decided by the bot's own category table at ``threshold``."""
+    return decide(signals, client_config().triage.with_threshold(threshold))
 
 
 class GoldenSetInvalid(ValueError):
@@ -173,7 +185,7 @@ def _build_case(entry: Mapping[str, Any], index: int) -> GoldenCase:
         note=entry.get("note", "") or "",
     )
 
-    derived = decide(case.expected_signals, GOLDEN_THRESHOLD).tier
+    derived = decide_at(case.expected_signals, GOLDEN_THRESHOLD).tier
     if derived != case.expected_tier:
         raise GoldenSetInvalid(
             f"{where}: expected_tier is {case.expected_tier!r} but derive_tier "
@@ -235,7 +247,10 @@ def as_incoming(case: GoldenCase):
     Built here rather than in each runner so every runner measures the
     classifier on exactly the same input the pipeline would give it.
     """
-    from app.services.channels.base import EMAIL_CHANNEL, IncomingMessage
+    from inbox_core import IncomingMessage
+    from inbox_core.channels.email import EmailDetails
+
+    from app.services.channels.gmail import EMAIL_CHANNEL
     from app.services.channels.mail_guards import sender_key
 
     # A fixed fictional sender: the classifier is never shown the address, and
@@ -249,7 +264,9 @@ def as_incoming(case: GoldenCase):
         sender_address=address,
         subject=case.subject,
         text=case.text,
-        rfc_message_id=f"<{case.id}@golden.example.com>",
-        headers={name.lower(): value for name, value in case.headers.items()},
-        label_ids=case.label_ids,
+        extension=EmailDetails(
+            rfc_message_id=f"<{case.id}@golden.example.com>",
+            headers={name.lower(): value for name, value in case.headers.items()},
+            label_ids=case.label_ids,
+        ),
     )

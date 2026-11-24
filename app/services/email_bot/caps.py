@@ -18,13 +18,20 @@ writes.
 A reached cap is never a refusal. The reply is drafted instead, so the captain
 still has it one click away, and the run records that it happened. Dropping the
 reply would turn a capacity limit into lost mail.
+
+``CapsState`` is the bot's implementation of inbox-core's ``SendCaps``: the
+core's ``Delivery`` asks it before every send and tells it after one. It counts
+from this app's own ``messages`` rows because the core's store-backed caps
+need the core's whole conversation store, which this app does not use yet.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from inbox_core.delivery import CapDecision
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -49,23 +56,6 @@ def _as_naive_utc(moment: datetime) -> datetime:
     return moment.astimezone(UTC).replace(tzinfo=None)
 
 
-@dataclass(frozen=True)
-class CapDecision:
-    """Whether a send is allowed, and if not, which cap stopped it."""
-
-    allowed: bool
-    reason: str = ""
-    cap: str = ""
-
-    @classmethod
-    def allow(cls) -> CapDecision:
-        return cls(allowed=True)
-
-    @classmethod
-    def refuse(cls, cap: str, reason: str) -> CapDecision:
-        return cls(allowed=False, cap=cap, reason=reason)
-
-
 @dataclass
 class CapsState:
     """Today's send counts, read once per run.
@@ -81,6 +71,11 @@ class CapsState:
     sent_today: int = 0
     sent_today_by_sender: dict[str, int] = field(default_factory=dict)
     day_start: datetime | None = None
+    # Told whenever a cap turns a send into a draft, so a run can count
+    # held-back replies apart from drafts the mode or the language produced.
+    on_refused: Callable[[CapDecision], None] | None = field(
+        default=None, compare=False, repr=False
+    )
 
     @classmethod
     def load(cls, db: Session, now_local: datetime, settings) -> CapsState:
@@ -138,8 +133,20 @@ class CapsState:
             day_start=start_local,
         )
 
-    def allows(self, sender_key: str) -> CapDecision:
+    def allows(self, sender_key: str, thread_key: str = "") -> CapDecision:
         """Whether one more send to this sender is within both caps."""
+        decision = self._decide(sender_key)
+        if not decision.allowed:
+            logger.info(
+                "Send cap %s reached (%s); drafting instead",
+                decision.cap,
+                decision.reason,
+            )
+            if self.on_refused is not None:
+                self.on_refused(decision)
+        return decision
+
+    def _decide(self, sender_key: str) -> CapDecision:
         if self.sent_today >= self.daily_cap:
             return CapDecision.refuse(
                 "daily",
@@ -155,7 +162,7 @@ class CapsState:
 
         return CapDecision.allow()
 
-    def record_send(self, sender_key: str) -> None:
+    def record_send(self, sender_key: str, thread_key: str = "") -> None:
         """Count a send this run just made, so the caps hold within one run.
 
         Without this the caps would only bound what previous runs sent, and a

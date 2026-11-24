@@ -22,12 +22,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.triage.policy import decide  # noqa: E402
-from app.services.triage.protocol import TriageSignals, TriageUnavailable  # noqa: E402
-from evals.loader import GoldenCase, as_incoming, load_golden_set  # noqa: E402
+from inbox_core import TriageSignals, TriageUnavailable  # noqa: E402
+
+from evals.loader import GoldenCase, as_incoming, decide_at, load_golden_set  # noqa: E402
 from evals.metrics import TriageMetrics, format_table, percentage  # noqa: E402
 
-DEFAULT_SWEEP = (0.0, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 0.95)
+# No 0.0: inbox-core refuses a policy that would auto-answer with no
+# confidence bar at all, so it is not a threshold the bot can be run at.
+DEFAULT_SWEEP = (0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 0.95)
 
 
 def classify_once(
@@ -56,7 +58,7 @@ def sweep_triage_threshold(
         answered_count = 0
 
         for case, signals in answered:
-            decision = decide(signals, threshold)
+            decision = decide_at(signals, threshold)
             metrics.record(
                 case_id=case.id,
                 expected_category=case.expected_category,

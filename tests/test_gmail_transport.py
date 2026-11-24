@@ -26,6 +26,11 @@ from tests.fixtures import gmail_payloads as payloads
 from tests.fixtures.email_bot import load_gmail
 
 
+def _chain(references, in_reply_to):
+    """The reply's References chain, ending with the message it answers."""
+    return (*references, in_reply_to) if in_reply_to else tuple(references)
+
+
 class SendIsForbidden(AssertionError):
     """Raised the moment anything touches a send-shaped attribute we do not allow."""
 
@@ -249,15 +254,19 @@ class TestSendReply:
     ):
         # The builder and this call are tested together because Gmail requires
         # the headers to agree with threadId.
-        from app.services.channels.base import OutboundReply
+        from inbox_core import OutboundReply
+        from inbox_core.channels.email import EmailReplyDetails
+
         from app.services.channels.mail_builder import build_reply
 
         reply = OutboundReply(
             thread_key="thread-9",
             to_address=payloads.TEST_SENDER,
-            subject="Volunteering",
-            in_reply_to="<abc123@mail.example.com>",
-            references=("<root@x>",),
+            in_reply_to="provider-message-id",
+            extension=EmailReplyDetails(
+                subject="Volunteering",
+                references=_chain(("<root@x>",), "<abc123@mail.example.com>"),
+            ),
             text="Thanks for writing.",
             language="en",
             kind="signup",

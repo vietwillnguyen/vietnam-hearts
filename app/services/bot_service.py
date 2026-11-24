@@ -6,10 +6,11 @@ Orchestrates document processing, knowledge base queries, and generates intellig
 
 from typing import Any
 
-from app.services.channels.base import EMAIL_CHANNEL
-from app.services.triage.prompts import (
+from inbox_core.prompts import REFUSAL_SENTINEL
+
+from app.services.channels.gmail import EMAIL_CHANNEL
+from app.services.email_bot.answers import (
     EMAIL_ANSWER_PROHIBITIONS,
-    REFUSAL_SENTINEL,
     language_instruction,
 )
 from app.utils.logging_config import get_api_logger

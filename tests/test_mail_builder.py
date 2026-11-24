@@ -12,8 +12,9 @@ os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 from email import message_from_bytes
 
 import pytest
+from inbox_core import OutboundReply
+from inbox_core.channels.email import EmailReplyDetails
 
-from app.services.channels.base import OutboundReply
 from app.services.channels.mail_builder import (
     AUTO_RESPONSE_HEADERS,
     build_reply,
@@ -29,6 +30,11 @@ FIXED_ID = "<fixed-id@mail.example.com>"
 FIXED_DATE = "Mon, 29 Sep 2026 09:15:00 +0700"
 
 
+def _chain(references, in_reply_to):
+    """The reply's References chain, ending with the message it answers."""
+    return (*references, in_reply_to) if in_reply_to else tuple(references)
+
+
 def reply(
     text: str = "Thanks for writing.",
     subject: str = "Volunteering",
@@ -39,9 +45,11 @@ def reply(
     return OutboundReply(
         thread_key="thread-1",
         to_address=payloads.TEST_SENDER,
-        subject=subject,
-        in_reply_to=in_reply_to,
-        references=references,
+        in_reply_to="provider-message-id",
+        extension=EmailReplyDetails(
+            subject=subject,
+            references=_chain(references, in_reply_to),
+        ),
         text=text,
         language=language,
         kind="signup",
