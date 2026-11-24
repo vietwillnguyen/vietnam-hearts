@@ -35,15 +35,15 @@ dependencies = [
     # the base image carrying /usr/share/zoneinfo. No upper bound: tzdata is
     # calendar-versioned data, so any ceiling would expire on its own.
     "tzdata>=2024.1",
-    # The triage classifier pair: typesafe-sdk is the Jev vendor SDK that
-    # decides, litellm is the structured-output shadow classifier.
-    # docs/superpowers/specs/2026-09-29-email-channel-design.md, decision 2.
-    "litellm>=1.77.0,<2",
-    "typesafe-sdk>=0.7.2,<1",
     # AES-256-GCM for stored inbox conversations (app/utils/field_crypto.py).
     # Already installed transitively; pinned directly because the app now
     # imports it and must not lose it to another package's dependency change.
     "cryptography>=46,<51",
+    # The inbox bot's engine: triage, the classifier pair (the jev extra is
+    # the TypeSafe SDK that decides, litellm the shadow), handlers, delivery
+    # and field encryption. Installed from GitHub, not a package index; the
+    # exact commit is pinned under [tool.uv.sources] below.
+    "inbox-core[jev,litellm]",
 ]
 
 [dependency-groups]
@@ -108,3 +108,10 @@ known-first-party = ["app", "evals"]
 # as default argument values by design - not the mutable-default-arg bug B008
 # normally flags.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Path", "fastapi.Header"]
+
+[tool.uv.sources]
+# Pinned to the tip of inbox-core's pull request #1 (feat/chatwoot-connection),
+# not to a release: v0.1.0 cannot decrypt a stored empty string, which every
+# mail with an empty subject or body is. Re-pin to the first tagged release
+# that contains that fix before this leaves draft.
+inbox-core = { git = "https://github.com/vietwillnguyen/inbox-core", rev = "8651bf477bc89affb107060605364427eae58372" }
