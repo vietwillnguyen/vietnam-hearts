@@ -179,8 +179,11 @@ class TestGeneratingAKey:
     def test_generated_keys_differ(self):
         assert generate_key_entry("k1") != generate_key_entry("k1")
 
-    def test_the_command_line_prints_an_entry(self, capsys):
-        field_crypto.main(["generate-key", "--key-id", "k3"])
+    def test_the_runbooks_command_prints_an_entry_this_app_reads(self, capsys):
+        # docs/GMAIL_BOT_SETUP.md generates the key with inbox-core's command.
+        from inbox_core.crypto import main
+
+        main(["generate-key", "--key-id", "k3"])
         printed = capsys.readouterr().out.strip()
         assert parse_keys(printed).primary_key_id == "k3"
 

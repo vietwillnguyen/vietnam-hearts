@@ -35,13 +35,10 @@ dependencies = [
     # the base image carrying /usr/share/zoneinfo. No upper bound: tzdata is
     # calendar-versioned data, so any ceiling would expire on its own.
     "tzdata>=2024.1",
-    # AES-256-GCM for stored inbox conversations (app/utils/field_crypto.py).
-    # Already installed transitively; pinned directly because the app now
-    # imports it and must not lose it to another package's dependency change.
-    "cryptography>=46,<51",
     # The inbox bot's engine: triage, the classifier pair (the jev extra is
     # the TypeSafe SDK that decides, litellm the shadow), handlers, delivery
-    # and field encryption. Installed from GitHub, not a package index; the
+    # and the AES-256-GCM field encryption stored conversations go through
+    # (app/utils/field_crypto.py binds it; the package requires cryptography). Installed from GitHub, not a package index; the
     # exact commit is pinned under [tool.uv.sources] below.
     "inbox-core[jev,litellm]",
 ]
