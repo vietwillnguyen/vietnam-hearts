@@ -86,7 +86,10 @@ class FakeTransport:
 
     def ensure_labels(self, names: Iterable[str]) -> dict[str, str]:
         for name in names:
-            self.labels.setdefault(name, f"Label_{abs(hash(name)) % 10_000}")
+            # Sequential, not hash-derived: str hashes are randomised per
+            # process, and two names landing on one id made the reverse lookup
+            # in add_labels report the wrong label in an unlucky run.
+            self.labels.setdefault(name, f"Label_{len(self.labels) + 1}")
         return {name: self.labels[name] for name in names}
 
     def add_labels(self, message_id: str, label_ids: Iterable[str]) -> None:
