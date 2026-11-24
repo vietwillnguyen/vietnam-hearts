@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import anyio
 import pytest
+from inbox_core import DeliveryMode, TriageUnavailable
 
 from app.models import EmailBotRun, Message
 from app.services.bot_service import GenerationUnavailable, NoRelevantContext
@@ -32,7 +33,6 @@ from app.services.conversation_service import (
     STATUS_PAUSED_MANUAL,
     ConversationService,
 )
-from app.services.email_bot.delivery import DeliveryMode, DraftSink
 from app.services.email_bot.pipeline import (
     ALREADY_RUNNING,
     CIRCUIT_BREAKER_THRESHOLD,
@@ -41,7 +41,6 @@ from app.services.email_bot.pipeline import (
 )
 from app.services.email_bot.settings import EmailBotSettings
 from app.services.knowledge_service import EmbeddingsUnavailable
-from app.services.triage.protocol import TriageUnavailable
 from tests.fixtures import gmail_payloads as payloads
 from tests.fixtures.conversations import body
 from tests.fixtures.email_bot import (
@@ -52,6 +51,7 @@ from tests.fixtures.email_bot import (
     RecordingNotifier,
     SendingFakeTransport,
     load_gmail,
+    raw,
     signals,
 )
 
@@ -80,7 +80,7 @@ def build(
     bot_service=None,
     settings=None,
     threads=None,
-    sinks=None,
+    sink=None,
     notifier=None,
     transport_class=FakeTransport,
     drafts=None,
@@ -94,7 +94,7 @@ def build(
         notifier=notifier or RecordingNotifier(),
         settings=settings or bot_settings(),
         bot_service=bot_service or FakeBotService(),
-        sinks=sinks,
+        sink=sink,
     )
     return pipeline, transport
 
@@ -499,6 +499,7 @@ class TestSignupAnswer:
             bot_service=bot,
         )
         run(pipeline)
+        assert bot.searches == []
         assert bot.calls == []
 
     def test_a_vietnamese_signup_is_drafted_in_vietnamese(self, test_db):
@@ -593,22 +594,25 @@ class TestFaqAnswer:
 
     def test_a_similarity_below_the_threshold_escalates(self, test_db):
         notifier = RecordingNotifier()
+        bot = FakeBotService({"response": "A guess.", "confidence": 0.31})
         pipeline, _ = build(
             test_db,
             [load_gmail("faq_en.json")],
             classifier=FakeClassifier(default=signals(category="faq", confidence=0.86)),
-            bot_service=FakeBotService({"response": "A guess.", "confidence": 0.31}),
+            bot_service=bot,
             notifier=notifier,
         )
         summary = run(pipeline)
 
         assert summary.forwarded == 1
-        assert "0.31" in notifier.events[0].reason
-        # The answer the model produced is discarded, not offered.
+        assert "0.50" in notifier.events[0].reason
+        # Nothing cleared the threshold, so the model is never asked and no
+        # guess can be offered.
+        assert bot.calls == []
         assert all("A guess." not in body(row) for row in outbound(test_db))
 
     def test_the_refusal_sentinel_escalates(self, test_db):
-        from app.services.triage.prompts import REFUSAL_SENTINEL
+        from inbox_core.prompts import REFUSAL_SENTINEL
 
         notifier = RecordingNotifier()
         pipeline, _ = build(
@@ -623,7 +627,7 @@ class TestFaqAnswer:
         summary = run(pipeline)
 
         assert summary.forwarded == 1
-        assert "insufficient context" in notifier.events[0].reason
+        assert "context insufficient" in notifier.events[0].reason
 
     def test_no_relevant_context_escalates(self, test_db):
         notifier = RecordingNotifier()
@@ -637,7 +641,7 @@ class TestFaqAnswer:
         summary = run(pipeline)
 
         assert summary.forwarded == 1
-        assert "does not cover" in notifier.events[0].reason
+        assert "no knowledge entry" in notifier.events[0].reason
         # A knowledge base gap is not an infrastructure failure.
         assert summary.errors == 0
 
@@ -764,29 +768,6 @@ class TestEscalation:
         row = [r for r in outbound(test_db) if r.action == "drafted"][0]
         assert row.language == "vi"
         assert "trợ lý tự động" in body(row)
-
-    def test_escalation_happens_even_when_the_mode_delivers_nothing(self, test_db):
-        # Knowing about a safeguarding mail is not something a delivery switch
-        # should be able to turn off. Mode off aborts the run entirely, so this
-        # is the no-sink case: the pipeline still labels, forwards and pauses.
-        notifier = RecordingNotifier()
-        pipeline, transport = build(
-            test_db,
-            [load_gmail("safeguarding_vi.json")],
-            classifier=FakeClassifier(
-                default=signals(
-                    category="safeguarding_legal", language="vi", confidence=0.9
-                )
-            ),
-            notifier=notifier,
-            sinks={},
-        )
-        summary = run(pipeline)
-
-        assert summary.forwarded == 1
-        assert summary.drafted == 0
-        assert transport.drafts == {}
-        assert LABEL_ESCALATED in transport.labels_for("18f2a1b4c5d6e878")
 
 
 class TestTheOneReplyCap:
@@ -1241,16 +1222,16 @@ class TestDraftModeStillSendsNothing:
     """What E1 established, re-asserted now that a send path exists.
 
     These used to hold because the codebase had no way to send at all. They now
-    hold because ``choose_sink`` refuses, which is a weaker guarantee and so
-    worth testing harder: a send sink is present in the mapping below and must
-    still never be chosen.
+    hold because inbox-core's ``Delivery`` only holds in draft mode, which is a
+    weaker guarantee and so worth testing harder: the sink handed to the
+    pipeline below would send if asked and must still never be asked.
     """
 
     def test_a_full_run_over_every_fixture_never_reaches_a_send_sink(self, test_db):
         # The phase's headline acceptance criterion: everything drafts and
-        # escalates, and a send sink present in the mapping is still never
-        # chosen, because no code path can select it while the mode is draft.
-        send = FakeSendSink()
+        # escalates, and a sink that would send is still never asked to,
+        # because no code path sends while the mode is draft.
+        send = FakeSendSink(adapter=None)
         fixtures = [
             "signup_en.json",
             "signup_vi.json",
@@ -1285,6 +1266,7 @@ class TestDraftModeStillSendsNothing:
 
         transport = FakeTransport(mails=mails)
         adapter = GmailAdapter(transport)
+        send.adapter = adapter
         pipeline = EmailBotPipeline(
             db=test_db,
             adapter=adapter,
@@ -1295,7 +1277,7 @@ class TestDraftModeStillSendsNothing:
             notifier=RecordingNotifier(),
             settings=bot_settings(),
             bot_service=FakeBotService(),
-            sinks={"draft": DraftSink(adapter), "send": send},
+            sink=send,
         )
         summary = run(pipeline)
 
@@ -1304,30 +1286,6 @@ class TestDraftModeStillSendsNothing:
         assert summary.drafted > 0
         assert summary.forwarded > 0
         assert summary.aborted_reason is None
-
-    def test_auto_mode_with_no_send_sink_in_the_mapping_drafts(self, test_db):
-        # A sink mapping assembled without a send sink has to degrade to
-        # drafting rather than raise or silently deliver nothing.
-        from app.services.channels.gmail import GmailAdapter
-        from app.services.email_bot.delivery import DraftSink
-
-        transport = FakeTransport(mails=[load_gmail("signup_en.json")])
-        adapter = GmailAdapter(transport)
-        pipeline = EmailBotPipeline(
-            db=test_db,
-            adapter=adapter,
-            classifier=FakeClassifier(
-                default=signals(category="signup", confidence=0.94)
-            ),
-            notifier=RecordingNotifier(),
-            settings=bot_settings(mode="auto"),
-            bot_service=FakeBotService(),
-            sinks={"draft": DraftSink(adapter)},
-        )
-        summary = run(pipeline)
-
-        assert summary.sent == 0
-        assert summary.drafted == 1
 
     def test_auto_mode_against_a_transport_that_cannot_send_still_tells_a_person(
         self, test_db
@@ -1357,9 +1315,9 @@ class TestDraftModeStillSendsNothing:
         # The stronger property, still true: in draft mode the pipeline holds
         # no object capable of sending, rather than holding one it declines to
         # use.
-        from app.services.email_bot.delivery import SendSink
+        from app.services.channels.gmail import SendingDisabled, email_reply
 
-        pipeline, _ = build(
+        pipeline, transport = build(
             test_db,
             [load_gmail("signup_en.json")],
             classifier=FakeClassifier(
@@ -1367,8 +1325,10 @@ class TestDraftModeStillSendsNothing:
             ),
             settings=bot_settings(mode="draft"),
         )
-        assert "send" not in pipeline.sinks
-        assert not any(isinstance(s, SendSink) for s in pipeline.sinks.values())
+        message = pipeline.adapter.parse(raw("signup_en.json"))
+        reply = email_reply(message, text="x", language="en", kind="signup")
+        with pytest.raises(SendingDisabled):
+            pipeline.delivery.sink.send_to_public(reply)
 
 
 class TestTheInboxAddressPreflight:
@@ -1869,7 +1829,6 @@ class TestAutoMode:
         send_fails=False,
     ):
         from app.services.email_bot.caps import CapsState
-        from app.services.email_bot.delivery import DraftSink, SendSink
 
         transport = SendingFakeTransport(
             mails=[load_gmail(fixture)], send_fails=send_fails
@@ -1884,12 +1843,7 @@ class TestAutoMode:
             notifier=notifier,
             settings=settings,
             bot_service=FakeBotService(answer) if answer else FakeBotService(),
-            sinks={
-                "draft": DraftSink(adapter),
-                "send": SendSink(
-                    adapter, caps or CapsState(daily_cap=30, per_sender_cap=2)
-                ),
-            },
+            caps=caps or CapsState(daily_cap=30, per_sender_cap=2),
         )
         return pipeline, transport, notifier
 
@@ -2078,8 +2032,7 @@ class TestOffAndDraftStillCannotSend:
     """
 
     def _with_exploding_send(self, test_db, mode):
-        from app.services.email_bot.caps import CapsState
-        from app.services.email_bot.delivery import DraftSink, SendSink
+        from app.services.channels.gmail import GmailReplySink
 
         transport = SendingFakeTransport(
             mails=[load_gmail("signup_en.json")], send_fails=True, raise_on_send=True
@@ -2094,10 +2047,9 @@ class TestOffAndDraftStillCannotSend:
             notifier=RecordingNotifier(),
             settings=bot_settings(mode=mode),
             bot_service=FakeBotService(),
-            sinks={
-                "draft": DraftSink(adapter),
-                "send": SendSink(adapter, CapsState()),
-            },
+            # A sink that could send, so only the delivery table stands between
+            # this run and the exploding transport.
+            sink=GmailReplySink(adapter, can_send=True),
         )
 
     def test_draft_mode_never_reaches_the_send_sink(self, test_db):

@@ -1,4 +1,9 @@
-"""Contract tests for both classifiers against recorded response bodies.
+"""Both classifiers, under Vietnam Hearts' configuration, against recorded bodies.
+
+The adapters are inbox-core's. What is tested here is that the vendors' real
+response shapes, recorded from this inbox's own categories and languages,
+parse into the signals the bot acts on, and that anything outside the table is
+refused rather than coerced.
 
 The Jev fixtures are validated through ``typesafe_sdk.SystemOneResponse`` itself,
 so a fixture that has drifted from the vendor's model fails here rather than
@@ -17,17 +22,17 @@ os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 import json
 
 import pytest
+from inbox_core import IncomingMessage, TriageUnavailable
+from inbox_core.adapters.jev import NOUL_TRUE_AT, JevClassifier, build_questions
+from inbox_core.adapters.litellm import LiteLLMClassifier
+from inbox_core.prompts import classifier_input as build_state
 
-from app.services.channels.base import IncomingMessage
-from app.services.triage.jev import (
-    NOUL_TRUE_AT,
-    JevClassifier,
-    build_questions,
-    build_state,
-)
-from app.services.triage.litellm import RESPONSE_SCHEMA, LiteLLMClassifier
-from app.services.triage.protocol import CATEGORIES, LANGUAGES, TriageUnavailable
+from app.services.email_bot.client import client_config
 from tests.fixtures.email_bot import load_triage
+
+CONFIG = client_config()
+CATEGORIES = tuple(rule.name for rule in CONFIG.triage.categories)
+LANGUAGES = ("en", "vi", "other")
 
 MESSAGE = IncomingMessage(
     channel="email",
@@ -37,7 +42,6 @@ MESSAGE = IncomingMessage(
     sender_address="sender@example.com",
     subject="Volunteering with Vietnam Hearts",
     text="How do I sign up?",
-    rfc_message_id="<abc@x>",
 )
 
 
@@ -79,7 +83,7 @@ class StubJevClient:
 
 class TestJevQuestions:
     def test_all_four_questions_are_asked_in_one_call(self):
-        questions = build_questions()
+        questions = build_questions(CONFIG)
         assert set(questions) == {
             "category",
             "language",
@@ -90,18 +94,18 @@ class TestJevQuestions:
     def test_the_category_criteria_are_exactly_the_enum(self):
         # A criterion the enum does not contain would be unparseable on the way
         # back; one it is missing could never be chosen.
-        assert set(build_questions()["category"]["criteria"]) == set(CATEGORIES)
+        assert set(build_questions(CONFIG)["category"]["criteria"]) == set(CATEGORIES)
 
     def test_the_language_criteria_are_exactly_the_enum(self):
-        assert set(build_questions()["language"]["criteria"]) == set(LANGUAGES)
+        assert set(build_questions(CONFIG)["language"]["criteria"]) == set(LANGUAGES)
 
     def test_the_two_booleans_are_noul_questions(self):
-        questions = build_questions()
+        questions = build_questions(CONFIG)
         assert questions["asks_for_human"]["type"] == "noul"
         assert questions["mentions_money_or_commitment"]["type"] == "noul"
 
     def test_the_multi_topic_rule_is_in_the_category_instructions(self):
-        instructions = build_questions()["category"]["instructions"]
+        instructions = build_questions(CONFIG)["category"]["instructions"]
         assert "more than one topic" in instructions
         assert "most serious" in instructions
 
@@ -127,36 +131,40 @@ class TestJevParsing:
         ],
     )
     def test_every_recorded_answer_parses(self, fixture, category, language):
-        classifier = JevClassifier(StubJevClient(jev_response(fixture)))
+        classifier = JevClassifier(CONFIG, StubJevClient(jev_response(fixture)))
         result = classifier.classify(MESSAGE)
 
         assert result.category == category
         assert result.language == language
-        assert result.classifier == "jev"
+        assert result.classifier == "jev:jev-latest"
         assert 0.0 <= result.confidence <= 1.0
 
     def test_the_confidence_is_the_choice_probability(self):
         # Jev's calibrated per-option probability is exactly why it decides
         # rather than shadows.
-        classifier = JevClassifier(StubJevClient(jev_response("jev_signup_en.json")))
+        classifier = JevClassifier(
+            CONFIG, StubJevClient(jev_response("jev_signup_en.json"))
+        )
         assert classifier.classify(MESSAGE).confidence == pytest.approx(0.94)
 
     def test_a_high_noul_reads_as_true(self):
         classifier = JevClassifier(
-            StubJevClient(jev_response("jev_safeguarding_vi.json"))
+            CONFIG, StubJevClient(jev_response("jev_safeguarding_vi.json"))
         )
         result = classifier.classify(MESSAGE)
         assert result.asks_for_human is True
 
     def test_a_low_noul_reads_as_false(self):
-        classifier = JevClassifier(StubJevClient(jev_response("jev_signup_en.json")))
+        classifier = JevClassifier(
+            CONFIG, StubJevClient(jev_response("jev_signup_en.json"))
+        )
         result = classifier.classify(MESSAGE)
         assert result.asks_for_human is False
         assert result.mentions_money_or_commitment is False
 
     def test_the_money_noul_is_read(self):
         classifier = JevClassifier(
-            StubJevClient(jev_response("jev_sponsorship_en.json"))
+            CONFIG, StubJevClient(jev_response("jev_sponsorship_en.json"))
         )
         assert classifier.classify(MESSAGE).mentions_money_or_commitment is True
 
@@ -164,18 +172,24 @@ class TestJevParsing:
         at_the_cut = jev_response(
             "jev_signup_en.json", asks_for_human={"noul": NOUL_TRUE_AT}
         )
-        assert JevClassifier(StubJevClient(at_the_cut)).classify(MESSAGE).asks_for_human
+        assert (
+            JevClassifier(CONFIG, StubJevClient(at_the_cut))
+            .classify(MESSAGE)
+            .asks_for_human
+        )
 
         just_below = jev_response(
             "jev_signup_en.json", asks_for_human={"noul": NOUL_TRUE_AT - 0.01}
         )
         assert not (
-            JevClassifier(StubJevClient(just_below)).classify(MESSAGE).asks_for_human
+            JevClassifier(CONFIG, StubJevClient(just_below))
+            .classify(MESSAGE)
+            .asks_for_human
         )
 
     def test_the_model_override_is_passed_through(self):
         client = StubJevClient(jev_response("jev_signup_en.json"))
-        JevClassifier(client, model="jev-pinned").classify(MESSAGE)
+        JevClassifier(CONFIG, client, model="jev-pinned").classify(MESSAGE)
         assert client.calls[0]["model"] == "jev-pinned"
 
 
@@ -183,7 +197,7 @@ class TestJevRefusesToGuess:
     def test_an_unknown_category_raises(self):
         # Rather than mapping it onto something plausible.
         classifier = JevClassifier(
-            StubJevClient(jev_response("jev_unknown_category.json"))
+            CONFIG, StubJevClient(jev_response("jev_unknown_category.json"))
         )
         with pytest.raises(TriageUnavailable, match="unknown category"):
             classifier.classify(MESSAGE)
@@ -191,12 +205,12 @@ class TestJevRefusesToGuess:
     def test_an_unknown_language_raises(self):
         response = jev_response("jev_signup_en.json", language={"choice": "fr"})
         with pytest.raises(TriageUnavailable, match="unknown language"):
-            JevClassifier(StubJevClient(response)).classify(MESSAGE)
+            JevClassifier(CONFIG, StubJevClient(response)).classify(MESSAGE)
 
     def test_a_missing_answer_raises(self):
         response = jev_response("jev_signup_en.json", language=None)
         with pytest.raises(TriageUnavailable, match="unreadable answer set"):
-            JevClassifier(StubJevClient(response)).classify(MESSAGE)
+            JevClassifier(CONFIG, StubJevClient(response)).classify(MESSAGE)
 
     def test_the_vendors_answer_models_are_frozen(self):
         # Relied on above, and worth pinning: nothing downstream can rewrite a
@@ -209,14 +223,14 @@ class TestJevRefusesToGuess:
 
     def test_a_transport_failure_raises_triage_unavailable(self):
         classifier = JevClassifier(
-            StubJevClient(error=RuntimeError("connection reset"))
+            CONFIG, StubJevClient(error=RuntimeError("connection reset"))
         )
         with pytest.raises(TriageUnavailable):
             classifier.classify(MESSAGE)
 
     def test_the_exception_carries_the_id_and_not_the_mail(self):
         # Exceptions reach Sentry; its scrubber is a safety net, not a licence.
-        classifier = JevClassifier(StubJevClient(error=RuntimeError("boom")))
+        classifier = JevClassifier(CONFIG, StubJevClient(error=RuntimeError("boom")))
         with pytest.raises(TriageUnavailable) as raised:
             classifier.classify(MESSAGE)
 
@@ -240,15 +254,21 @@ class StubCompletion:
         return self._response
 
 
-class TestLiteLLMSchema:
-    def test_the_schema_enumerates_exactly_the_category_enum(self):
-        assert set(RESPONSE_SCHEMA["properties"]["category"]["enum"]) == set(CATEGORIES)
+def sent_schema() -> dict:
+    completion = StubCompletion(load_triage("litellm_signup_en.json"))
+    LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
+    return completion.kwargs[0]["response_format"]["json_schema"]["schema"]
 
-    def test_the_schema_enumerates_exactly_the_language_enum(self):
-        assert set(RESPONSE_SCHEMA["properties"]["language"]["enum"]) == set(LANGUAGES)
+
+class TestLiteLLMSchema:
+    def test_the_schema_enumerates_exactly_the_categories(self):
+        assert set(sent_schema()["properties"]["category"]["enum"]) == set(CATEGORIES)
+
+    def test_the_schema_enumerates_exactly_the_languages(self):
+        assert set(sent_schema()["properties"]["language"]["enum"]) == set(LANGUAGES)
 
     def test_all_four_fields_plus_confidence_are_required(self):
-        assert set(RESPONSE_SCHEMA["required"]) == {
+        assert set(sent_schema()["required"]) == {
             "category",
             "language",
             "confidence",
@@ -257,7 +277,7 @@ class TestLiteLLMSchema:
         }
 
     def test_additional_properties_are_refused(self):
-        assert RESPONSE_SCHEMA["additionalProperties"] is False
+        assert sent_schema()["additionalProperties"] is False
 
 
 class TestLiteLLMParsing:
@@ -272,7 +292,7 @@ class TestLiteLLMParsing:
     )
     def test_every_recorded_body_parses(self, fixture, category, language):
         completion = StubCompletion(load_triage(fixture))
-        result = LiteLLMClassifier(completion=completion).classify(MESSAGE)
+        result = LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
 
         assert result.category == category
         assert result.language == language
@@ -280,30 +300,32 @@ class TestLiteLLMParsing:
     def test_the_name_carries_the_model(self):
         # A disagreement report that only said "litellm" would be unreadable the
         # first time the model is swapped mid-window.
-        classifier = LiteLLMClassifier(model="anthropic/claude-haiku-4-5-20251001")
+        classifier = LiteLLMClassifier(
+            CONFIG, model="anthropic/claude-haiku-4-5-20251001"
+        )
         assert classifier.name == "litellm:anthropic/claude-haiku-4-5-20251001"
 
     def test_the_request_asks_for_the_json_schema(self):
         completion = StubCompletion(load_triage("litellm_signup_en.json"))
-        LiteLLMClassifier(completion=completion).classify(MESSAGE)
+        LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
 
         sent = completion.kwargs[0]
         assert sent["response_format"]["type"] == "json_schema"
-        assert sent["response_format"]["json_schema"]["schema"] == RESPONSE_SCHEMA
+        assert sent["response_format"]["json_schema"]["strict"] is True
         assert sent["temperature"] == 0
 
     def test_the_prompt_never_carries_the_sender(self):
         completion = StubCompletion(load_triage("litellm_signup_en.json"))
-        LiteLLMClassifier(completion=completion).classify(MESSAGE)
+        LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
         assert "example.com" not in json.dumps(completion.kwargs[0]["messages"])
 
     def test_an_anthropic_key_is_only_sent_when_configured(self):
         completion = StubCompletion(load_triage("litellm_signup_en.json"))
-        LiteLLMClassifier(completion=completion).classify(MESSAGE)
+        LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
         assert "api_key" not in completion.kwargs[0]
 
         keyed = StubCompletion(load_triage("litellm_signup_en.json"))
-        LiteLLMClassifier(completion=keyed, api_key="sk-test").classify(MESSAGE)
+        LiteLLMClassifier(CONFIG, completion=keyed, api_key="sk-test").classify(MESSAGE)
         assert keyed.kwargs[0]["api_key"] == "sk-test"
 
     def test_an_object_shaped_response_also_parses(self):
@@ -321,9 +343,9 @@ class TestLiteLLMParsing:
                 )
             ]
         )
-        result = LiteLLMClassifier(completion=StubCompletion(response)).classify(
-            MESSAGE
-        )
+        result = LiteLLMClassifier(
+            CONFIG, completion=StubCompletion(response)
+        ).classify(MESSAGE)
         assert result.category == "signup"
 
 
@@ -331,13 +353,13 @@ class TestLiteLLMRefusesToGuess:
     def test_a_malformed_confidence_raises(self):
         completion = StubCompletion(load_triage("litellm_malformed.json"))
         with pytest.raises(TriageUnavailable, match="confidence"):
-            LiteLLMClassifier(completion=completion).classify(MESSAGE)
+            LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
 
     def test_non_json_content_raises(self):
         body = load_triage("litellm_signup_en.json")
         body["choices"][0]["message"]["content"] = "Sure! The category is signup."
         with pytest.raises(TriageUnavailable, match="non-JSON"):
-            LiteLLMClassifier(completion=StubCompletion(body)).classify(MESSAGE)
+            LiteLLMClassifier(CONFIG, completion=StubCompletion(body)).classify(MESSAGE)
 
     def test_an_unknown_category_raises(self):
         body = load_triage("litellm_signup_en.json")
@@ -351,7 +373,7 @@ class TestLiteLLMRefusesToGuess:
             }
         )
         with pytest.raises(TriageUnavailable, match="unknown category"):
-            LiteLLMClassifier(completion=StubCompletion(body)).classify(MESSAGE)
+            LiteLLMClassifier(CONFIG, completion=StubCompletion(body)).classify(MESSAGE)
 
     def test_a_non_boolean_flag_raises(self):
         body = load_triage("litellm_signup_en.json")
@@ -365,34 +387,35 @@ class TestLiteLLMRefusesToGuess:
             }
         )
         with pytest.raises(TriageUnavailable, match="non-boolean"):
-            LiteLLMClassifier(completion=StubCompletion(body)).classify(MESSAGE)
+            LiteLLMClassifier(CONFIG, completion=StubCompletion(body)).classify(MESSAGE)
 
     def test_no_choices_raises(self):
         with pytest.raises(TriageUnavailable):
-            LiteLLMClassifier(completion=StubCompletion({"choices": []})).classify(
-                MESSAGE
-            )
+            LiteLLMClassifier(
+                CONFIG, completion=StubCompletion({"choices": []})
+            ).classify(MESSAGE)
 
     def test_a_transport_failure_raises_triage_unavailable(self):
         completion = StubCompletion(error=RuntimeError("429 rate limited"))
         with pytest.raises(TriageUnavailable):
-            LiteLLMClassifier(completion=completion).classify(MESSAGE)
+            LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
 
     def test_the_exception_carries_the_id_and_not_the_mail(self):
         completion = StubCompletion(error=RuntimeError("boom"))
         with pytest.raises(TriageUnavailable) as raised:
-            LiteLLMClassifier(completion=completion).classify(MESSAGE)
+            LiteLLMClassifier(CONFIG, completion=completion).classify(MESSAGE)
         assert "msg-1" in str(raised.value)
         assert MESSAGE.text not in str(raised.value)
 
 
 class TestTheTwoImplementationsAreComparable:
     def test_both_answer_the_same_four_fields(self):
-        jev = JevClassifier(StubJevClient(jev_response("jev_signup_en.json"))).classify(
-            MESSAGE
-        )
+        jev = JevClassifier(
+            CONFIG, StubJevClient(jev_response("jev_signup_en.json"))
+        ).classify(MESSAGE)
         shadow = LiteLLMClassifier(
-            completion=StubCompletion(load_triage("litellm_signup_en.json"))
+            CONFIG,
+            completion=StubCompletion(load_triage("litellm_signup_en.json")),
         ).classify(MESSAGE)
 
         # Same shape, so the E2 disagreement report compares like with like.
@@ -403,10 +426,11 @@ class TestTheTwoImplementationsAreComparable:
         # The multi-topic mail: Jev reads it as a donation, the shadow as an
         # FAQ. Exactly the kind of case the E2 report exists to surface.
         jev = JevClassifier(
-            StubJevClient(jev_response("jev_multi_topic_en.json"))
+            CONFIG, StubJevClient(jev_response("jev_multi_topic_en.json"))
         ).classify(MESSAGE)
         shadow = LiteLLMClassifier(
-            completion=StubCompletion(load_triage("litellm_multi_topic_en.json"))
+            CONFIG,
+            completion=StubCompletion(load_triage("litellm_multi_topic_en.json")),
         ).classify(MESSAGE)
 
         assert jev.category == "donation"
@@ -415,7 +439,8 @@ class TestTheTwoImplementationsAreComparable:
     def test_the_shadow_record_contains_no_mail_content(self):
         record = (
             LiteLLMClassifier(
-                completion=StubCompletion(load_triage("litellm_signup_en.json"))
+                CONFIG,
+                completion=StubCompletion(load_triage("litellm_signup_en.json")),
             )
             .classify(MESSAGE)
             .as_record()

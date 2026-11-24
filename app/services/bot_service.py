@@ -6,10 +6,11 @@ Orchestrates document processing, knowledge base queries, and generates intellig
 
 from typing import Any
 
-from app.services.channels.base import EMAIL_CHANNEL
-from app.services.triage.prompts import (
+from inbox_core.prompts import REFUSAL_SENTINEL
+
+from app.services.channels.gmail import EMAIL_CHANNEL
+from app.services.email_bot.answers import (
     EMAIL_ANSWER_PROHIBITIONS,
-    REFUSAL_SENTINEL,
     language_instruction,
 )
 from app.utils.logging_config import get_api_logger
@@ -238,11 +239,8 @@ class BotService:
         self,
         message: str,
         user_context: dict | None = None,
-        *,
-        channel: str = "web",
-        language: str = "en",
     ) -> dict[str, Any]:
-        """Answer a question from the knowledge base, or raise.
+        """Answer a web-chat question from the knowledge base, or raise.
 
         Raises EmbeddingsUnavailable when retrieval is broken,
         NoRelevantContext when it returned nothing usable, and
@@ -251,10 +249,10 @@ class BotService:
         guess: an ungrounded answer to a prospective volunteer is the harm
         this whole path is built to avoid.
 
-        ``channel="email"`` selects the stricter prompt the email design
-        requires, and ``language`` tells the generator which language to answer
-        in. Neither changes retrieval; they only change what the model is
-        allowed to say and in what language.
+        The inbox bot does not come through here. Its FAQ answer is
+        inbox-core's ``GroundedAnswer`` (``email_bot/answers.py``), which uses
+        this class's ``_build_context`` and ``_generate_contextual_response``
+        with ``channel="email"`` for the stricter email prompt.
 
         Deliberately logs no part of the message. This runs twice a day against
         a real inbox, application logs persist to the database, and log records
@@ -284,7 +282,7 @@ class BotService:
         logger.info(f"Found {len(relevant_chunks)} relevant chunks")
 
         response = await self._generate_contextual_response(
-            message, context, user_context, channel=channel, language=language
+            message, context, user_context
         )
 
         if REFUSAL_SENTINEL in response:

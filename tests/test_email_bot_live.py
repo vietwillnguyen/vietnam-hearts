@@ -27,6 +27,7 @@ import os
 os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 
 import pytest
+from inbox_core.channels.email import EmailDetails
 
 from app.services.channels.gmail_transport import (
     LABEL_SEEN,
@@ -119,10 +120,10 @@ class TestTheTransportWorksAgainstRealGmail:
             parsed = adapter.parse(mail)
             assert parsed.provider_message_id
             assert parsed.thread_key
-            assert parsed.rfc_message_id
+            assert parsed.extension_as(EmailDetails).rfc_message_id
 
     def test_a_draft_can_be_created_and_deleted(self, live_transport):
-        from app.services.channels.base import OutboundReply
+        from app.services.channels.gmail import email_reply
         from app.services.channels.mail_builder import build_reply
 
         mails = live_transport.list_unprocessed(
@@ -138,12 +139,8 @@ class TestTheTransportWorksAgainstRealGmail:
 
         parsed = GmailAdapter(live_transport).parse(mails[0])
         mime = build_reply(
-            OutboundReply(
-                thread_key=parsed.thread_key,
-                to_address=parsed.sender_address,
-                subject=parsed.subject,
-                in_reply_to=parsed.rfc_message_id,
-                references=parsed.references,
+            email_reply(
+                parsed,
                 text="Live transport check. Safe to delete.",
                 language="en",
                 kind="holding",

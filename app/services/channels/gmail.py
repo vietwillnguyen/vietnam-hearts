@@ -12,7 +12,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 
-from app.services.channels.base import EMAIL_CHANNEL, IncomingMessage, OutboundReply
+from inbox_core import IncomingMessage, OutboundReply
+from inbox_core.channels.email import EmailDetails, EmailReplyDetails
+
 from app.services.channels.gmail_transport import (
     LABEL_SEEN,
     MailTransport,
@@ -26,6 +28,8 @@ from app.utils.logging_config import get_logger
 logger = get_logger("gmail_adapter")
 
 GMAIL_THREAD_URL = "https://mail.google.com/mail/u/0/#inbox/{thread_id}"
+
+EMAIL_CHANNEL = "email"
 
 
 class GmailAdapter:
@@ -59,7 +63,11 @@ class GmailAdapter:
         return self._transport.get_thread(thread_id)
 
     def parse(self, raw: RawMail) -> IncomingMessage:
-        """One Gmail message resource as the engine's ``IncomingMessage``.
+        """One Gmail message resource as the core's ``IncomingMessage``.
+
+        The email-only facts - RFC 5322 ids, headers and Gmail's label ids -
+        travel in ``EmailDetails``, the core's email extension, because nothing
+        outside email code reads them.
 
         Every field is derived defensively, because this is where real mail
         meets our assumptions: a missing ``Message-ID`` falls back to the Gmail
@@ -80,15 +88,17 @@ class GmailAdapter:
             sender_address=from_address,
             subject=(headers.get("subject") or "").strip(),
             text=extract_text(raw.payload),
-            # Falling back to a Gmail-derived id keeps In-Reply-To populated
-            # with something the thread actually contains. A reply with no
-            # In-Reply-To at all is the case that renders outside the
-            # conversation in strict clients.
-            rfc_message_id=rfc_message_id or f"<gmail-{raw.id}@mail.gmail.com>",
-            references=_parse_references(headers.get("references")),
             received_at=_received_at(raw),
-            headers=headers,
-            label_ids=raw.label_ids,
+            extension=EmailDetails(
+                # Falling back to a Gmail-derived id keeps In-Reply-To
+                # populated with something the thread actually contains. A
+                # reply with no In-Reply-To at all is the case that renders
+                # outside the conversation in strict clients.
+                rfc_message_id=rfc_message_id or f"<gmail-{raw.id}@mail.gmail.com>",
+                references=_parse_references(headers.get("references")),
+                headers=headers,
+                label_ids=raw.label_ids,
+            ),
         )
 
     def ensure_labels(self, names: Iterable[str]) -> dict[str, str]:
@@ -123,10 +133,11 @@ class GmailAdapter:
     def send(self, reply: OutboundReply) -> str:
         """Send the reply in-thread; return the sent Gmail message id.
 
-        Reached only through ``SendSink``, which is reached only when the mode
-        is ``auto``, the language is cleared for automatic sending, and the caps
-        allow it. This method asks none of those questions, which is why they
-        are all answered before it.
+        Reached only through ``GmailReplySink.send_to_public``, which only
+        inbox-core's ``Delivery`` calls, and only when the mode is ``auto``,
+        the language is cleared for automatic sending and the caps allow it.
+        This method asks none of those questions, which is why they are all
+        answered before it.
         """
         mime = build_reply(
             reply, from_address=self.inbox_address, from_name=self._from_name
@@ -145,6 +156,63 @@ class GmailAdapter:
 
     def thread_url(self, thread_id: str) -> str:
         return GMAIL_THREAD_URL.format(thread_id=thread_id)
+
+
+class SendingDisabled(RuntimeError):
+    """``send_to_public`` was reached on a sink built for a mode that never sends."""
+
+
+class GmailReplySink:
+    """inbox-core's ``ReplySink`` over Gmail: a draft in the thread, or a send.
+
+    ``hold_for_review`` saves a Gmail draft, which is where the captain already
+    reviews mail. ``send_to_public`` sends in the thread, and is called only by
+    the core's ``Delivery`` once the mode, the language gate and the caps have
+    all said send. It is also built with ``can_send=False`` for every mode but
+    ``auto``, so a draft-mode run holds nothing that can reach a member of the
+    public even if that rule were ever broken.
+    """
+
+    def __init__(self, adapter: GmailAdapter, *, can_send: bool) -> None:
+        self._adapter = adapter
+        self._can_send = can_send
+
+    def hold_for_review(self, reply: OutboundReply) -> str:
+        return self._adapter.draft(reply)
+
+    def send_to_public(self, reply: OutboundReply) -> str:
+        if not self._can_send:
+            raise SendingDisabled("this run's mode does not send")
+        return self._adapter.send(reply)
+
+
+def email_reply(
+    message: IncomingMessage,
+    *,
+    text: str,
+    language: str,
+    kind: str,
+    sources: tuple[str, ...] = (),
+) -> OutboundReply:
+    """A reply to ``message`` in its own thread, addressed to whoever wrote it.
+
+    ``EmailReplyDetails.references`` carries the whole chain the reply joins,
+    ending with the message being answered, which is what both ``References``
+    and ``In-Reply-To`` are built from (``mail_builder.build_reply``).
+    ``in_reply_to`` is the provider's id, as everywhere else in the core.
+    """
+    details = message.extension_as(EmailDetails)
+    chain = (*details.references, details.rfc_message_id) if details else ()
+    return OutboundReply(
+        thread_key=message.thread_key,
+        in_reply_to=message.provider_message_id,
+        to_address=message.sender_address,
+        text=text,
+        language=language,
+        kind=kind,
+        sources=sources,
+        extension=EmailReplyDetails(subject=message.subject, references=chain),
+    )
 
 
 def _parse_references(raw: str | None) -> tuple[str, ...]:

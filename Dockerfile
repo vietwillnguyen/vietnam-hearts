@@ -3,6 +3,12 @@ FROM python:3.12-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
 
+# inbox-core is installed from its GitHub repository rather than a package
+# index, and uv clones git sources with the git binary the slim image lacks.
+# Builder stage only: the production image copies the finished venv.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 
 # Install locked production dependencies into a relocatable venv.

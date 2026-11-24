@@ -89,6 +89,7 @@ class EmailBotSettings:
                 text(SETTING_TRIAGE_CONFIDENCE_THRESHOLD, "0.6"),
                 0.6,
                 SETTING_TRIAGE_CONFIDENCE_THRESHOLD,
+                allow_zero=False,
             ),
             answer_threshold=_parse_ratio(
                 text(SETTING_ANSWER_THRESHOLD, "0.5"), 0.5, SETTING_ANSWER_THRESHOLD
@@ -131,14 +132,24 @@ def _parse_languages(raw: str) -> frozenset[str]:
     return tokens or frozenset({"en"})
 
 
-def _parse_ratio(raw: str, default: float, key: str) -> float:
+def _parse_ratio(
+    raw: str, default: float, key: str, *, allow_zero: bool = True
+) -> float:
+    """A number in 0..1, or ``default`` with a warning.
+
+    ``allow_zero=False`` for the triage threshold: inbox-core refuses a zero
+    confidence threshold, because a category that may be auto-answered with no
+    confidence bar at all is not a policy it will run.
+    """
     try:
         value = float(raw)
     except (TypeError, ValueError):
         logger.warning("Invalid %s=%r; falling back to %s", key, raw, default)
         return default
-    if not 0.0 <= value <= 1.0:
-        logger.warning("%s=%r is outside 0..1; falling back to %s", key, raw, default)
+    lowest_ok = value >= 0.0 if allow_zero else value > 0.0
+    if not (lowest_ok and value <= 1.0):
+        bounds = "0..1" if allow_zero else "above 0 and at most 1"
+        logger.warning("%s=%r is not %s; falling back to %s", key, raw, bounds, default)
         return default
     return value
 

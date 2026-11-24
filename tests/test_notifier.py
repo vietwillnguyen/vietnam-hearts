@@ -12,8 +12,10 @@ import os
 os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 
 import pytest
+from inbox_core import IncomingMessage, decide
 
-from app.services.channels.base import EMAIL_CHANNEL, IncomingMessage
+from app.services.channels.gmail import EMAIL_CHANNEL
+from app.services.email_bot.client import client_config
 from app.services.notifier import (
     URGENT_CATEGORIES,
     CompositeNotifier,
@@ -23,7 +25,6 @@ from app.services.notifier import (
     build_discord_payload,
     build_forward_body,
 )
-from app.services.triage.policy import decide
 from tests.fixtures.email_bot import signals
 
 OWNER = "owner@example.com"
@@ -45,12 +46,12 @@ def event(
         sender_address=SENDER,
         subject=SUBJECT,
         text=BODY,
-        rfc_message_id="<abc@x>",
     )
     return EscalationEvent(
         message=message,
         decision=decide(
-            signals(category=category, language="vi", confidence=0.91), 0.6
+            signals(category=category, language="vi", confidence=0.91),
+            client_config().triage,
         ),
         reason=f"executive category {category}",
         summary=summary,
@@ -151,7 +152,6 @@ class TestTheForwardBody:
                 sender_address=SENDER,
                 subject="<script>alert(1)</script>",
                 text="<img src=x onerror=alert(1)>",
-                rfc_message_id="<x@y>",
             ),
             decision=original.decision,
             reason=original.reason,

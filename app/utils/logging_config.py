@@ -365,7 +365,8 @@ def setup_logger(
     # Check if logger already has its own handlers to avoid duplicate setup.
     # (hasHandlers() would also match root handlers via propagation and skip
     # configuration entirely when e.g. logging.basicConfig was called.)
-    if logger.handlers:
+    # A library's NullHandler is not a sink, so it does not count.
+    if any(not isinstance(h, logging.NullHandler) for h in logger.handlers):
         return logger
 
     logger.setLevel(level)

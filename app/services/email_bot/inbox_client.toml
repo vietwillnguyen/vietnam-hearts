@@ -1,0 +1,77 @@
+# The volunteer inbox as an inbox-core client.
+#
+# The category table is the safety policy: which categories the bot may ever
+# answer, and where everything else goes. inbox-core's derive_tier reads it,
+# never a model. Categories are listed most serious first, because that order
+# is the multi-topic rule the classifier is given: a mail that asks about class
+# times and also offers a donation is classified as the donation.
+#
+# The confidence threshold here is only the default. The run uses
+# TRIAGE_CONFIDENCE_THRESHOLD from the dashboard settings
+# (email_bot/client.py), so the kill switch and the threshold stay editable
+# without a deploy.
+
+[organisation]
+name = "Vietnam Hearts"
+summary = "a volunteer-run charity in Ho Chi Minh City that teaches English to underprivileged children"
+
+[triage]
+confidence_threshold = 0.6
+fallback_category = "human_other"
+
+[triage.languages]
+en = "English"
+vi = "Vietnamese"
+
+[[triage.categories]]
+name = "safeguarding_legal"
+escalates_to = "needs_executive"
+description = "anything about a child's safety or welfare, abuse, a complaint about a person, a legal threat, a contract, insurance, or a data or privacy demand."
+
+[[triage.categories]]
+name = "acceptance"
+escalates_to = "needs_executive"
+description = "the sender is asking whether their application was accepted or rejected, or asking about the status of their application."
+
+[[triage.categories]]
+name = "sponsorship"
+escalates_to = "needs_executive"
+description = "an offer of, or a request about, sponsorship or funding."
+
+[[triage.categories]]
+name = "donation"
+escalates_to = "needs_executive"
+description = "an offer of, or a question about, donating money or goods."
+
+[[triage.categories]]
+name = "partnership"
+escalates_to = "needs_executive"
+description = "a company, school, NGO, or agency proposing to work together."
+
+[[triage.categories]]
+name = "press"
+escalates_to = "needs_executive"
+description = "a journalist, blogger, student researcher, or media request."
+
+[[triage.categories]]
+name = "volunteer_ops"
+description = "an existing volunteer writing about logistics, their own shift, swapping a class, materials, or attendance."
+
+[[triage.categories]]
+name = "human_other"
+description = "a real person writing about something none of the above covers."
+
+[[triage.categories]]
+name = "signup"
+auto_answer = true
+description = "the sender wants to volunteer, teach, or assist, and is asking how to join or offering their time."
+
+[[triage.categories]]
+name = "faq"
+auto_answer = true
+description = "a general question about the organisation, the classes, the location, the schedule, or what volunteering involves, from someone who is not reporting a problem."
+
+[[triage.categories]]
+name = "automated"
+escalates_to = "skip"
+description = "not written by a person for this inbox. Newsletters, marketing, receipts, delivery failures, calendar notifications, out-of-office replies, and security alerts."

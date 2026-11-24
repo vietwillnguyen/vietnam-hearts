@@ -248,10 +248,11 @@ class TestNoBodyOrSubjectIsEverLogged:
 
 class TestExceptionMessagesCarryIdsOnly:
     def test_a_classifier_failure_message_carries_no_mail_content(self, test_db):
-        from app.services.channels.base import IncomingMessage
-        from app.services.triage.jev import JevClassifier
-        from app.services.triage.litellm import LiteLLMClassifier
-        from app.services.triage.protocol import TriageUnavailable
+        from inbox_core import IncomingMessage, TriageUnavailable
+        from inbox_core.adapters.jev import JevClassifier
+        from inbox_core.adapters.litellm import LiteLLMClassifier
+
+        from app.services.email_bot.client import client_config
 
         message = IncomingMessage(
             channel="email",
@@ -261,7 +262,6 @@ class TestExceptionMessagesCarryIdsOnly:
             sender_address=payloads.TEST_SENDER,
             subject="Volunteering with Vietnam Hearts",
             text="I am moving to Ho Chi Minh City and would love to help.",
-            rfc_message_id="<abc@x>",
         )
 
         broken_jev = MagicMock()
@@ -271,8 +271,8 @@ class TestExceptionMessagesCarryIdsOnly:
         broken_litellm = MagicMock(side_effect=RuntimeError("upstream 500"))
 
         for classifier in (
-            JevClassifier(broken_jev),
-            LiteLLMClassifier(completion=broken_litellm),
+            JevClassifier(client_config(), broken_jev),
+            LiteLLMClassifier(client_config(), completion=broken_litellm),
         ):
             with pytest.raises(TriageUnavailable) as raised:
                 classifier.classify(message)
@@ -366,7 +366,8 @@ class TestObjectsHoldingContentDoNotPrintIt:
     """A repr is what an f-string, a debugger, a log line or a Sentry frame shows."""
 
     def test_an_incoming_message_repr_carries_ids_only(self):
-        from app.services.channels.base import IncomingMessage
+        from inbox_core import IncomingMessage
+        from inbox_core.channels.email import EmailDetails
 
         message = IncomingMessage(
             channel="email",
@@ -376,8 +377,9 @@ class TestObjectsHoldingContentDoNotPrintIt:
             sender_address=payloads.TEST_SENDER,
             subject="A very private subject line",
             text="A very private body that must never be printed.",
-            rfc_message_id="<abc@x>",
-            headers={"From": payloads.TEST_SENDER},
+            extension=EmailDetails(
+                rfc_message_id="<abc@x>", headers={"From": payloads.TEST_SENDER}
+            ),
         )
         printed = repr(message) + str(message)
         assert "msg-1" in printed

@@ -17,11 +17,8 @@ import pytest
 
 from evals.metrics import (
     AgreementMetrics,
-    ClassCounts,
     GroundednessMetrics,
     TriageMetrics,
-    format_table,
-    percentage,
 )
 
 
@@ -46,119 +43,9 @@ def record(
     )
 
 
-class TestClassCounts:
-    def test_a_perfect_class_scores_one(self):
-        counts = ClassCounts(true_positive=5)
-        assert counts.precision == 1.0
-        assert counts.recall == 1.0
-        assert counts.support == 5
-
-    def test_precision_is_over_what_we_predicted(self):
-        counts = ClassCounts(true_positive=3, false_positive=1)
-        assert counts.precision == 0.75
-
-    def test_recall_is_over_what_genuinely_was(self):
-        counts = ClassCounts(true_positive=3, false_negative=1)
-        assert counts.recall == 0.75
-
-    def test_a_class_nobody_predicted_scores_one_for_precision(self):
-        # So it does not drag a macro average down as though it had been
-        # predicted wrongly.
-        assert ClassCounts().precision == 1.0
-
-    def test_a_class_with_no_cases_scores_one_for_recall(self):
-        assert ClassCounts().recall == 1.0
-
-
-class TestTriageMetrics:
-    def test_a_perfect_run_passes_the_gate(self):
-        metrics = TriageMetrics()
-        record(metrics, "a", "signup", "signup", "auto_answer", "auto_answer")
-        record(
-            metrics, "b", "donation", "donation", "needs_executive", "needs_executive"
-        )
-
-        assert metrics.executive_recall == 1.0
-        assert metrics.category_accuracy == 1.0
-        assert metrics.passes_executive_gate()
-
-    def test_one_missed_escalation_fails_the_gate(self):
-        # The whole point: a single miss is not compensated for by anything.
-        metrics = TriageMetrics()
-        for index in range(20):
-            record(metrics, f"ok-{index}", "faq", "faq", "auto_answer", "auto_answer")
-        record(
-            metrics,
-            "missed",
-            "safeguarding_legal",
-            "faq",
-            "needs_executive",
-            "auto_answer",
-        )
-
-        assert metrics.executive_recall < 1.0
-        assert not metrics.passes_executive_gate()
-        assert len(metrics.missed_executive) == 1
-        assert "missed" in metrics.missed_executive[0]
-
-    def test_the_miss_is_described_usefully(self):
-        metrics = TriageMetrics()
-        record(
-            metrics,
-            "safeguarding-vi-01",
-            "safeguarding_legal",
-            "human_other",
-            "needs_executive",
-            "needs_admin",
-        )
-        miss = metrics.missed_executive[0]
-        assert "safeguarding-vi-01" in miss
-        assert "safeguarding_legal" in miss
-        assert "human_other" in miss
-
-    def test_an_over_escalation_does_not_fail_the_gate(self):
-        # Escalating an FAQ costs the captain a minute. Not escalating a
-        # safeguarding mail is the failure this gate exists for, and the two
-        # are not symmetrical.
-        metrics = TriageMetrics()
-        record(
-            metrics, "a", "faq", "safeguarding_legal", "auto_answer", "needs_executive"
-        )
-        assert metrics.passes_executive_gate()
-
-    def test_an_unclassifiable_case_fails_the_gate(self):
-        # A run that could not classify a third of the safeguarding cases has
-        # not demonstrated anything about recall.
-        metrics = TriageMetrics()
-        record(
-            metrics, "a", "donation", "donation", "needs_executive", "needs_executive"
-        )
-        metrics.record_error("b", "classifier unavailable")
-
-        assert not metrics.passes_executive_gate()
-
-    def test_language_accuracy_is_counted(self):
-        metrics = TriageMetrics()
-        record(metrics, "a", "faq", "faq", "auto_answer", "auto_answer", "vi", "vi")
-        record(metrics, "b", "faq", "faq", "auto_answer", "auto_answer", "vi", "en")
-
-        assert metrics.language_accuracy == 0.5
-
-    def test_the_confusion_table_records_the_mistake(self):
-        metrics = TriageMetrics()
-        record(metrics, "a", "donation", "faq", "needs_executive", "auto_answer")
-        assert metrics.confusion[("donation", "faq")] == 1
-
-    def test_an_empty_run_does_not_divide_by_zero(self):
-        metrics = TriageMetrics()
-        assert metrics.executive_recall == 1.0
-        assert metrics.language_accuracy == 1.0
-        assert metrics.category_accuracy == 1.0
-
-
 class TestTheRunnerExitCode:
     def _fake_classifier(self, answers):
-        from app.services.triage.protocol import TriageSignals
+        from inbox_core import TriageSignals
 
         class Fake:
             name = "fake"
@@ -253,54 +140,6 @@ class TestTheRunnerExitCode:
         out = capsys.readouterr().out
         assert "Executive recall" in out
         assert "100.0%" in out
-
-
-class TestGroundednessMetrics:
-    def test_a_perfect_run_passes(self):
-        metrics = GroundednessMetrics()
-        for index in range(10):
-            metrics.record(f"case-{index}", True)
-        assert metrics.correctness == 1.0
-        assert metrics.passes_gate()
-
-    def test_refusals_count_against_the_score(self):
-        # A bot that refused everything but one easy question would otherwise
-        # report 100 percent.
-        metrics = GroundednessMetrics()
-        metrics.record("answered", True)
-        for index in range(9):
-            metrics.record_refusal(f"refused-{index}", "no context")
-
-        assert metrics.total == 10
-        assert metrics.correctness == pytest.approx(0.1)
-        assert not metrics.passes_gate()
-
-    def test_the_gate_is_at_ninety_percent(self):
-        metrics = GroundednessMetrics()
-        for index in range(9):
-            metrics.record(f"good-{index}", True)
-        metrics.record("bad", False, "ungrounded")
-
-        assert metrics.correctness == pytest.approx(0.9)
-        assert metrics.passes_gate(0.9)
-
-    def test_just_below_the_gate_fails(self):
-        metrics = GroundednessMetrics()
-        for index in range(8):
-            metrics.record(f"good-{index}", True)
-        metrics.record("bad-1", False)
-        metrics.record("bad-2", False)
-
-        assert not metrics.passes_gate(0.9)
-
-    def test_an_ungrounded_answer_is_listed_with_its_reason(self):
-        metrics = GroundednessMetrics()
-        metrics.record("faq-en-01", False, "ungrounded; missing class time")
-        assert "faq-en-01" in metrics.ungrounded[0]
-        assert "missing class time" in metrics.ungrounded[0]
-
-    def test_an_empty_run_does_not_divide_by_zero(self):
-        assert GroundednessMetrics().correctness == 1.0
 
 
 class TestTheJudge:
@@ -440,7 +279,8 @@ class TestTheJudge:
 
 class TestThresholdSweeps:
     def _answered(self):
-        from app.services.triage.protocol import TriageSignals
+        from inbox_core import TriageSignals
+
         from evals.loader import GoldenCase
 
         def signals(category, confidence):
@@ -510,7 +350,9 @@ class TestThresholdSweeps:
         # otherwise, the rule order would have been broken.
         from evals.calibrate_thresholds import sweep_triage_threshold
 
-        rows = sweep_triage_threshold(self._answered(), thresholds=(0.0, 0.5, 0.9, 1.0))
+        rows = sweep_triage_threshold(
+            self._answered(), thresholds=(0.01, 0.5, 0.9, 1.0)
+        )
         assert {row["executive_recall"] for row in rows} == {1.0}
 
     def test_the_answer_threshold_sweep_reports_precision_and_reach(self):
@@ -685,22 +527,6 @@ class TestShadowReportReadsOnlyWhatTheRowsHold:
         before = test_db.query(Message).count()
         compare(load_rows(test_db, None, None))
         assert test_db.query(Message).count() == before
-
-
-class TestFormatting:
-    def test_percentage_is_one_decimal_place(self):
-        assert percentage(0.9) == "90.0%"
-        assert percentage(1.0) == "100.0%"
-        assert percentage(0.8333) == "83.3%"
-
-    def test_a_table_aligns_to_its_widest_cell(self):
-        table = format_table(
-            [("safeguarding_legal", "12"), ("faq", "13")], ("category", "cases")
-        )
-        lines = table.splitlines()
-        assert len(lines) == 4
-        assert len({len(line.rstrip()) for line in lines}) >= 1
-        assert "safeguarding_legal" in table
 
 
 class TestWeeklyLiveSampling:

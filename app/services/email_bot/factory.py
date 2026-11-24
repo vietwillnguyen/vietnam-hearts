@@ -15,12 +15,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from inbox_core.adapters.jev import JevClassifier
+from inbox_core.adapters.litellm import LiteLLMClassifier
+from inbox_core.shadow import ShadowingClassifier
 from sqlalchemy.orm import Session
 
 from app import config
 from app.services.channels.gmail import GmailAdapter
 from app.services.channels.gmail_transport import GmailTransport
 from app.services.conversation_store import SqlConversationStore
+from app.services.email_bot.client import client_config
 from app.services.email_bot.pipeline import EmailBotPipeline
 from app.services.email_bot.settings import EmailBotSettings
 from app.services.notifier import (
@@ -28,9 +32,6 @@ from app.services.notifier import (
     DiscordNotifier,
     EmailForwardNotifier,
 )
-from app.services.triage.jev import JevClassifier
-from app.services.triage.litellm import LiteLLMClassifier
-from app.services.triage.shadow import ShadowingClassifier
 from app.utils.field_crypto import EncryptionKeyError, cipher_from_env
 from app.utils.logging_config import get_logger
 
@@ -94,11 +95,13 @@ def build_classifier(
     shadow that cannot be built is simply absent: the decision is unaffected and
     the disagreement report is thinner.
     """
+    config = client_config(settings)
     jev: JevClassifier | None = None
     if credentials.typesafe_api_key:
-        jev = JevClassifier.from_api_key(credentials.typesafe_api_key)
+        jev = JevClassifier.from_api_key(config, credentials.typesafe_api_key)
 
     fallback = LiteLLMClassifier(
+        config,
         model=settings.triage_fallback_model,
         api_key=_litellm_api_key(settings, credentials),
     )

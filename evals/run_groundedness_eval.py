@@ -3,10 +3,15 @@
 
     uv run python evals/run_groundedness_eval.py
 
-Runs ``BotService.chat()`` against the live knowledge base with the email
-prompt, then judges each reply against the case's ``must_mention`` facts and
+Answers each case with the bot's own FAQ handler - inbox-core's
+``GroundedAnswer`` over the live knowledge base and Gemini under the email
+prompt - then judges each reply against the case's ``must_mention`` facts and
 ``must_not_answer`` prohibitions. The design's gate is at least 90 percent
 correctness on ``auto_answer`` cases.
+
+The handler runs with no similarity floor, so every case gets an answer to
+judge and ``calibrate_thresholds.py --answers`` can say where
+``ANSWER_THRESHOLD`` belongs. In production the floor is that threshold.
 
 Refusals count against the score rather than being excluded. A bot that refused
 everything but one easy question would otherwise report 100 percent, which is
@@ -18,20 +23,29 @@ Consumes real API calls, against the real knowledge base. Not in CI.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.bot_service import (  # noqa: E402
-    GenerationUnavailable,
-    NoRelevantContext,
+from inbox_core import GroundedAnswer, HandlerRequest  # noqa: E402
+
+from app.services.email_bot.answers import (  # noqa: E402
+    ANSWER_PASSAGES,
+    AnswerOutages,
+    KnowledgeBaseGenerator,
+    KnowledgeBaseRetriever,
 )
-from app.services.knowledge_service import EmbeddingsUnavailable  # noqa: E402
+from app.services.email_bot.client import client_config  # noqa: E402
 from evals.judge import judge_answer  # noqa: E402
-from evals.loader import answerable_cases, load_golden_set  # noqa: E402
+from evals.loader import (  # noqa: E402
+    GOLDEN_THRESHOLD,
+    answerable_cases,
+    as_incoming,
+    decide_at,
+    load_golden_set,
+)
 from evals.metrics import GroundednessMetrics, format_table, percentage  # noqa: E402
 
 
@@ -41,33 +55,64 @@ def build_bot_service():
     return get_bot_service()
 
 
-async def answer_case(bot_service, case) -> tuple[str, str, float]:
-    """The reply, the context it was grounded in, and the retrieval similarity.
+class AnswerRefused(Exception):
+    """The handler handed the case to a person instead of answering it."""
 
-    The context is fetched a second time rather than plumbed out of ``chat()``:
-    the judge needs it, and widening ``chat()``'s return value just for an eval
-    would change the production signature for the sake of a script.
-    """
-    result = await bot_service.chat(case.text, channel="email", language=case.language)
-
-    chunks = await bot_service.knowledge_service.similarity_search(case.text, limit=3)
-    context = bot_service._build_context(chunks)
-    return result["response"], context, float(result.get("confidence") or 0.0)
+    def __init__(self, reason: str, outage: str | None) -> None:
+        super().__init__(reason)
+        self.outage = outage
 
 
-async def evaluate(bot_service, gemini_client, cases) -> GroundednessMetrics:
+class _RecordingGenerator(KnowledgeBaseGenerator):
+    """The production generator, keeping the passages it was given for the judge."""
+
+    passages: tuple = ()
+
+    def generate(self, request):
+        self.passages = request.passages
+        return super().generate(request)
+
+
+def answer_case(bot_service, case) -> tuple[str, str, float]:
+    """The reply, the context it was grounded in, and the best similarity."""
+    outages = AnswerOutages()
+    generator = _RecordingGenerator(bot_service, outages=outages)
+    handler = GroundedAnswer(
+        KnowledgeBaseRetriever(bot_service.knowledge_service, outages=outages),
+        generator,
+        min_score=0.0,
+        limit=ANSWER_PASSAGES,
+        name="faq",
+    )
+    request = HandlerRequest(
+        as_incoming(case),
+        decide_at(case.expected_signals, GOLDEN_THRESHOLD),
+        client_config(),
+    )
+    result = handler.handle(request)
+    if result.outcome == "hand_off":
+        raise AnswerRefused(result.reason, outages.last)
+
+    context = bot_service._build_context(
+        [{"content": passage.entry.text} for passage in generator.passages]
+    )
+    similarity = max((source.score for source in result.sources), default=0.0)
+    return result.text, context, similarity
+
+
+def evaluate(bot_service, gemini_client, cases) -> GroundednessMetrics:
     metrics = GroundednessMetrics()
 
     for case in cases:
         try:
-            answer, context, confidence = await answer_case(bot_service, case)
-        except NoRelevantContext as exc:
+            answer, context, confidence = answer_case(bot_service, case)
+        except AnswerRefused as exc:
             # Safe, but a miss: the sender got a holding message for a question
             # the knowledge base was supposed to cover.
-            metrics.record_refusal(case.id, f"refused: {exc}")
-            continue
-        except (EmbeddingsUnavailable, GenerationUnavailable) as exc:
-            metrics.record_refusal(case.id, f"unavailable: {type(exc).__name__}")
+            if exc.outage:
+                metrics.record_refusal(case.id, f"unavailable: {exc.outage}")
+            else:
+                metrics.record_refusal(case.id, f"refused: {exc}")
             continue
 
         try:
@@ -158,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     if gemini_client is None:
         raise SystemExit("No Gemini client; set GEMINI_API_KEY")
 
-    metrics = asyncio.run(evaluate(bot_service, gemini_client, cases))
+    metrics = evaluate(bot_service, gemini_client, cases)
     print(report(metrics, args.threshold))
 
     if args.json:

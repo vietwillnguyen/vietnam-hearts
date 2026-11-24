@@ -184,11 +184,10 @@ read its "Amendment 2026-09-29" section before trusting D6 or the rollout table.
 The email channel's own design and phase plan are `docs/superpowers/specs/2026-09-29-email-channel-design.md`
 and `docs/superpowers/plans/2026-09-29-email-channel-implementation.md`.
 
-The shared engine now exists and email is its first channel: `app/services/channels/`
-(transport, guards, MIME), `app/services/triage/` (two classifiers behind one protocol,
-with the tier derived in `policy.py` and never by a model), `app/services/conversation_service.py`
-and `app/services/email_bot/` (per-run pipeline). Messenger still runs on the
-phase-0 webhook and has not been migrated onto it.
+The engine's channel-neutral parts come from the `inbox-core` package: message shapes, the tier rules, both classifiers and the shadow, the grounded-answer handler, the off/draft/auto delivery table, the field cipher and the eval arithmetic.
+This repository supplies the client config (`app/services/email_bot/inbox_client.toml`, the category table the core derives every tier from, in code and never by a model), the Gmail channel (`app/services/channels/`), the encrypted conversation record (`app/services/conversation_service.py`, `conversation_store.py`) and the per-run pipeline (`app/services/email_bot/`).
+`docs/INBOX_CORE.md` says which is which, how the package is pinned, and why the pipeline itself has not moved yet.
+Messenger still runs on the phase-0 webhook and has not been migrated onto it.
 
 All four phases have shipped. The one place mail can still be silently missed is
 the listing window: the bot lists inbox mail from the last 7 days, so anything
@@ -199,18 +198,16 @@ mode off and alerts rather than failing quietly twice a day.
 
 Two properties of that code are load-bearing and easy to break:
 
-- **There is exactly one way to send mail to the public.** `GmailTransport.send_reply` is
-  the only send-shaped name on the transport and `SendSink` its only caller, reached only
-  through `app/services/email_bot/delivery.py::choose_sink`, so the mode, the per-language
-  gate, the caps and the pipeline's one-reply-per-thread rule are all decided before the
-  transport is reached. `off` and `draft` never return `SendSink`.
+- **There is exactly one way to send mail to the public.**
+  `GmailTransport.send_reply` is the only send-shaped name on the transport and `GmailAdapter.send` its only caller, reached only from `GmailReplySink.send_to_public`, which only inbox-core's `Delivery` calls once the mode, the per-language gate and the caps have said send; the pipeline's one-reply-per-thread rule is decided before that.
+  The sink is built with `can_send=False` in every mode but `auto` (`app/services/email_bot/delivery.py`).
   `tests/test_gmail_transport.py` asserts the set of send-shaped names on the class is
   exactly `{"send_reply"}` - an exact set, because "at most one" would quietly permit a
   rename. The only other outbound path is `EmailForwardNotifier`, whose recipient is
   fixed at construction.
 - **Mail content is never logged, and stored only encrypted, for admins only.** Since 2026-11-22
   the bot keeps each conversation (subject, plain-text body, sender address, its own replies) in the
-  `messages.*_encrypted` columns, AES-GCM through `app/utils/field_crypto.py`, and nowhere else; every
+  `messages.*_encrypted` columns, AES-GCM through `app/utils/field_crypto.py` (inbox-core's cipher), and nowhere else; every
   read and write goes through `app/services/conversation_store.py`. Only a signed-in admin can read
   one (`GET /admin/email-bot/conversations/{id}`; the cron service account is refused), each open is
   committed to `conversation_views` before anything is decrypted, and deletion on request NULLs the
@@ -230,8 +227,7 @@ Two properties of that code are load-bearing and easy to break:
 
 `evals/` is on-demand and never in CI, because the runners spend real API calls.
 What *is* in CI is the part that can be wrong for free: `tests/test_evals_loader.py`
-validates the golden set, including that every `expected_tier` is what `derive_tier`
-actually returns, and `tests/test_evals_runners.py` checks the metric arithmetic.
+validates the golden set, including that every `expected_tier` is what inbox-core's `derive_tier` returns under this inbox's table, and `tests/test_evals_runners.py` checks the exit codes and the shadow-agreement arithmetic (the rest is the core's, tested there).
 `evals/README.md` says how to run each script and what the gates are.
 
 Dedupe on the inbound side means **handled**, not seen: `messages.handled_at` is

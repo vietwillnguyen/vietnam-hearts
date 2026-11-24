@@ -13,9 +13,10 @@ os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 from datetime import UTC, datetime
 
 import pytest
+from inbox_core import OutboundReply
+from inbox_core.channels.email import EmailReplyDetails
 
-from app.services.channels.base import EMAIL_CHANNEL, OutboundReply
-from app.services.channels.gmail import GmailAdapter
+from app.services.channels.gmail import EMAIL_CHANNEL, GmailAdapter
 from app.services.channels.gmail_transport import LABEL_SEEN
 from app.services.channels.mail_guards import sender_key
 from tests.fixtures import gmail_payloads as payloads
@@ -35,6 +36,11 @@ ALL_FIXTURES = [
     "multi_topic_en.json",
     "second_inbound.json",
 ]
+
+
+def _chain(references, in_reply_to):
+    """The reply's References chain, ending with the message it answers."""
+    return (*references, in_reply_to) if in_reply_to else tuple(references)
 
 
 @pytest.fixture
@@ -57,7 +63,7 @@ class TestParseEveryFixture:
         assert message.thread_key
         # Never empty: an id with no threading anchor is the case that renders
         # a reply outside its conversation.
-        assert message.rfc_message_id
+        assert message.extension.rfc_message_id
         assert isinstance(message.received_at, datetime)
 
     @pytest.mark.parametrize("fixture", ALL_FIXTURES)
@@ -74,7 +80,7 @@ class TestParsedFields:
         assert message.subject == "Volunteering with Vietnam Hearts"
         assert message.sender_address == payloads.TEST_SENDER
         assert "How do I sign up?" in message.text
-        assert message.rfc_message_id == "<abc123@mail.example.com>"
+        assert message.extension.rfc_message_id == "<abc123@mail.example.com>"
 
     def test_a_vietnamese_subject_and_body_survive(self, adapter):
         message = adapter.parse(raw("signup_vi.json"))
@@ -94,14 +100,17 @@ class TestParsedFields:
 
     def test_a_missing_message_id_falls_back_to_a_gmail_derived_one(self, adapter):
         message = adapter.parse(raw("empty_body.json"))
-        assert message.rfc_message_id == "<gmail-18f2a1b4c5d6e834@mail.gmail.com>"
+        assert (
+            message.extension.rfc_message_id
+            == "<gmail-18f2a1b4c5d6e834@mail.gmail.com>"
+        )
 
     def test_the_references_chain_is_parsed(self, adapter):
         message = adapter.parse(raw("second_inbound.json"))
-        assert message.references == ("<abc123@mail.example.com>",)
+        assert message.extension.references == ("<abc123@mail.example.com>",)
 
     def test_a_mail_with_no_references_has_an_empty_chain(self, adapter):
-        assert adapter.parse(raw("signup_en.json")).references == ()
+        assert adapter.parse(raw("signup_en.json")).extension.references == ()
 
     @pytest.mark.parametrize(
         "header_value,expected",
@@ -117,15 +126,15 @@ class TestParsedFields:
         self, adapter, header_value, expected
     ):
         resource = payloads.message(references=header_value or None)
-        assert adapter.parse(raw_from(resource)).references == expected
+        assert adapter.parse(raw_from(resource)).extension.references == expected
 
     def test_label_ids_are_carried_through_for_the_guards(self, adapter):
         message = adapter.parse(raw("newsletter.json"))
-        assert "CATEGORY_UPDATES" in message.label_ids
+        assert "CATEGORY_UPDATES" in message.extension.label_ids
 
     def test_headers_are_lower_cased_for_the_guards(self, adapter):
         message = adapter.parse(raw("vacation_autoreply.json"))
-        assert message.headers["auto-submitted"] == "auto-replied"
+        assert message.extension.headers["auto-submitted"] == "auto-replied"
 
     def test_the_received_time_comes_from_gmails_internal_date(self, adapter):
         message = adapter.parse(raw("signup_en.json"))
@@ -174,9 +183,11 @@ class TestDrafting:
         return OutboundReply(
             thread_key="thread-9",
             to_address=payloads.TEST_SENDER,
-            subject="Volunteering",
-            in_reply_to="<abc123@mail.example.com>",
-            references=("<root@x>",),
+            in_reply_to="provider-message-id",
+            extension=EmailReplyDetails(
+                subject="Volunteering",
+                references=_chain(("<root@x>",), "<abc123@mail.example.com>"),
+            ),
             text="Thanks for writing.\n\n- Vietnam Hearts automated assistant",
             language="en",
             kind="signup",

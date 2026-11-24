@@ -21,15 +21,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.triage.policy import decide  # noqa: E402
-from app.services.triage.protocol import (  # noqa: E402
-    CATEGORIES,
-    TriageUnavailable,
-)
+from inbox_core import TriageUnavailable  # noqa: E402
+
+from app.services.email_bot.client import client_config  # noqa: E402
 from evals.loader import (  # noqa: E402
+    CATEGORIES,
     GOLDEN_THRESHOLD,
     GoldenCase,
     as_incoming,
+    decide_at,
     load_golden_set,
 )
 from evals.metrics import (  # noqa: E402
@@ -49,17 +49,19 @@ def build_classifier(name: str, model: str | None):
     import os
 
     if name == "jev":
-        from app.services.triage.jev import DEFAULT_MODEL, JevClassifier
+        from inbox_core.adapters.jev import DEFAULT_MODEL, JevClassifier
 
         key = os.getenv("TYPESAFE_API_KEY")
         if not key:
             raise SystemExit("TYPESAFE_API_KEY is not set")
-        return JevClassifier.from_api_key(key, model or DEFAULT_MODEL)
+        return JevClassifier.from_api_key(
+            client_config(), key, model=model or DEFAULT_MODEL
+        )
 
     if name == "litellm":
-        from app.services.triage.litellm import DEFAULT_MODEL, LiteLLMClassifier
+        from inbox_core.adapters.litellm import DEFAULT_MODEL, LiteLLMClassifier
 
-        return LiteLLMClassifier(model=model or DEFAULT_MODEL)
+        return LiteLLMClassifier(client_config(), model=model or DEFAULT_MODEL)
 
     raise SystemExit(f"unknown classifier {name!r}; expected jev or litellm")
 
@@ -81,7 +83,7 @@ def evaluate(
                 )
             continue
 
-        decision = decide(signals, threshold)
+        decision = decide_at(signals, threshold)
         metrics.record(
             case_id=case.id,
             expected_category=case.expected_category,

@@ -17,8 +17,16 @@ model rather than a style choice:
   unfinished is simply picked up by the next run.
 
 Synchronous, because the route is a plain ``def`` and everything it talks to is a
-synchronous client. The single coroutine it needs, ``BotService.chat()``, is
-reached through ``bridge.run_coroutine``.
+synchronous client. The two coroutines the FAQ answer needs - the vector search
+and ``BotService``'s generation - are reached through ``bridge.run_coroutine``
+by the retriever and generator in ``answers.py``.
+
+The steps themselves are inbox-core's: its message shapes, its tier rules and
+classifiers, its handlers and its delivery table. What this module owns is the
+order of a Gmail poll around them - the labels, the human-reply check, the
+one-reply-per-thread rule, the forward, the circuit breaker and the run row -
+because inbox-core's own ``Pipeline`` does not yet do those things the way this
+inbox needs (see ``docs/INBOX_CORE.md``).
 """
 
 from __future__ import annotations
@@ -27,14 +35,23 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from inbox_core import (
+    DeliveryMode,
+    HandlerRequest,
+    IncomingMessage,
+    ReplySink,
+    TriageDecision,
+    TriageSignals,
+    TriageUnavailable,
+    decide,
+)
+from inbox_core.channels.email import EmailDetails
+from inbox_core.delivery import CapDecision, DeliveryResult, parse_mode
+from inbox_core.triage import escalation_reason
 from sqlalchemy.orm import Session
 
 from app.models import EmailBotRun
-from app.services.bot_service import (
-    GenerationUnavailable,
-    NoRelevantContext,
-)
-from app.services.channels.base import IncomingMessage, OutboundReply
+from app.services.channels.gmail import email_reply
 from app.services.channels.gmail_transport import (
     LABEL_DRAFTED,
     LABEL_ESCALATED,
@@ -52,28 +69,22 @@ from app.services.channels.mail_guards import (
     is_internal_sender,
 )
 from app.services.conversation_service import (
+    ACTION_DRAFTED,
     ACTION_PAUSED,
+    ACTION_SENT,
     ACTION_SKIPPED,
     DRAFT_PENDING,
     DRAFT_UNMEASURED,
     ConversationService,
 )
 from app.services.conversation_store import ConversationStore, SqlConversationStore
-from app.services.email_bot.bridge import run_coroutine
-from app.services.email_bot.caps import CapDecision
-from app.services.email_bot.delivery import (
-    DeliveryMode,
-    DeliveryResult,
-    ReplySink,
-    choose_sink,
-    parse_mode,
-)
+from app.services.email_bot.answers import AnswerOutages, build_handlers
+from app.services.email_bot.caps import CapsState
+from app.services.email_bot.client import client_config
+from app.services.email_bot.delivery import build_delivery
 from app.services.email_bot.reconciliation import reconcile_draft
 from app.services.email_bot.replies import (
-    SignupFacts,
-    SignupReplyUnavailable,
     render_holding_message,
-    render_signup_reply,
     signature,
 )
 from app.services.email_bot.settings import (
@@ -82,16 +93,8 @@ from app.services.email_bot.settings import (
     EmailBotSettings,
 )
 from app.services.email_bot.summaries import summarise_for_escalation
-from app.services.knowledge_service import EmbeddingsUnavailable
 from app.services.notifier import EscalationEvent, Notifier
 from app.services.settings_service import set_setting
-from app.services.triage.policy import CATEGORY_TIERS, escalation_reason
-from app.services.triage.prompts import REFUSAL_SENTINEL
-from app.services.triage.protocol import (
-    TriageDecision,
-    TriageSignals,
-    TriageUnavailable,
-)
 from app.utils.field_crypto import cipher_from_env
 from app.utils.logging_config import get_logger
 
@@ -165,7 +168,7 @@ class EmailBotPipeline:
         bot_service: Any = None,
         gemini_client: Any = None,
         admin_emails: tuple[str, ...] = (),
-        sinks: dict[str, ReplySink] | None = None,
+        sink: ReplySink | None = None,
         caps: Any = None,
         store: ConversationStore | None = None,
     ) -> None:
@@ -178,6 +181,7 @@ class EmailBotPipeline:
         self.gemini_client = gemini_client
         self.admin_emails = admin_emails
         self.mode = parse_mode(settings.mode)
+        self.config = client_config(settings)
         # The key is resolved here, before any mail is listed, so a missing or
         # malformed key stops the run before Gmail is touched rather than
         # after the first mail has been labelled.
@@ -185,15 +189,16 @@ class EmailBotPipeline:
         self.conversations = ConversationService(db, store=self.store)
 
         self.caps = caps
-        if sinks is None:
-            from app.services.email_bot.delivery import DraftSink, SendSink
+        self.delivery = build_delivery(
+            adapter,
+            mode=self.mode,
+            auto_languages=settings.auto_languages,
+            caps=self._caps() if self.mode is DeliveryMode.AUTO else None,
+            sink=sink,
+        )
 
-            sinks = {"draft": DraftSink(adapter)}
-            if self.mode is DeliveryMode.AUTO:
-                # Only constructed when the mode could actually use it, so a
-                # draft-mode run holds no object capable of sending at all.
-                sinks["send"] = SendSink(adapter, self._caps())
-        self.sinks = sinks
+        self._outages = AnswerOutages()
+        self.handlers = build_handlers(settings, bot_service, self._outages)
 
         self._summary = RunSummary(mode=self.mode)
         self._consecutive_failures = 0
@@ -209,12 +214,12 @@ class EmailBotPipeline:
         the schedule week anchor exists to avoid.
         """
         if self.caps is None:
-            from app.services.email_bot.caps import CapsState
             from app.utils.schedule_dates import local_now
 
             self.caps = CapsState.load(
                 self.db, local_now(self.settings.timezone), self.settings
             )
+        self.caps.on_refused = self._count_capped
         return self.caps
 
     # ------------------------------------------------------------------ run
@@ -510,7 +515,10 @@ class EmailBotPipeline:
             # noise in practice.
             return "unparseable-sender"
 
-        automated = is_automated(message.headers, message.label_ids)
+        details = message.extension_as(EmailDetails)
+        automated = is_automated(
+            details.headers if details else {}, details.label_ids if details else ()
+        )
         if automated:
             return automated
         if is_internal_sender(
@@ -570,8 +578,6 @@ class EmailBotPipeline:
         person. It never produces a guess, because a guessed category is how a
         safeguarding mail ends up answered from the FAQ.
         """
-        from app.services.triage.policy import decide
-
         try:
             signals = self.classifier.classify(message)
         except TriageUnavailable as exc:
@@ -579,7 +585,7 @@ class EmailBotPipeline:
             return self._fail_closed_decision(), None
 
         shadow = getattr(self.classifier, "last_shadow", None)
-        return decide(signals, self.settings.triage_confidence_threshold), shadow
+        return decide(signals, self.config.triage), shadow
 
     def _fail_closed_decision(self) -> TriageDecision:
         return TriageDecision(
@@ -597,105 +603,43 @@ class EmailBotPipeline:
     def _answer(
         self, conversation: Any, message: IncomingMessage, decision: TriageDecision
     ) -> None:
-        if decision.category == "signup":
-            try:
-                text = render_signup_reply(decision.language, self._signup_facts())
-            except SignupReplyUnavailable as exc:
-                # The facts are not configured, so there is no honest template
-                # to send. A person answers it instead.
-                logger.error("Sign-up reply unavailable: %s", exc)
-                self._escalate(
-                    conversation,
-                    message,
-                    decision.with_tier("needs_admin"),
-                    reason_override="the sign-up template is not configured",
-                )
-                return
-            self._reply_or_escalate(
-                conversation, message, decision, text=text, kind="signup"
-            )
-            return
+        """Ask the category's handler, then deliver its reply or hand off.
 
-        self._answer_faq(conversation, message, decision)
-
-    def _answer_faq(
-        self, conversation: Any, message: IncomingMessage, decision: TriageDecision
-    ) -> None:
-        """Retrieve, generate, then gate on the retrieval similarity.
-
-        Three distinct ways this declines to answer, all ending in the same
-        place: no relevant context, a refusal sentinel in the generated text, or
-        a top similarity below ``ANSWER_THRESHOLD``. Everything else - a
-        retrieval or generation outage - is an infrastructure failure that also
-        escalates but additionally counts toward the circuit breaker.
+        The handlers are inbox-core's protocol: the sign-up copy, and the
+        grounded FAQ answer, which declines when nothing in the knowledge base
+        clears ``ANSWER_THRESHOLD``, when the generator returns the refusal
+        sentinel, and when retrieval or generation fails. Every decline ends
+        in the same place, a person; only the failures also count toward the
+        circuit breaker, because a question the knowledge base does not cover
+        is not an outage.
         """
-        if self.bot_service is None:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override="no answer service is configured",
-            )
-            return
+        handler = self.handlers.for_category(decision.category)
+        self._outages.clear()
+        result = handler.handle(HandlerRequest(message, decision, self.config))
 
-        try:
-            answer = run_coroutine(
-                lambda: self.bot_service.chat(
-                    message.text,
-                    channel="email",
-                    language=decision.language,
-                )
-            )
-        except NoRelevantContext:
+        if result.outcome == "hand_off":
             self._escalate(
                 conversation,
                 message,
                 decision.with_tier("needs_admin"),
-                reason_override="the knowledge base does not cover this question",
+                reason_override=result.reason,
             )
-            return
-        except (EmbeddingsUnavailable, GenerationUnavailable) as exc:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override="the answer service is unavailable",
-            )
-            self._note_failure(f"answering unavailable: {type(exc).__name__}")
-            return
-
-        confidence = float(answer.get("confidence") or 0.0)
-        text = (answer.get("response") or "").strip()
-
-        if REFUSAL_SENTINEL in text:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override="the generator reported insufficient context",
-            )
-            return
-
-        if confidence < self.settings.answer_threshold:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override=(
-                    f"retrieval similarity {confidence:.2f} below "
-                    f"{self.settings.answer_threshold:.2f}"
-                ),
-            )
+            if self._outages.last:
+                self._note_failure(f"answering unavailable: {self._outages.last}")
             return
 
         self._reply_or_escalate(
             conversation,
             message,
             decision,
-            text=text,
-            kind="faq",
-            confidence=confidence,
-            sources=[source for source in answer.get("sources") or [] if source],
+            text=result.text,
+            kind=result.kind,
+            confidence=(
+                max(source.score for source in result.sources)
+                if result.sources
+                else None
+            ),
+            sources=[source.id for source in result.sources] or None,
         )
 
     # ------------------------------------------------------------- escalate
@@ -721,9 +665,7 @@ class EmailBotPipeline:
         leave a mail the next run dedupes as done without a person ever
         having seen it.
         """
-        reason = reason_override or escalation_reason(
-            decision, self.settings.triage_confidence_threshold
-        )
+        reason = reason_override or escalation_reason(decision, self.config.triage)
 
         summary = summarise_for_escalation(
             message.text, decision.language, self.gemini_client
@@ -829,15 +771,13 @@ class EmailBotPipeline:
         sources: list[str] | None = None,
         label_after: bool = True,
     ) -> DeliveryResult | None:
-        sink = choose_sink(
-            self.mode,
-            decision.language,
-            self.settings.auto_languages,
-            self.sinks,
-            message.sender_key,
-            on_capped=self._count_capped,
-        )
-        if sink is None:
+        """Deliver through the core's ``Delivery``; None when the mode is off.
+
+        Every reason not to send - draft mode, a language not yet signed off
+        for sending, a reached cap - comes back as ``held``, which for this
+        channel is a Gmail draft in the thread. Only ``off`` delivers nothing.
+        """
+        if self.mode is DeliveryMode.OFF:
             return None
 
         # Signed here, not in the transport: which line signs off a
@@ -845,26 +785,20 @@ class EmailBotPipeline:
         # was offered so the draft-acceptance comparison in E2 is meaningful.
         signed = f"{text.rstrip()}\n\n{signature(decision.language)}"
 
-        reply = OutboundReply(
-            thread_key=message.thread_key,
-            to_address=message.sender_address,
-            subject=message.subject,
-            in_reply_to=message.rfc_message_id,
-            references=message.references,
-            text=signed,
-            language=decision.language,
-            kind=kind,
-        )
-        result = sink.deliver(reply)
+        reply = email_reply(message, text=signed, language=decision.language, kind=kind)
+        result = self.delivery.deliver(reply, sender_key=message.sender_key)
+        if result.action == "none":
+            return None
+        sent = result.action == "sent"
 
         try:
             self.conversations.record_outbound(
                 conversation,
                 text=signed,
-                action=result.action,
+                action=ACTION_SENT if sent else ACTION_DRAFTED,
                 language=decision.language,
-                gmail_message_id_out=result.gmail_message_id_out,
-                gmail_draft_id=result.gmail_draft_id,
+                gmail_message_id_out=result.provider_ref if sent else None,
+                gmail_draft_id=None if sent else result.provider_ref,
                 confidence=confidence,
                 sources=sources,
                 kind=kind,
@@ -931,19 +865,19 @@ class EmailBotPipeline:
                 "Could not roll back after a failed audit write", exc_info=True
             )
 
-        if not result.gmail_draft_id:
+        if result.action != "held" or not result.provider_ref:
             # Nothing to clean up. A send cannot be recalled, and E3's caps
             # count sent rows, so a send whose row was lost is reported by the
             # run counters being ahead of the audit table rather than silently.
             return
 
         try:
-            self.adapter.delete_draft(result.gmail_draft_id)
+            self.adapter.delete_draft(result.provider_ref)
         except Exception:
             logger.error(
                 "Orphaned draft %s could not be deleted after a failed audit "
                 "write; it is still in the thread with no row",
-                result.gmail_draft_id,
+                result.provider_ref,
             )
 
     # ---------------------------------------------------------------- state
@@ -951,14 +885,6 @@ class EmailBotPipeline:
     def _conversation(self, message: IncomingMessage):
         return self.conversations.get_or_create(
             message.channel, message.thread_key, message.sender_key
-        )
-
-    def _signup_facts(self) -> SignupFacts:
-        return SignupFacts(
-            teaching_days=self.settings.teaching_days,
-            class_start=self.settings.class_start_time,
-            class_end=self.settings.class_end_time,
-            signup_form_link=self.settings.signup_form_link,
         )
 
     def _finish(self, message: IncomingMessage) -> None:
@@ -1000,7 +926,10 @@ class EmailBotPipeline:
             )
 
     def _label_names(self) -> list[str]:
-        return [*OUTCOME_LABELS, *(category_label(name) for name in CATEGORY_TIERS)]
+        return [
+            *OUTCOME_LABELS,
+            *(category_label(rule.name) for rule in self.config.triage.categories),
+        ]
 
     def _note_failure(self, reason: str) -> None:
         self._summary.errors += 1

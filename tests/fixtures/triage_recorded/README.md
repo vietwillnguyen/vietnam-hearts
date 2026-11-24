@@ -7,7 +7,7 @@ against a mock shaped like our parsing code.
 ## Provenance
 
 `jev_*.json` are `SystemOneResponse` bodies. Their structure is checked against
-the installed `typesafe-sdk` itself: `test_triage_classifiers.py` loads each one
+the installed `typesafe-sdk` itself: `test_inbox_client_classifiers.py` loads each one
 through `typesafe_sdk.SystemOneResponse.model_validate`, so a fixture that has
 drifted from the vendor's model fails the test rather than passing a fake.
 

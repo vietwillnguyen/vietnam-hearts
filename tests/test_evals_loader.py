@@ -17,14 +17,15 @@ os.environ["DATABASE_URL"] = "sqlite:///file::memory:?cache=shared&uri=true"
 
 import pytest
 
-from app.services.triage.policy import decide
-from app.services.triage.protocol import CATEGORIES, LANGUAGES
 from evals.loader import (
+    CATEGORIES,
     GOLDEN_SET_PATH,
     GOLDEN_THRESHOLD,
+    LANGUAGES,
     GoldenSetInvalid,
     answerable_cases,
     as_incoming,
+    decide_at,
     executive_cases,
     load_golden_set,
 )
@@ -92,7 +93,7 @@ class TestCoverage:
 class TestTheTierInvariant:
     def test_every_expected_tier_is_what_derive_tier_returns(self, cases):
         for case in cases:
-            derived = decide(case.expected_signals, GOLDEN_THRESHOLD).tier
+            derived = decide_at(case.expected_signals, GOLDEN_THRESHOLD).tier
             assert derived == case.expected_tier, case.id
 
     def test_a_hand_edited_tier_is_refused(self, tmp_path):
@@ -113,10 +114,11 @@ class TestTheTierInvariant:
             load_golden_set(broken)
 
     def test_every_executive_category_case_is_needs_executive(self, cases):
-        from app.services.triage.policy import EXECUTIVE_CATEGORIES
+        from app.services.email_bot.client import client_config
 
+        executive = client_config().triage.executive_categories
         for case in cases:
-            if case.expected_category in EXECUTIVE_CATEGORIES:
+            if case.expected_category in executive:
                 assert case.expected_tier == "needs_executive", case.id
 
     def test_every_automated_case_is_skip(self, cases):
@@ -321,7 +323,9 @@ class TestAsIncoming:
     def test_the_headers_are_lower_cased_for_the_guards(self, cases):
         guard = next(case for case in cases if case.headers)
         message = as_incoming(guard)
-        assert all(name == name.lower() for name in message.headers)
+        headers = message.extension.headers
+        assert headers
+        assert all(name == name.lower() for name in headers)
 
     def test_the_sender_is_fictional_and_identical_for_every_case(self, cases):
         senders = {as_incoming(case).sender_address for case in cases}

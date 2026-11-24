@@ -18,10 +18,11 @@ from datetime import UTC, datetime
 
 import anyio
 import pytest
+from inbox_core import IncomingMessage, TriageDecision
+from inbox_core.channels.email import EmailDetails
 
 from app.models import Message
-from app.services.channels.base import EMAIL_CHANNEL, IncomingMessage
-from app.services.channels.gmail import GmailAdapter
+from app.services.channels.gmail import EMAIL_CHANNEL, GmailAdapter
 from app.services.channels.gmail_transport import RawMail
 from app.services.channels.mail_guards import sender_key
 from app.services.conversation_service import ConversationService
@@ -34,7 +35,6 @@ from app.services.conversation_store import (
 )
 from app.services.email_bot.pipeline import EmailBotPipeline
 from app.services.email_bot.settings import EmailBotSettings
-from app.services.triage.protocol import TriageDecision
 from app.utils.field_crypto import KEYS_SETTING, EncryptionKeyError, cipher_from_env
 from tests.fixtures import gmail_payloads as payloads
 from tests.fixtures.conversations import stored
@@ -63,7 +63,7 @@ def incoming(**overrides) -> IncomingMessage:
         "sender_address": payloads.TEST_SENDER,
         "subject": SUBJECT,
         "text": BODY,
-        "rfc_message_id": "<abc@x>",
+        "extension": EmailDetails(rfc_message_id="<abc@x>"),
     }
     values.update(overrides)
     return IncomingMessage(**values)
