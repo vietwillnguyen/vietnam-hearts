@@ -1222,15 +1222,15 @@ class TestDraftModeStillSendsNothing:
     """What E1 established, re-asserted now that a send path exists.
 
     These used to hold because the codebase had no way to send at all. They now
-    hold because ``choose_sink`` refuses, which is a weaker guarantee and so
-    worth testing harder: a send sink is present in the mapping below and must
-    still never be chosen.
+    hold because inbox-core's ``Delivery`` only holds in draft mode, which is a
+    weaker guarantee and so worth testing harder: the sink handed to the
+    pipeline below would send if asked and must still never be asked.
     """
 
     def test_a_full_run_over_every_fixture_never_reaches_a_send_sink(self, test_db):
         # The phase's headline acceptance criterion: everything drafts and
-        # escalates, and a send sink present in the mapping is still never
-        # chosen, because no code path can select it while the mode is draft.
+        # escalates, and a sink that would send is still never asked to,
+        # because no code path sends while the mode is draft.
         send = FakeSendSink(adapter=None)
         fixtures = [
             "signup_en.json",
