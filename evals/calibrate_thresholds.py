@@ -23,9 +23,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from inbox_core import TriageSignals, TriageUnavailable  # noqa: E402
+from inbox_core.evals import runners as core_runners  # noqa: E402
 
-from evals.loader import GoldenCase, as_incoming, decide_at, load_golden_set  # noqa: E402
-from evals.metrics import TriageMetrics, format_table, percentage  # noqa: E402
+from app.services.email_bot.client import client_config  # noqa: E402
+from evals.loader import GoldenCase, as_incoming, load_golden_set  # noqa: E402
+from evals.metrics import format_table, percentage  # noqa: E402
 
 # No 0.0: inbox-core refuses a policy that would auto-answer with no
 # confidence bar at all, so it is not a threshold the bot can be run at.
@@ -50,41 +52,15 @@ def classify_once(
 def sweep_triage_threshold(
     answered: list[tuple[GoldenCase, TriageSignals]], thresholds=DEFAULT_SWEEP
 ) -> list[dict[str, float]]:
-    """What each confidence threshold would have done to the same answers."""
-    rows: list[dict[str, float]] = []
+    """What each confidence threshold would have done to the same answers.
 
-    for threshold in thresholds:
-        metrics = TriageMetrics()
-        answered_count = 0
-
-        for case, signals in answered:
-            decision = decide_at(signals, threshold)
-            metrics.record(
-                case_id=case.id,
-                expected_category=case.expected_category,
-                actual_category=decision.category,
-                expected_tier=case.expected_tier,
-                actual_tier=decision.tier,
-                expected_language=case.language,
-                actual_language=decision.language,
-            )
-            if decision.tier == "auto_answer":
-                answered_count += 1
-
-        total = len(answered) or 1
-        rows.append(
-            {
-                "threshold": threshold,
-                "executive_recall": metrics.executive_recall,
-                "category_accuracy": metrics.category_accuracy,
-                # The cost side of the trade: how much mail the bot answers at
-                # all. A threshold with perfect recall that answers nothing has
-                # not solved the problem it was built for.
-                "answered_share": answered_count / total,
-                "missed_executive": len(metrics.missed_executive),
-            }
-        )
-    return rows
+    inbox-core's sweep over this inbox's category table. ``answered_share`` is
+    the cost side of the trade: a threshold with perfect recall that answers
+    nothing has not solved the problem it was built for.
+    """
+    return core_runners.sweep_triage_threshold(
+        answered, client_config().triage, thresholds
+    )
 
 
 def sweep_answer_threshold(
@@ -95,23 +71,10 @@ def sweep_answer_threshold(
     ``similarities`` is ``(case_id, top_similarity, was_the_answer_correct)``,
     which the groundedness run produces. Correctness has to come from the judge
     rather than from the similarity itself, or the sweep would just be
-    measuring the number against itself.
+    measuring the number against itself. The thresholds default to this
+    app's cosine-similarity scale, not the core's BM25 one.
     """
-    rows: list[dict[str, float]] = []
-
-    for threshold in thresholds:
-        answered = [item for item in similarities if item[1] >= threshold]
-        correct = [item for item in answered if item[2]]
-        rows.append(
-            {
-                "threshold": threshold,
-                "answered": len(answered),
-                "answered_share": len(answered) / (len(similarities) or 1),
-                "precision": len(correct) / (len(answered) or 1),
-                "wrong_answers": len(answered) - len(correct),
-            }
-        )
-    return rows
+    return core_runners.sweep_answer_threshold(similarities, thresholds)
 
 
 def load_answer_similarities(payload: dict) -> list[tuple[str, float, bool]]:
