@@ -425,6 +425,13 @@ Storage sits behind `ConversationStore` (`app/services/conversation_store.py`) s
 
 A draft whose text was deleted before it was reconciled resolves as `unmeasured` and is left out of the acceptance rate, since without its text "sent unchanged" cannot be told from "edited".
 
+## Amendment 2026-11-24: the engine comes from inbox-core
+
+The channel-neutral parts of the engine described above - the message shapes, the tier rules over the category table, both classifiers and the shadow, the grounded FAQ answer, the off/draft/auto delivery table and the field cipher - now come from the `inbox-core` package, with this inbox's category table as its client config in `app/services/email_bot/inbox_client.toml`.
+The module names this spec uses for them (`triage/policy.py`, `delivery.py::choose_sink`, `SendSink`) no longer exist; `docs/INBOX_CORE.md` maps each to its replacement.
+The decisions in this spec are unchanged: the tier is decided in code, `off` and `draft` cannot send, and every reason not to send drafts instead.
+The per-run pipeline, the Gmail channel and the conversation record stay in this repository until the package can carry the behaviours listed in that document.
+
 ## Evaluation gate
 
 The parent spec's gate applies, with two additions from real use in draft mode.

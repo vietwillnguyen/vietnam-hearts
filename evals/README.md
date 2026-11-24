@@ -13,7 +13,7 @@ Putting them in CI would spend the Gemini free tier on every pull request, make 
 
 What *does* run in CI is the arithmetic and the validation, which is where the mistakes that matter actually live:
 
-- `tests/test_evals_loader.py` validates `golden_qa.yaml`: unique ids, every category in both languages, guard cases carrying headers, and - the important one - that every `expected_tier` matches what `derive_tier()` actually returns for that case's signals.
+- `tests/test_evals_loader.py` validates `golden_qa.yaml`: unique ids, every category in both languages, guard cases carrying headers, and - the important one - that every `expected_tier` matches what inbox-core's `derive_tier()` returns for that case's signals under `app/services/email_bot/inbox_client.toml`.
 - `tests/test_evals_runners.py` checks the metric arithmetic on synthetic result sets, including that a missed executive case exits non-zero.
 
 So a golden set that has drifted from the policy, or a recall calculation that is quietly wrong, fails on a pull request. Only the part that costs money is on demand.
@@ -40,6 +40,9 @@ uv run python evals/shadow_report.py --since 2026-09-15
 # Weekly: judge the FAQ answers that were actually sent, and store nothing.
 uv run python evals/sample_live_answers.py --days 7
 ```
+
+The groundedness run answers through the bot's own FAQ handler (inbox-core's `GroundedAnswer` over the live knowledge base, `app/services/email_bot/answers.py`) with no similarity floor, so every case has an answer to judge and the sweep can place `ANSWER_THRESHOLD`.
+The triage runs use inbox-core's classifiers under the same client config the bot runs with.
 
 Rough cost of a full pass over the 92 golden cases: one classifier call per case for the triage run, and one answer plus one judge call per answerable case for the groundedness run.
 Small in absolute terms, and large enough against a free tier's per-minute limit to be worth not running in a loop.

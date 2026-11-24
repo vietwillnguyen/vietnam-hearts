@@ -175,7 +175,7 @@ The cadences it sets are only bootstrap defaults; the live cadences are owned by
 
 Then, in order:
 
-1. Generate the conversation encryption key with `uv run python -m app.utils.field_crypto generate-key --key-id k1`, store a copy outside Google Cloud first (see "Conversation records" below), then set it as `CONVERSATION_ENCRYPTION_KEYS` on the Cloud Run service, ideally from Secret Manager.
+1. Generate the conversation encryption key with `uv run python -m inbox_core.crypto generate-key --key-id k1`, store a copy outside Google Cloud first (see "Conversation records" below), then set it as `CONVERSATION_ENCRYPTION_KEYS` on the Cloud Run service, ideally from Secret Manager.
    The bot stores every conversation encrypted with it, so in production the service refuses to start with the bot enabled and no key, and refuses whenever the key is malformed.
 2. Set `EMAIL_BOT_ENABLED=true` on the Cloud Run service. This is the operator-level stop and lives outside the database.
 3. On the dashboard, set `EMAIL_BOT_MODE` to `draft`.
@@ -240,7 +240,7 @@ Never put the key in the settings table, a document, chat, or the repository.
 
 ### Rotating the key
 
-Generate a new entry (`uv run python -m app.utils.field_crypto generate-key --key-id k2`), back it up, and set `CONVERSATION_ENCRYPTION_KEYS` to `k2:<new key>,k1:<old key>`.
+Generate a new entry (`uv run python -m inbox_core.crypto generate-key --key-id k2`), back it up, and set `CONVERSATION_ENCRYPTION_KEYS` to `k2:<new key>,k1:<old key>`.
 New text is encrypted with the first entry; old rows say which key wrote them and keep reading with it, so nothing is rewritten.
 Keep the old entry for as long as any row was written with it.
 If a key has leaked, rotating stops new text being readable with it, but rows already written stay readable by whoever holds it and a copy of the database until they are re-encrypted (`FieldCipher.reencrypt`); ask an engineer.
