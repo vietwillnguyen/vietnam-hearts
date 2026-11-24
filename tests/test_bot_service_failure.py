@@ -267,17 +267,18 @@ class TestChatStillHonoursItsOldContract:
         bot = _bot(AsyncMock(return_value=chunks))
         bot.knowledge_service.gemini_client = client
 
-        result = await bot.chat("how do I volunteer", channel="email", language="en")
+        result = await bot.chat("how do I volunteer")
         assert result["confidence"] == 0.81
         assert result["sources"] == ["faq", "faq"]
 
     @pytest.mark.asyncio
-    async def test_the_channel_and_language_are_keyword_only(self):
-        # So no existing positional call site can accidentally pass a language
-        # where user_context is expected.
+    async def test_the_language_and_channel_are_keyword_only_where_they_remain(self):
+        # The email prompt is chosen only on the generation step the inbox
+        # bot's generator calls, so no positional call site can pass a
+        # language where user_context is expected.
         import inspect
 
-        signature = inspect.signature(BotService.chat)
+        signature = inspect.signature(BotService._generate_contextual_response)
         assert signature.parameters["channel"].kind is inspect.Parameter.KEYWORD_ONLY
         assert signature.parameters["language"].kind is inspect.Parameter.KEYWORD_ONLY
 

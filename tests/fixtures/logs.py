@@ -28,6 +28,7 @@ from contextlib import contextmanager
 EMAIL_BOT_LOGGERS = (
     "email_bot_pipeline",
     "email_bot_caps",
+    "email_bot_replies",
     "email_bot_settings",
     "email_bot_summaries",
     "email_bot_factory",

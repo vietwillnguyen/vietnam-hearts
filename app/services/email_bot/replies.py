@@ -17,10 +17,14 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from inbox_core import HandlerRequest, HandlerResult
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from app.config import EMAIL_TEMPLATES_PATH
+from app.utils.logging_config import get_logger
 from app.utils.schedule_dates import parse_teaching_days
+
+logger = get_logger("email_bot_replies")
 
 BOT_TEMPLATE_DIR = Path(EMAIL_TEMPLATES_PATH) / "bot"
 
@@ -174,3 +178,27 @@ def signature(language: str) -> str:
     if resolve_language(language) == "vi":
         return "- Trợ lý tự động của Vietnam Hearts"
     return "- Vietnam Hearts automated assistant"
+
+
+class SignupReply:
+    """The captain's sign-up copy as an inbox-core ``Handler``.
+
+    A reply when the facts can be stated truthfully; otherwise a hand-off,
+    because a sign-up reply without the form link tells someone to fill in a
+    form that is not there.
+    """
+
+    name = "signup"
+
+    def __init__(self, facts: SignupFacts) -> None:
+        self._facts = facts
+
+    def handle(self, request: HandlerRequest) -> HandlerResult:
+        try:
+            text = render_signup_reply(request.decision.language, self._facts)
+        except SignupReplyUnavailable as exc:
+            logger.error("Sign-up reply unavailable: %s", exc)
+            return HandlerResult.hand_off(
+                self.name, "the sign-up template is not configured"
+            )
+        return HandlerResult.reply(self.name, text)

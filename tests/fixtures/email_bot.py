@@ -15,6 +15,7 @@ from typing import Any
 
 from inbox_core import TriageSignals, TriageUnavailable
 
+from app.services.bot_service import BotService
 from app.services.channels.gmail_transport import RawMail
 from app.services.notifier import EscalationEvent
 from tests.fixtures import gmail_payloads as payloads
@@ -239,8 +240,18 @@ class FakeSendSink:
         return "sent-1"
 
 
-class FakeBotService:
-    """An async ``chat`` that returns or raises what a test scripted."""
+class FakeBotService(BotService):
+    """The real ``BotService`` over a fake vector search and a fake Gemini.
+
+    Scripted the way a test thinks about it - "the knowledge base answers this
+    with similarity 0.82", "retrieval is down" - and reached the way the bot
+    reaches it: the FAQ handler's retriever calls ``similarity_search`` and its
+    generator calls the real ``_generate_contextual_response``, so the prompt
+    and the empty-response check are the production ones.
+
+    ``searches`` records each retrieval query and ``calls`` each generation, so
+    a test can say that a path never reached the model.
+    """
 
     def __init__(self, answer: Any = None, error: Exception | None = None) -> None:
         self._answer = answer or {
@@ -251,21 +262,57 @@ class FakeBotService:
         }
         self._error = error
         self.calls: list[dict[str, Any]] = []
+        self.searches: list[str] = []
+        self.knowledge_service = _FakeKnowledge(self)
+        self.document_service = None
+        self.supabase = None
 
-    async def chat(
-        self,
-        message: str,
-        user_context: dict | None = None,
-        *,
-        channel: str = "web",
-        language: str = "en",
-    ) -> dict[str, Any]:
+    async def _generate_contextual_response(
+        self, message, context, user_context=None, *, channel="web", language="en"
+    ):
         self.calls.append(
             {"message": message, "channel": channel, "language": language}
         )
-        if self._error is not None:
-            raise self._error
-        return self._answer
+        return await super()._generate_contextual_response(
+            message, context, user_context, channel=channel, language=language
+        )
+
+
+class _FakeKnowledge:
+    def __init__(self, bot: FakeBotService) -> None:
+        self._bot = bot
+        self.gemini_client = self
+        self.models = self
+
+    async def similarity_search(self, query: str, limit: int = 3, threshold=0.3):
+        from app.services.bot_service import NoRelevantContext
+        from app.services.knowledge_service import EmbeddingsUnavailable
+
+        self._bot.searches.append(query)
+        error = self._bot._error
+        if isinstance(error, EmbeddingsUnavailable):
+            raise error
+        if isinstance(error, NoRelevantContext):
+            return []
+        answer = self._bot._answer
+        sources = answer.get("sources") or ["kb-doc"]
+        return [
+            {
+                "content": f"Knowledge base passage {index + 1}.",
+                "similarity": answer.get("confidence", 0.0),
+                "source_document_id": source,
+            }
+            for index, source in enumerate(sources[:limit])
+        ]
+
+    def generate_content(self, *, model: str, contents: str):
+        from types import SimpleNamespace
+
+        from app.services.bot_service import GenerationUnavailable
+
+        if isinstance(self._bot._error, GenerationUnavailable):
+            raise RuntimeError("gemini is over quota")
+        return SimpleNamespace(text=self._bot._answer.get("response", ""))
 
 
 def signals(

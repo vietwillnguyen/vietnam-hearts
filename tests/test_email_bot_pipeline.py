@@ -499,6 +499,7 @@ class TestSignupAnswer:
             bot_service=bot,
         )
         run(pipeline)
+        assert bot.searches == []
         assert bot.calls == []
 
     def test_a_vietnamese_signup_is_drafted_in_vietnamese(self, test_db):
@@ -593,18 +594,21 @@ class TestFaqAnswer:
 
     def test_a_similarity_below_the_threshold_escalates(self, test_db):
         notifier = RecordingNotifier()
+        bot = FakeBotService({"response": "A guess.", "confidence": 0.31})
         pipeline, _ = build(
             test_db,
             [load_gmail("faq_en.json")],
             classifier=FakeClassifier(default=signals(category="faq", confidence=0.86)),
-            bot_service=FakeBotService({"response": "A guess.", "confidence": 0.31}),
+            bot_service=bot,
             notifier=notifier,
         )
         summary = run(pipeline)
 
         assert summary.forwarded == 1
-        assert "0.31" in notifier.events[0].reason
-        # The answer the model produced is discarded, not offered.
+        assert "0.50" in notifier.events[0].reason
+        # Nothing cleared the threshold, so the model is never asked and no
+        # guess can be offered.
+        assert bot.calls == []
         assert all("A guess." not in body(row) for row in outbound(test_db))
 
     def test_the_refusal_sentinel_escalates(self, test_db):
@@ -623,7 +627,7 @@ class TestFaqAnswer:
         summary = run(pipeline)
 
         assert summary.forwarded == 1
-        assert "insufficient context" in notifier.events[0].reason
+        assert "context insufficient" in notifier.events[0].reason
 
     def test_no_relevant_context_escalates(self, test_db):
         notifier = RecordingNotifier()
@@ -637,7 +641,7 @@ class TestFaqAnswer:
         summary = run(pipeline)
 
         assert summary.forwarded == 1
-        assert "does not cover" in notifier.events[0].reason
+        assert "no knowledge entry" in notifier.events[0].reason
         # A knowledge base gap is not an infrastructure failure.
         assert summary.errors == 0
 

@@ -17,8 +17,16 @@ model rather than a style choice:
   unfinished is simply picked up by the next run.
 
 Synchronous, because the route is a plain ``def`` and everything it talks to is a
-synchronous client. The single coroutine it needs, ``BotService.chat()``, is
-reached through ``bridge.run_coroutine``.
+synchronous client. The two coroutines the FAQ answer needs - the vector search
+and ``BotService``'s generation - are reached through ``bridge.run_coroutine``
+by the retriever and generator in ``answers.py``.
+
+The steps themselves are inbox-core's: its message shapes, its tier rules and
+classifiers, its handlers and its delivery table. What this module owns is the
+order of a Gmail poll around them - the labels, the human-reply check, the
+one-reply-per-thread rule, the forward, the circuit breaker and the run row -
+because inbox-core's own ``Pipeline`` does not yet do those things the way this
+inbox needs (see ``docs/INBOX_CORE.md``).
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ from typing import Any
 
 from inbox_core import (
     DeliveryMode,
+    HandlerRequest,
     IncomingMessage,
     ReplySink,
     TriageDecision,
@@ -38,15 +47,10 @@ from inbox_core import (
 )
 from inbox_core.channels.email import EmailDetails
 from inbox_core.delivery import CapDecision, DeliveryResult, parse_mode
-from inbox_core.prompts import REFUSAL_SENTINEL
 from inbox_core.triage import escalation_reason
 from sqlalchemy.orm import Session
 
 from app.models import EmailBotRun
-from app.services.bot_service import (
-    GenerationUnavailable,
-    NoRelevantContext,
-)
 from app.services.channels.gmail import email_reply
 from app.services.channels.gmail_transport import (
     LABEL_DRAFTED,
@@ -74,16 +78,13 @@ from app.services.conversation_service import (
     ConversationService,
 )
 from app.services.conversation_store import ConversationStore, SqlConversationStore
-from app.services.email_bot.bridge import run_coroutine
+from app.services.email_bot.answers import AnswerOutages, build_handlers
 from app.services.email_bot.caps import CapsState
 from app.services.email_bot.client import client_config
 from app.services.email_bot.delivery import build_delivery
 from app.services.email_bot.reconciliation import reconcile_draft
 from app.services.email_bot.replies import (
-    SignupFacts,
-    SignupReplyUnavailable,
     render_holding_message,
-    render_signup_reply,
     signature,
 )
 from app.services.email_bot.settings import (
@@ -92,7 +93,6 @@ from app.services.email_bot.settings import (
     EmailBotSettings,
 )
 from app.services.email_bot.summaries import summarise_for_escalation
-from app.services.knowledge_service import EmbeddingsUnavailable
 from app.services.notifier import EscalationEvent, Notifier
 from app.services.settings_service import set_setting
 from app.utils.field_crypto import cipher_from_env
@@ -196,6 +196,9 @@ class EmailBotPipeline:
             caps=self._caps() if self.mode is DeliveryMode.AUTO else None,
             sink=sink,
         )
+
+        self._outages = AnswerOutages()
+        self.handlers = build_handlers(settings, bot_service, self._outages)
 
         self._summary = RunSummary(mode=self.mode)
         self._consecutive_failures = 0
@@ -600,105 +603,43 @@ class EmailBotPipeline:
     def _answer(
         self, conversation: Any, message: IncomingMessage, decision: TriageDecision
     ) -> None:
-        if decision.category == "signup":
-            try:
-                text = render_signup_reply(decision.language, self._signup_facts())
-            except SignupReplyUnavailable as exc:
-                # The facts are not configured, so there is no honest template
-                # to send. A person answers it instead.
-                logger.error("Sign-up reply unavailable: %s", exc)
-                self._escalate(
-                    conversation,
-                    message,
-                    decision.with_tier("needs_admin"),
-                    reason_override="the sign-up template is not configured",
-                )
-                return
-            self._reply_or_escalate(
-                conversation, message, decision, text=text, kind="signup"
-            )
-            return
+        """Ask the category's handler, then deliver its reply or hand off.
 
-        self._answer_faq(conversation, message, decision)
-
-    def _answer_faq(
-        self, conversation: Any, message: IncomingMessage, decision: TriageDecision
-    ) -> None:
-        """Retrieve, generate, then gate on the retrieval similarity.
-
-        Three distinct ways this declines to answer, all ending in the same
-        place: no relevant context, a refusal sentinel in the generated text, or
-        a top similarity below ``ANSWER_THRESHOLD``. Everything else - a
-        retrieval or generation outage - is an infrastructure failure that also
-        escalates but additionally counts toward the circuit breaker.
+        The handlers are inbox-core's protocol: the sign-up copy, and the
+        grounded FAQ answer, which declines when nothing in the knowledge base
+        clears ``ANSWER_THRESHOLD``, when the generator returns the refusal
+        sentinel, and when retrieval or generation fails. Every decline ends
+        in the same place, a person; only the failures also count toward the
+        circuit breaker, because a question the knowledge base does not cover
+        is not an outage.
         """
-        if self.bot_service is None:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override="no answer service is configured",
-            )
-            return
+        handler = self.handlers.for_category(decision.category)
+        self._outages.clear()
+        result = handler.handle(HandlerRequest(message, decision, self.config))
 
-        try:
-            answer = run_coroutine(
-                lambda: self.bot_service.chat(
-                    message.text,
-                    channel="email",
-                    language=decision.language,
-                )
-            )
-        except NoRelevantContext:
+        if result.outcome == "hand_off":
             self._escalate(
                 conversation,
                 message,
                 decision.with_tier("needs_admin"),
-                reason_override="the knowledge base does not cover this question",
+                reason_override=result.reason,
             )
-            return
-        except (EmbeddingsUnavailable, GenerationUnavailable) as exc:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override="the answer service is unavailable",
-            )
-            self._note_failure(f"answering unavailable: {type(exc).__name__}")
-            return
-
-        confidence = float(answer.get("confidence") or 0.0)
-        text = (answer.get("response") or "").strip()
-
-        if REFUSAL_SENTINEL in text:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override="the generator reported insufficient context",
-            )
-            return
-
-        if confidence < self.settings.answer_threshold:
-            self._escalate(
-                conversation,
-                message,
-                decision.with_tier("needs_admin"),
-                reason_override=(
-                    f"retrieval similarity {confidence:.2f} below "
-                    f"{self.settings.answer_threshold:.2f}"
-                ),
-            )
+            if self._outages.last:
+                self._note_failure(f"answering unavailable: {self._outages.last}")
             return
 
         self._reply_or_escalate(
             conversation,
             message,
             decision,
-            text=text,
-            kind="faq",
-            confidence=confidence,
-            sources=[source for source in answer.get("sources") or [] if source],
+            text=result.text,
+            kind=result.kind,
+            confidence=(
+                max(source.score for source in result.sources)
+                if result.sources
+                else None
+            ),
+            sources=[source.id for source in result.sources] or None,
         )
 
     # ------------------------------------------------------------- escalate
@@ -944,14 +885,6 @@ class EmailBotPipeline:
     def _conversation(self, message: IncomingMessage):
         return self.conversations.get_or_create(
             message.channel, message.thread_key, message.sender_key
-        )
-
-    def _signup_facts(self) -> SignupFacts:
-        return SignupFacts(
-            teaching_days=self.settings.teaching_days,
-            class_start=self.settings.class_start_time,
-            class_end=self.settings.class_end_time,
-            signup_form_link=self.settings.signup_form_link,
         )
 
     def _finish(self, message: IncomingMessage) -> None:

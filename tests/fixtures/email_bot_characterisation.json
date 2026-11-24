@@ -40,7 +40,7 @@
     "id": 4,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: retrieval similarity 0.42 below 0.50",
+    "pause_reason": "needs_admin: no knowledge entry scored at least 0.50",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "18f2a1b4c5d6e823"
@@ -51,7 +51,7 @@
     "id": 5,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: the knowledge base does not cover this question",
+    "pause_reason": "needs_admin: no knowledge entry scored at least 0.50",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "18f2a1b4c5d6e834"
@@ -194,7 +194,7 @@
     "id": 18,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: the knowledge base does not cover this question",
+    "pause_reason": "needs_admin: the generator found the context insufficient",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "thread-syn-refusal"
@@ -205,7 +205,7 @@
     "id": 19,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: the answer service is unavailable",
+    "pause_reason": "needs_admin: generator gemini:gemini-3.5-flash failed (GenerationUnavailable)",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "thread-syn-gen-down"
@@ -291,10 +291,10 @@
   "deleted_drafts": [],
   "discord": [
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: retrieval similarity 0.42 below 0.50\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: no knowledge entry scored at least 0.50\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.70\nWhy: the knowledge base does not cover this question\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.70\nWhy: no knowledge entry scored at least 0.50\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834"
    },
    {
     "allowed_mentions": {
@@ -326,10 +326,10 @@
     "content": "**Volunteer inbox** needs_admin - human_other\nLanguage: en | Confidence: 0.00\nWhy: confidence 0.00 below threshold 0.60\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-outage"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: the knowledge base does not cover this question\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-refusal"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: the generator found the context insufficient\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-refusal"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: the answer service is unavailable\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: generator gemini:gemini-3.5-flash failed (GenerationUnavailable)\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down"
    }
   ],
   "drafts": {
@@ -445,13 +445,13 @@
   "forwards": [
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: retrieval similarity 0.42 below 0.50<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Interested in helping</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hello!\n\nI would like to volunteer as a teaching assistant.</pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: no knowledge entry scored at least 0.50<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Interested in helping</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hello!\n\nI would like to volunteer as a teaching assistant.</pre>",
     "subject": "[VH bot: needs_admin] Interested in helping",
     "to_email": "owner@example.com"
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the knowledge base does not cover this question<br>Summary: not available</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> (no subject)</p><pre style=\"white-space: pre-wrap; font-family: inherit\"></pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: no knowledge entry scored at least 0.50<br>Summary: not available</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> (no subject)</p><pre style=\"white-space: pre-wrap; font-family: inherit\"></pre>",
     "subject": "[VH bot: needs_admin] (no subject)",
     "to_email": "owner@example.com"
    },
@@ -505,13 +505,13 @@
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the knowledge base does not cover this question<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-refusal\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Where are you based?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Where is the classroom?</pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the generator found the context insufficient<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-refusal\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Where are you based?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Where is the classroom?</pre>",
     "subject": "[VH bot: needs_admin] Where are you based?",
     "to_email": "owner@example.com"
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the answer service is unavailable<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down\">Open the thread in Gmail</a></p><hr><p><b>From:</b> payer@example.com<br><b>Subject:</b> Do you pay volunteers?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Is the volunteering paid?</pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: generator gemini:gemini-3.5-flash failed (GenerationUnavailable)<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down\">Open the thread in Gmail</a></p><hr><p><b>From:</b> payer@example.com<br><b>Subject:</b> Do you pay volunteers?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Is the volunteering paid?</pre>",
     "subject": "[VH bot: needs_admin] Do you pay volunteers?",
     "to_email": "owner@example.com"
    }
@@ -887,7 +887,7 @@
     "classifier": null,
     "confidence": 0.82,
     "content": {
-     "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant",
+     "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant",
      "sender_address": null,
      "subject": null
     },
@@ -906,7 +906,6 @@
     "sender_key_is_hash": null,
     "shadow": null,
     "sources": [
-     "kb-doc",
      "kb-doc",
      "kb-doc"
     ],
@@ -2196,17 +2195,16 @@
     ]
    ],
    "generation_prompts": [
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:",
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hello!\n\nI would like to volunteer as a teaching assistant.\n\nAnswer:",
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Where is the classroom?\n\nAnswer:",
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Is the volunteering paid?\n\nAnswer:"
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:",
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Where is the classroom?\n\nAnswer:",
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Is the volunteering paid?\n\nAnswer:"
    ],
    "retrieval_queries": [
-    "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
-    "Hello!\n\nI would like to volunteer as a teaching assistant.",
-    "",
-    "Where is the classroom?",
-    "Is the volunteering paid?"
+    "Question about the classes\nHi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
+    "Interested in helping\nHello!\n\nI would like to volunteer as a teaching assistant.",
+    "(no subject)",
+    "Where are you based?\nWhere is the classroom?",
+    "Do you pay volunteers?\nIs the volunteering paid?"
    ],
    "summary_prompts": [
     "Summarise this email in one short sentence, for a charity coordinator deciding how urgently to read it.\nDo not include anyone's name, email address, phone number, or any other contact detail. Do not greet, do not add a preamble, and do not quote the email. Answer with the sentence only, in English.\n\nEmail:\nHello!\n\nI would like to volunteer as a teaching assistant.",
@@ -2249,7 +2247,7 @@
    },
    {
     "auto_submitted": "auto-replied",
-    "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant\n",
+    "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant\n",
     "in_reply_to": "<abc123@mail.example.com>",
     "references": "<abc123@mail.example.com>",
     "subject": "Re: Question about the classes",
@@ -3395,7 +3393,7 @@
     "id": 4,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: retrieval similarity 0.42 below 0.50",
+    "pause_reason": "needs_admin: no knowledge entry scored at least 0.50",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "18f2a1b4c5d6e823"
@@ -3406,7 +3404,7 @@
     "id": 5,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: the knowledge base does not cover this question",
+    "pause_reason": "needs_admin: no knowledge entry scored at least 0.50",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "18f2a1b4c5d6e834"
@@ -3549,7 +3547,7 @@
     "id": 18,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: the knowledge base does not cover this question",
+    "pause_reason": "needs_admin: the generator found the context insufficient",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "thread-syn-refusal"
@@ -3560,7 +3558,7 @@
     "id": 19,
     "last_category": "faq",
     "last_tier": "auto_answer",
-    "pause_reason": "needs_admin: the answer service is unavailable",
+    "pause_reason": "needs_admin: generator gemini:gemini-3.5-flash failed (GenerationUnavailable)",
     "sender_key_is_hash": true,
     "status": "paused_handoff",
     "thread_key": "thread-syn-gen-down"
@@ -3613,10 +3611,10 @@
   "deleted_drafts": [],
   "discord": [
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: retrieval similarity 0.42 below 0.50\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: no knowledge entry scored at least 0.50\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.70\nWhy: the knowledge base does not cover this question\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.70\nWhy: no knowledge entry scored at least 0.50\nhttps://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834"
    },
    {
     "allowed_mentions": {
@@ -3648,10 +3646,10 @@
     "content": "**Volunteer inbox** needs_admin - human_other\nLanguage: en | Confidence: 0.00\nWhy: confidence 0.00 below threshold 0.60\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-outage"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: the knowledge base does not cover this question\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-refusal"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: the generator found the context insufficient\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-refusal"
    },
    {
-    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: the answer service is unavailable\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down"
+    "content": "**Volunteer inbox** needs_admin - faq\nLanguage: en | Confidence: 0.90\nWhy: generator gemini:gemini-3.5-flash failed (GenerationUnavailable)\nSummary: Someone wrote about volunteering.\nhttps://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down"
    }
   ],
   "drafts": {
@@ -3729,7 +3727,7 @@
    },
    "draft-3": {
     "auto_submitted": "auto-replied",
-    "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant\n",
+    "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant\n",
     "in_reply_to": "<abc123@mail.example.com>",
     "references": "<abc123@mail.example.com>",
     "subject": "Re: Question about the classes",
@@ -3794,13 +3792,13 @@
   "forwards": [
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: retrieval similarity 0.42 below 0.50<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Interested in helping</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hello!\n\nI would like to volunteer as a teaching assistant.</pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: no knowledge entry scored at least 0.50<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e823\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Interested in helping</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Hello!\n\nI would like to volunteer as a teaching assistant.</pre>",
     "subject": "[VH bot: needs_admin] Interested in helping",
     "to_email": "owner@example.com"
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the knowledge base does not cover this question<br>Summary: not available</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> (no subject)</p><pre style=\"white-space: pre-wrap; font-family: inherit\"></pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: no knowledge entry scored at least 0.50<br>Summary: not available</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/18f2a1b4c5d6e834\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> (no subject)</p><pre style=\"white-space: pre-wrap; font-family: inherit\"></pre>",
     "subject": "[VH bot: needs_admin] (no subject)",
     "to_email": "owner@example.com"
    },
@@ -3854,13 +3852,13 @@
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the knowledge base does not cover this question<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-refusal\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Where are you based?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Where is the classroom?</pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the generator found the context insufficient<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-refusal\">Open the thread in Gmail</a></p><hr><p><b>From:</b> sender@example.com<br><b>Subject:</b> Where are you based?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Where is the classroom?</pre>",
     "subject": "[VH bot: needs_admin] Where are you based?",
     "to_email": "owner@example.com"
    },
    {
     "email_type": "bot_escalation",
-    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: the answer service is unavailable<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down\">Open the thread in Gmail</a></p><hr><p><b>From:</b> payer@example.com<br><b>Subject:</b> Do you pay volunteers?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Is the volunteering paid?</pre>",
+    "html_body": "<p>Category: faq (needs_admin, en)<br>Why it escalated: generator gemini:gemini-3.5-flash failed (GenerationUnavailable)<br>Summary: Someone wrote about volunteering.</p><p><a href=\"https://mail.google.com/mail/u/0/#inbox/thread-syn-gen-down\">Open the thread in Gmail</a></p><hr><p><b>From:</b> payer@example.com<br><b>Subject:</b> Do you pay volunteers?</p><pre style=\"white-space: pre-wrap; font-family: inherit\">Is the volunteering paid?</pre>",
     "subject": "[VH bot: needs_admin] Do you pay volunteers?",
     "to_email": "owner@example.com"
    }
@@ -4215,7 +4213,7 @@
     "classifier": null,
     "confidence": 0.82,
     "content": {
-     "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant",
+     "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant",
      "sender_address": null,
      "subject": null
     },
@@ -4234,7 +4232,6 @@
     "sender_key_is_hash": null,
     "shadow": null,
     "sources": [
-     "kb-doc",
      "kb-doc",
      "kb-doc"
     ],
@@ -5317,17 +5314,16 @@
     ]
    ],
    "generation_prompts": [
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:",
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hello!\n\nI would like to volunteer as a teaching assistant.\n\nAnswer:",
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Where is the classroom?\n\nAnswer:",
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Is the volunteering paid?\n\nAnswer:"
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:",
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Where is the classroom?\n\nAnswer:",
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Is the volunteering paid?\n\nAnswer:"
    ],
    "retrieval_queries": [
-    "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
-    "Hello!\n\nI would like to volunteer as a teaching assistant.",
-    "",
-    "Where is the classroom?",
-    "Is the volunteering paid?"
+    "Question about the classes\nHi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes",
+    "Interested in helping\nHello!\n\nI would like to volunteer as a teaching assistant.",
+    "(no subject)",
+    "Where are you based?\nWhere is the classroom?",
+    "Do you pay volunteers?\nIs the volunteering paid?"
    ],
    "summary_prompts": [
     "Summarise this email in one short sentence, for a charity coordinator deciding how urgently to read it.\nDo not include anyone's name, email address, phone number, or any other contact detail. Do not greet, do not add a preamble, and do not quote the email. Answer with the sentence only, in English.\n\nEmail:\nHello!\n\nI would like to volunteer as a teaching assistant.",
@@ -5995,7 +5991,7 @@
     "classifier": null,
     "confidence": 0.82,
     "content": {
-     "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant",
+     "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant",
      "sender_address": null,
      "subject": null
     },
@@ -6014,7 +6010,6 @@
     "sender_key_is_hash": null,
     "shadow": null,
     "sources": [
-     "kb-doc",
      "kb-doc",
      "kb-doc"
     ],
@@ -6186,10 +6181,10 @@
     ]
    ],
    "generation_prompts": [
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:"
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:"
    ],
    "retrieval_queries": [
-    "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes"
+    "Question about the classes\nHi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes"
    ],
    "summary_prompts": [
     "Summarise this email in one short sentence, for a charity coordinator deciding how urgently to read it.\nDo not include anyone's name, email address, phone number, or any other contact detail. Do not greet, do not add a preamble, and do not quote the email. Answer with the sentence only, in English.\n\nEmail:\nChào các bạn,\n\nMình là phụ huynh và mình có một lo ngại về sự an toàn của các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.\n\nXin cảm ơn.",
@@ -6320,7 +6315,7 @@
    },
    "draft-2": {
     "auto_submitted": "auto-replied",
-    "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant\n",
+    "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant\n",
     "in_reply_to": "<abc123@mail.example.com>",
     "references": "<abc123@mail.example.com>",
     "subject": "Re: Question about the classes",
@@ -6476,7 +6471,7 @@
     "classifier": null,
     "confidence": 0.82,
     "content": {
-     "body": "Classes run on weekday mornings and no certificate is needed. [3 context chunks]\n\n- Vietnam Hearts automated assistant",
+     "body": "Classes run on weekday mornings and no certificate is needed. [2 context chunks]\n\n- Vietnam Hearts automated assistant",
      "sender_address": null,
      "subject": null
     },
@@ -6495,7 +6490,6 @@
     "sender_key_is_hash": null,
     "shadow": null,
     "sources": [
-     "kb-doc",
      "kb-doc",
      "kb-doc"
     ],
@@ -6572,10 +6566,10 @@
     ]
    ],
    "generation_prompts": [
-    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\nContext 3:\nKnowledge chunk 3.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:"
+    "You are a helpful assistant for Vietnam Hearts, a volunteer organization that teaches English to underprivileged children in Vietnam.\nYour role is to help volunteers with information about volunteering, teaching, and the organization.\nAlways be encouraging and supportive of people wanting to volunteer.\nUse the following context to answer questions accurately:\n\nContext:\nContext 1:\nKnowledge chunk 1.\n\nContext 2:\nKnowledge chunk 2.\n\n\nYou are replying to an email sent to the volunteer inbox. Follow every one of these rules.\n- Use only the facts in the context above. If the context does not answer the question, reply with exactly INSUFFICIENT_CONTEXT and nothing else.\n- Never state a date, time, deadline, or commitment that is not in the context.\n- Never say or imply that an application has been accepted or rejected, and never comment on anyone's suitability.\n- Never state an amount of money, a fee, a salary, or a donation figure.\n- Never include anyone's name, email address, phone number, or any other personal detail about a third party.\n- Never promise when someone will reply or how long anything will take.\n- If the email asks several things and the context answers only some of them, answer those and say that a member of the team will follow up on the rest.\n- Write the reply in the same language the sender wrote in: reply in English.\n- Write as the Vietnam Hearts team, warmly and briefly, as plain text with no subject line and no signature.\n\nQuestion: Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes\n\nAnswer:"
    ],
    "retrieval_queries": [
-    "Hi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes"
+    "Question about the classes\nHi there,\n\nDo volunteers need a teaching certificate, and roughly how many children are in a class?\n\nBest wishes"
    ],
    "summary_prompts": [
     "Summarise this email in one short sentence, for a charity coordinator deciding how urgently to read it.\nDo not include anyone's name, email address, phone number, or any other contact detail. Do not greet, do not add a preamble, and do not quote the email. Answer with the sentence only, in English.\n\nEmail:\nChào các bạn,\n\nMình là phụ huynh và mình có một lo ngại về sự an toàn của các bé trong lớp hôm qua. Mình muốn nói chuyện với người phụ trách.\n\nXin cảm ơn."
